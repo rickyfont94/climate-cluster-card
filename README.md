@@ -158,7 +158,7 @@ All options are optional except `entity`. Defaults reproduce sensible behavior, 
 | `swing_entity` | `switch.*` | Midea sibling | Swing toggle override. |
 | `led_entity` | `switch.*` | Midea sibling | LED-display toggle override. |
 | `sound_entity` | `switch.*` | Midea sibling | Beep/sound toggle override. |
-| `show_swing` / `show_led` / `show_sound` | `auto` \| `true` \| `false` | `auto` | Force show/hide each toggle. |
+| `show_swing` / `show_led` / `show_sound` | `auto` \| `true` \| `false` | `auto` | Force show/hide each toggle. A forced (`true`) chip with no resolvable entity still renders, but as a disabled, dimmed, inert chip. |
 
 #### Layout
 

@@ -26,7 +26,7 @@
   const NS = "http://www.w3.org/2000/svg";
 
   // ---- console version banner ---------------------------------------------
-  const VERSION = "1.0.6";
+  const VERSION = "1.0.7";
   console.info(
     "%c CLIMATE-CLUSTER-CARD %c v" + VERSION + " ",
     "color:#0b0f16;background:#4fc3f7;font-weight:700;border-radius:4px 0 0 4px;padding:2px 6px",
@@ -1541,12 +1541,17 @@
       const onMode = modes.find((x) => String(x).toLowerCase() !== "off") || modes[0] || "vertical";
       this._svcSetSwingMode(this._swingIsOn() ? "off" : onMode);
     }
-    // Resolved (visible) for a feature, honoring show_* === false.
-    _featureResolved(kind) {
-      if (this._featureCfg(kind) === false) return false;
+    // Whether a feature has a backing source the card can auto-detect.
+    _featureAvail(kind) {
       if (kind === "swing") return !!this._swingMode().kind;
       const ref = kind === "led" ? this._ledRef() : this._soundRef();
       return !!(ref && this._st(ref));
+    }
+    // Resolved (visible) for a feature, honoring the tri-state config like show_fan:
+    // true = force shown, false = force hidden, "auto"/unset = show only if available.
+    _featureResolved(kind) {
+      const cfg = this._featureCfg(kind);
+      return cfg === true ? true : cfg === false ? false : this._featureAvail(kind);
     }
     // Raw live on/off for a feature, bypassing any optimistic hold (used by the
     // reconciler to decide when the real state has caught up).
@@ -1639,7 +1644,7 @@
           if (!b) return;
           e.stopPropagation();
           // Toggle chips flip a feature and KEEP the popup open; mode buttons close it.
-          if (b.dataset.toggle) { this._featureToggle(b.dataset.toggle); return; }
+          if (b.dataset.toggle) { if (this._featureAvail(b.dataset.toggle)) this._featureToggle(b.dataset.toggle); return; }
           this._selectMode(b.dataset.mode);
         };
         sheet.addEventListener("click", this._onPopClick);
@@ -1681,7 +1686,11 @@
           if (!b) return;
           if (!this._featureResolved(t.kind)) { b.style.display = "none"; return; }
           b.style.display = "";
-          const on = this._featureOn(t.kind);
+          // Forced-visible with no backing source -> inert, dimmed, not lit.
+          const avail = this._featureAvail(t.kind);
+          b.classList.toggle("disabled", !avail);
+          b.setAttribute("aria-disabled", avail ? "false" : "true");
+          const on = avail && this._featureOn(t.kind);
           b.classList.toggle("on", on);
           b.setAttribute("aria-pressed", on ? "true" : "false"); // a11y (issue #5)
         });
@@ -2105,18 +2114,30 @@
 
       // ---- face VERTICAL SWING chip ----
       if (this._featureResolved("swing")) {
-        const on = this._featureOn("swing");
+        // Forced-visible with no backing source -> render an inert, dimmed OFF chip.
+        const avail = this._featureAvail("swing");
+        const on = avail && this._featureOn("swing");
         this._refs.swingChip.style.display = "";
         this._refs.swingCap.style.display = "";
         this._refs.swingIcon.setAttribute("stroke", on ? this._accent : "#8a98a6");
         this._refs.swingChipBg.setAttribute("stroke", on ? this._glow(55) : "rgba(234,235,238,.16)");
         this._refs.swingChipBg.setAttribute("fill", on ? this._glow(14) : "rgba(40,52,66,.45)");
         this._refs.swingChip.style.filter = on ? `drop-shadow(0 0 6px ${this._glow(55)})` : "none";
-        this._refs.swingChip.style.opacity = off ? "0.4" : "1";
-        // a11y: toggle button state for screen readers (issue #5).
-        this._refs.swingChip.setAttribute("aria-pressed", on ? "true" : "false");
         this._refs.swingChip.removeAttribute("aria-hidden");
-        this._refs.swingChip.setAttribute("tabindex", "0");
+        if (!avail) {
+          // a11y: a chip with no source is non-interactive (the pointer/keydown
+          // handlers already no-op); make that honest to AT and dim it.
+          this._refs.swingChip.style.opacity = "0.4";
+          this._refs.swingChip.setAttribute("aria-disabled", "true");
+          this._refs.swingChip.removeAttribute("aria-pressed");
+          this._refs.swingChip.setAttribute("tabindex", "-1");
+        } else {
+          this._refs.swingChip.style.opacity = off ? "0.4" : "1";
+          // a11y: toggle button state for screen readers (issue #5).
+          this._refs.swingChip.setAttribute("aria-pressed", on ? "true" : "false");
+          this._refs.swingChip.removeAttribute("aria-disabled");
+          this._refs.swingChip.setAttribute("tabindex", "0");
+        }
       } else {
         this._refs.swingChip.style.display = "none";
         this._refs.swingCap.style.display = "none";
@@ -2240,6 +2261,7 @@
   box-shadow:0 0 14px color-mix(in srgb, var(--ct-accent) 40%, transparent),
     inset 0 0 12px color-mix(in srgb, var(--ct-accent) 14%, transparent);
 }
+.ct-sheet button.ct-toggle.disabled{ opacity:.4; cursor:default; }
 .ct-toggle .ct-tg-ic{ width:24px; height:24px; display:block; }
 .ct-toggle .ct-tg-lb{ display:block; }
 @media (max-width:480px){ .ct-sheet button.ct-toggle{ min-width:72px; padding:9px 8px; } }
@@ -2333,11 +2355,11 @@
     fan_animation: "The spinning clover animation.",
     fan_animation_speed: "Dynamic scales the spin with fan speed; constant is a fixed spin.",
     swing_entity: "Override the swing switch. Leave empty to auto-discover (Midea) or use climate swing_modes.",
-    show_swing: "Auto shows it when a swing source resolves; Hide always hides it.",
+    show_swing: "Force the swing chip on or off. Auto shows it when a swing source resolves; a forced chip with no source renders disabled.",
     led_entity: "Override the display/LED switch. Leave empty to auto-discover (Midea).",
-    show_led: "Auto shows it when the entity resolves; Hide always hides it.",
+    show_led: "Force the LED chip on or off. Auto shows it when the entity resolves; a forced chip with no source renders disabled.",
     sound_entity: "Override the beep/prompt-tone switch. Leave empty to auto-discover (Midea).",
-    show_sound: "Auto shows it when the entity resolves; Hide always hides it.",
+    show_sound: "Force the sound chip on or off. Auto shows it when the entity resolves; a forced chip with no source renders disabled.",
     max_height: "CSS length cap, e.g. 34vh or 360px. Width follows the dial aspect.",
   };
 
