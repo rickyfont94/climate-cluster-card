@@ -300,6 +300,10 @@
         this._onPopClick = null;
         this._popBuilt = false;
       }
+      if (this._onPopKeydown && this._refs && this._refs.pop) {
+        this._refs.pop.removeEventListener("keydown", this._onPopKeydown);
+        this._onPopKeydown = null;
+      }
     }
 
     // ============================================================================
@@ -491,6 +495,9 @@
       });
       this._svg = svg;
       this._refs.svg = svg;
+      // a11y (issue #5): group the focusable controls so screen readers don't read
+      // the whole dial as one unlabeled graphic. aria-label is refreshed in _render.
+      svg.setAttribute("role", "group");
 
       // KILL VIEW-SWIPE ON DRAG -- WITHOUT eating page scroll (issue #4). The grab
       // bands carry touch-action:none (CSS) so a ring drag owns the gesture, while
@@ -683,13 +690,29 @@
       svg.appendChild(this._refs.fanName);
 
       // clover tap hit (TAP = AUTO, or cycle named fan_mode when there's no auto).
-      this._refs.fanIconHit = el("circle", { class: "ct-hit", cx: 212, cy: 322, r: 24, fill: "transparent" });
+      // a11y (issue #5): focusable button; aria-pressed tracks the AUTO state.
+      this._refs.fanIconHit = el("circle", {
+        class: "ct-hit", cx: 212, cy: 322, r: 24, fill: "transparent",
+        role: "button", tabindex: "0", "aria-label": "Set fan to automatic", "aria-pressed": "false",
+      });
       svg.appendChild(this._refs.fanIconHit);
       this._onFanIconDown = (e) => this._fanIconPointerDown(e);
       this._refs.fanIconHit.addEventListener("pointerdown", this._onFanIconDown);
+      this._refs.fanIconHit.addEventListener("keydown", (e) => {
+        if (e.key !== "Enter" && e.key !== " " && e.key !== "Spacebar") return;
+        e.preventDefault(); e.stopPropagation();
+        const s = this._st(this._config.entity);
+        if (!s || s.state === "off" || s.state === "unavailable" || s.state === "unknown") return;
+        if (this._popOpen) return;
+        this._fanCloverTap();
+      });
 
       // ---- VERTICAL SWING chip (lower-RIGHT) ----
-      const swingChip = el("g", { class: "ct-swing ct-hit", transform: "translate(388,322)" });
+      // a11y (issue #5): focusable toggle button; aria-pressed tracks the swing state.
+      const swingChip = el("g", {
+        class: "ct-swing ct-hit", transform: "translate(388,322)",
+        role: "button", tabindex: "0", "aria-label": "Swing", "aria-pressed": "false",
+      });
       this._refs.swingChipBg = el("rect", {
         x: -19, y: -15, width: 38, height: 30, rx: 9,
         fill: "rgba(40,52,66,.30)", stroke: "rgba(234,235,238,.14)", "stroke-width": "1",
@@ -710,20 +733,42 @@
       svg.appendChild(this._refs.swingCap);
       this._onSwingDown = (e) => this._swingPointerDown(e);
       swingChip.addEventListener("pointerdown", this._onSwingDown);
+      swingChip.addEventListener("keydown", (e) => {
+        if (e.key !== "Enter" && e.key !== " " && e.key !== "Spacebar") return;
+        e.preventDefault(); e.stopPropagation();
+        if (!this._swingMode().kind || !this._hass) return;
+        this._featureToggle("swing");
+        this._render(); // optimistic face repaint
+      });
 
       // ---- center disc: tap to open the MODE POPUP ----
-      this._refs.centerHit = el("circle", { class: "ct-hit", cx: 300, cy: 255, r: 86, fill: "transparent" });
+      // a11y (issue #5): a focusable button that opens the mode dialog on Enter/Space.
+      this._refs.centerHit = el("circle", {
+        class: "ct-hit", cx: 300, cy: 255, r: 86, fill: "transparent",
+        role: "button", tabindex: "0", "aria-label": "Change mode", "aria-haspopup": "dialog",
+      });
       svg.appendChild(this._refs.centerHit);
       this._refs.centerHit.addEventListener("click", (e) => { e.stopPropagation(); this._openPop(); });
+      this._refs.centerHit.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
+          e.preventDefault(); e.stopPropagation();
+          if (!this._popOpen) this._openPop();
+        }
+      });
 
       // ---- drag-to-set: TWO transparent stroke "grab" bands (temp inner / fan outer) ----
+      // a11y (issue #5): the grab bands double as focusable role="slider"s so the
+      // value can be set from the keyboard (arrows/Page/Home/End). aria-value* are
+      // refreshed by the paint helpers; the slider commits via the same _commit* paths.
       this._refs.drag = el("path", {
         class: "ct-hit", fill: "none", stroke: "transparent", "stroke-width": "63", "stroke-linecap": "butt",
         d: arcPath(CX, CY, 181.5, START_ANG, END_ANG), // WIDE band r ~150..213 (temp ring)
+        role: "slider", tabindex: "0", "aria-label": "Target temperature",
       });
       this._refs.fanGrab = el("path", {
         class: "ct-hit", fill: "none", stroke: "transparent", "stroke-width": "62", "stroke-linecap": "butt",
         d: arcPath(CX, CY, 244, START_ANG, END_ANG), // WIDE band r ~213..275 (fan ring)
+        role: "slider", tabindex: "0", "aria-label": "Fan speed",
       });
       svg.appendChild(this._refs.drag);
       svg.appendChild(this._refs.fanGrab);
@@ -736,17 +781,35 @@
       this._onRingUp = (e) => this._ringPointerUp(e);
       this._refs.drag.addEventListener("pointerdown", this._onTempDown);
       this._refs.fanGrab.addEventListener("pointerdown", this._onFanDown);
+      // keyboard slider operability (issue #5)
+      this._refs.drag.addEventListener("keydown", (e) => this._ringKeyDown(e, "temp"));
+      this._refs.fanGrab.addEventListener("keydown", (e) => this._ringKeyDown(e, "fan"));
 
       // ---- MODE POPUP (position:fixed glass overlay; built lazily on first open) ----
+      // a11y (issue #5): a real modal dialog. Escape closes it, Tab is trapped inside,
+      // focus moves in on open (_openPop) and returns to the center on close (_closePop).
       const pop = document.createElement("div");
       pop.className = "ct-pop";
+      pop.setAttribute("role", "dialog");
+      pop.setAttribute("aria-modal", "true");
+      pop.setAttribute("aria-label", "Select mode");
       pop.addEventListener("click", (e) => { if (e.target === pop) this._closePop(); });
+      this._onPopKeydown = (e) => this._popKeyDown(e);
+      pop.addEventListener("keydown", this._onPopKeydown);
       const sheet = document.createElement("div");
       sheet.className = "ct-sheet";
       pop.appendChild(sheet);
       this._refs.pop = pop;
       this._refs.sheet = sheet;
       card.appendChild(pop);
+
+      // ---- visually-hidden polite live region: announces setpoint/fan/mode changes ----
+      const live = document.createElement("div");
+      live.className = "ct-sr";
+      live.setAttribute("aria-live", "polite");
+      live.setAttribute("role", "status");
+      card.appendChild(live);
+      this._refs.live = live;
 
       this._built = true;
       this._applyMaxHeight(); // apply any max_height set before this build
@@ -1109,6 +1172,134 @@
       }
     }
 
+    // ============================================================================
+    // KEYBOARD OPERABILITY  (issue #5): the rings are role="slider"s; these key
+    // handlers nudge the value and commit through the SAME _commit* paths as a
+    // pointer drag, so behavior is identical for pointer users.
+    // ============================================================================
+    _ringKeyDown(e, ring) {
+      const s = this._st(this._config.entity);
+      if (!s || s.state === "off" || s.state === "unavailable" || s.state === "unknown") return;
+      if (this._popOpen) return;
+      if (ring === "temp") this._tempKeyDown(e, s);
+      else this._fanKeyDown(e, s);
+    }
+
+    // Arrow = one step, Page = five steps, Home/End = min/max. heat_cool nudges the
+    // HIGH (cool) setpoint and keeps LOW fixed, mirroring the single warm needle.
+    _tempKeyDown(e, s) {
+      const { lo, hi } = this._range();
+      const step = this._step();
+      const big = step * 5;
+      const snap = (v, min, max) => clamp(Math.round(v / step) * step, min, max);
+      const k = e.key;
+      let handled = true;
+
+      if (this._isHeatCool()) {
+        const hcOpt = this._optimisticHcUntil && Date.now() < this._optimisticHcUntil
+          && this._optimisticLow != null && this._optimisticHigh != null;
+        const cLo = hcOpt ? this._optimisticLow : this._hcLow();
+        const cHi = hcOpt ? this._optimisticHigh : this._hcHigh();
+        if (cLo == null || cHi == null) return;
+        let nh = cHi;
+        if (k === "ArrowUp" || k === "ArrowRight") nh = cHi + step;
+        else if (k === "ArrowDown" || k === "ArrowLeft") nh = cHi - step;
+        else if (k === "PageUp") nh = cHi + big;
+        else if (k === "PageDown") nh = cHi - big;
+        else if (k === "Home") nh = cLo + step;
+        else if (k === "End") nh = hi;
+        else handled = false;
+        if (handled) {
+          e.preventDefault();
+          this._commitHeatCool(cLo, snap(nh, cLo + step, hi));
+        }
+        return;
+      }
+
+      const optActive = this._optimisticUntil && Date.now() < this._optimisticUntil
+        && this._optimisticTarget != null;
+      let cur = optActive ? this._optimisticTarget : this._toDisplay(num((s.attributes || {}).temperature));
+      if (cur == null) cur = lo;
+      let nt = cur;
+      if (k === "ArrowUp" || k === "ArrowRight") nt = cur + step;
+      else if (k === "ArrowDown" || k === "ArrowLeft") nt = cur - step;
+      else if (k === "PageUp") nt = cur + big;
+      else if (k === "PageDown") nt = cur - big;
+      else if (k === "Home") nt = lo;
+      else if (k === "End") nt = hi;
+      else handled = false;
+      if (handled) {
+        e.preventDefault();
+        this._commitTemp(snap(nt, lo, hi));
+      }
+    }
+
+    // Percent ring: arrows step by FAN_STEP, Page by five steps, Home/End = min/max.
+    // Named-mode ring: arrows/Page move one stop, Home/End jump to first/last mode.
+    _fanKeyDown(e, s) {
+      const fanNumId = this._fanNumberId();
+      const k = e.key;
+      let handled = true;
+      const fanOptActive = this._optimisticFanUntil && Date.now() < this._optimisticFanUntil;
+
+      if (fanNumId) {
+        let p;
+        if (fanOptActive && this._optimisticFanPct != null) p = this._optimisticFanPct;
+        else { const liveP = num((this._st(fanNumId) || {}).state); p = liveP != null ? liveP : FAN_MIN; }
+        const big = FAN_STEP * 5;
+        let np = p;
+        if (k === "ArrowUp" || k === "ArrowRight") np = p + FAN_STEP;
+        else if (k === "ArrowDown" || k === "ArrowLeft") np = p - FAN_STEP;
+        else if (k === "PageUp") np = p + big;
+        else if (k === "PageDown") np = p - big;
+        else if (k === "Home") np = FAN_MIN;
+        else if (k === "End") np = FAN_MAX;
+        else handled = false;
+        if (handled) { e.preventDefault(); this._commitFanPct(clamp(np, FAN_MIN, FAN_MAX)); }
+        return;
+      }
+
+      const names = this._fanNamedModes();
+      if (!names.length) return;
+      const curName = (fanOptActive && this._optimisticFanName != null)
+        ? this._optimisticFanName : (s.attributes || {}).fan_mode;
+      let i = names.findIndex((m) => String(m).toLowerCase() === String(curName).toLowerCase());
+      if (i < 0) i = 0;
+      let ni = i;
+      if (k === "ArrowUp" || k === "ArrowRight" || k === "PageUp") ni = i + 1;
+      else if (k === "ArrowDown" || k === "ArrowLeft" || k === "PageDown") ni = i - 1;
+      else if (k === "Home") ni = 0;
+      else if (k === "End") ni = names.length - 1;
+      else handled = false;
+      if (handled) { e.preventDefault(); this._commitFanName(names[clamp(ni, 0, names.length - 1)]); }
+    }
+
+    // ---- modal-dialog keyboard: Escape closes, Tab is trapped inside (issue #5) ----
+    _popFocusables() {
+      if (!this._refs.sheet) return [];
+      return Array.from(this._refs.sheet.querySelectorAll("button"))
+        .filter((b) => b.style.display !== "none" && !b.disabled);
+    }
+    _popKeyDown(e) {
+      if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); this._closePop(); return; }
+      if (e.key !== "Tab") return;
+      const f = this._popFocusables();
+      if (!f.length) return;
+      const first = f[0], last = f[f.length - 1];
+      const active = this.shadowRoot ? this.shadowRoot.activeElement : null;
+      if (e.shiftKey) {
+        if (active === first || f.indexOf(active) === -1) { e.preventDefault(); last.focus(); }
+      } else {
+        if (active === last || f.indexOf(active) === -1) { e.preventDefault(); first.focus(); }
+      }
+    }
+
+    // ---- screen-reader announcements (visually-hidden polite live region) ----
+    _announce(msg) {
+      if (this._refs && this._refs.live && msg != null) this._refs.live.textContent = String(msg);
+    }
+    _unitWord() { return this._unit() === "C" ? "Celsius" : "Fahrenheit"; }
+
     // ---- TEMPERATURE service calls (signature preserved; value unit-converted) ----
     _callTemp(t) {
       if (t == null || !this._hass) return;
@@ -1123,6 +1314,7 @@
       this._optimisticTarget = t;
       this._optimisticUntil = Date.now() + OPT_HOLD_MS;
       this._paintTempArc(t);
+      this._announce(this._fmt(t) + "° " + this._unitWord());
       this._callTemp(t);
     }
 
@@ -1137,6 +1329,7 @@
       this._optimisticHigh = hi;
       this._optimisticHcUntil = Date.now() + OPT_HOLD_MS;
       this._paintHeatCool(lo, hi);
+      this._announce(this._fmt(lo) + " to " + this._fmt(hi) + "° " + this._unitWord());
       this._svc("climate", "set_temperature",
         { entity_id: this._config.entity,
           target_temp_low: this._toHa(lo),
@@ -1178,6 +1371,7 @@
       this._optimisticFanName = null;
       this._optimisticFanUntil = Date.now() + OPT_HOLD_MS;
       this._paintFanPct(this._optimisticFanPct);
+      this._announce("Fan " + Math.round(this._optimisticFanPct) + " percent");
       this._callFanPct(this._optimisticFanPct);
     }
     // Named fan_mode commit (discrete-stop ring), optimistic + climate.set_fan_mode.
@@ -1187,6 +1381,7 @@
       this._optimisticFanPct = null;
       this._optimisticFanUntil = Date.now() + OPT_HOLD_MS;
       this._paintFanNamed(this._fanNamedModes(), name);
+      this._announce("Fan " + String(name).toUpperCase());
       this._svcSetFanMode(name);
     }
     // Set the climate fan_mode to "auto" + paint optimistically.
@@ -1196,6 +1391,7 @@
       this._optimisticFanPct = null;
       this._optimisticFanName = null;
       this._paintFanAuto();
+      this._announce("Fan automatic");
       // No optimistic value to revert here (AUTO drops optimism above); on
       // failure just repaint live state so the ring snaps back to reality.
       this._svc("climate", "set_fan_mode",
@@ -1314,6 +1510,7 @@
         this._optToggle = this._optToggle || {};
         this._optToggle.swing = { val: !this._swingIsOn(), until: Date.now() + OPT_HOLD_MS };
         this._paintPop();
+        this._announce("Swing " + (this._optToggle.swing.val ? "on" : "off"));
         this._swingToggle();
         return;
       }
@@ -1324,6 +1521,7 @@
       this._optToggle = this._optToggle || {};
       this._optToggle[kind] = { val: !on, until: Date.now() + OPT_HOLD_MS };
       this._paintPop();
+      this._announce((kind === "led" ? "LED" : "Sound") + " " + (!on ? "on" : "off"));
       this._svc("switch", on ? "turn_off" : "turn_on", { entity_id: ref },
         () => this._revertToggle(kind));
     }
@@ -1406,6 +1604,7 @@
           this._svc("climate", "set_hvac_mode", { entity_id: ent, hvac_mode: mode }, () => this._render());
         }
       }
+      this._announce("Mode " + (MODE_LABEL[mode] || String(mode).toUpperCase()));
       this._closePop();
     }
     _paintPop() {
@@ -1413,8 +1612,11 @@
       const s = this._st(this._config.entity);
       const cur = s ? s.state : null;
       // Mode buttons only (scoped so the toggle chips never get the mode "active").
-      this._refs.sheet.querySelectorAll("button[data-mode]").forEach((b) =>
-        b.classList.toggle("active", b.dataset.mode === cur));
+      this._refs.sheet.querySelectorAll("button[data-mode]").forEach((b) => {
+        const active = b.dataset.mode === cur;
+        b.classList.toggle("active", active);
+        b.setAttribute("aria-pressed", active ? "true" : "false"); // a11y (issue #5)
+      });
       // TOGGLES ROW: hide an unresolved chip; else lit ".on" = feature on.
       if (this._refs.toggles) {
         TOGGLE_DEFS.forEach((t) => {
@@ -1422,7 +1624,9 @@
           if (!b) return;
           if (!this._featureResolved(t.kind)) { b.style.display = "none"; return; }
           b.style.display = "";
-          b.classList.toggle("on", this._featureOn(t.kind));
+          const on = this._featureOn(t.kind);
+          b.classList.toggle("on", on);
+          b.setAttribute("aria-pressed", on ? "true" : "false"); // a11y (issue #5)
         });
       }
     }
@@ -1432,10 +1636,18 @@
       this._buildPop();
       this._paintPop();
       this._refs.pop.classList.add("open");
+      // a11y (issue #5): move focus into the dialog (active mode -> first mode ->
+      // any button). rAF so the element is visible before we focus it.
+      const target = this._refs.sheet.querySelector("button[data-mode].active")
+        || this._refs.sheet.querySelector("button[data-mode]")
+        || this._refs.sheet.querySelector("button");
+      if (target) requestAnimationFrame(() => { try { target.focus(); } catch (err) {} });
     }
     _closePop() {
       this._popOpen = false;
       if (this._refs.pop) this._refs.pop.classList.remove("open");
+      // a11y (issue #5): return focus to the trigger (the center button).
+      if (this._refs.centerHit) { try { this._refs.centerHit.focus(); } catch (err) {} }
     }
 
     // ============================================================================
@@ -1484,6 +1696,14 @@
       this._refs.bigNum.textContent = txt;
       // shrink for "XX.5" / 3-digit so the decimal fits the center.
       this._refs.bigNum.setAttribute("font-size", txt.length > 2 ? "84" : "104");
+      // a11y: keep the temp slider's reported value in sync (issue #5).
+      if (this._refs.drag) {
+        const r = this._range();
+        this._refs.drag.setAttribute("aria-valuemin", this._fmt(r.lo));
+        this._refs.drag.setAttribute("aria-valuemax", this._fmt(r.hi));
+        this._refs.drag.setAttribute("aria-valuenow", this._fmt(t));
+        this._refs.drag.setAttribute("aria-valuetext", txt + "° " + this._unitWord());
+      }
     }
 
     // Paint the dual-setpoint (heat_cool) view (issue #14): a comfort band on the
@@ -1517,6 +1737,15 @@
         '<tspan fill="#8c99a7"> - </tspan>' +
         '<tspan fill="#F2933A">' + hiTxt + '</tspan>';
       this._refs.bigNum.setAttribute("font-size", plain.length > 8 ? "42" : "54");
+      // a11y: the single temp slider reports the HIGH setpoint, with a paired
+      // valuetext for both ends; keyboard nudges the HIGH handle (issue #5).
+      if (this._refs.drag) {
+        const r = this._range();
+        this._refs.drag.setAttribute("aria-valuemin", this._fmt(r.lo));
+        this._refs.drag.setAttribute("aria-valuemax", this._fmt(r.hi));
+        this._refs.drag.setAttribute("aria-valuenow", hiTxt);
+        this._refs.drag.setAttribute("aria-valuetext", loTxt + " to " + hiTxt + "° " + this._unitWord());
+      }
     }
 
     // Paint the fan ring for a percent (number.* entity).
@@ -1531,6 +1760,13 @@
       this._refs.fanPct.textContent = Math.round(p) + "%";
       this._refs.fanName.textContent = this._fanNamedForPct(p).toUpperCase();
       this._applyFanSpin(p, false);
+      // a11y: sync the fan slider value (issue #5).
+      if (this._refs.fanGrab) {
+        this._refs.fanGrab.setAttribute("aria-valuemin", String(FAN_MIN));
+        this._refs.fanGrab.setAttribute("aria-valuemax", String(FAN_MAX));
+        this._refs.fanGrab.setAttribute("aria-valuenow", String(Math.round(p)));
+        this._refs.fanGrab.setAttribute("aria-valuetext", Math.round(p) + " percent");
+      }
     }
 
     // Paint the fan ring for a NAMED fan_mode (discrete stops along the arc).
@@ -1551,6 +1787,13 @@
       this._refs.fanName.textContent = "";
       const pctEq = n <= 1 ? 100 : (i / (n - 1)) * 100;
       this._applyFanSpin(pctEq, false);
+      // a11y: report the named stop as a 1..n slider position (issue #5).
+      if (this._refs.fanGrab) {
+        this._refs.fanGrab.setAttribute("aria-valuemin", "1");
+        this._refs.fanGrab.setAttribute("aria-valuemax", String(n));
+        this._refs.fanGrab.setAttribute("aria-valuenow", String(i + 1));
+        this._refs.fanGrab.setAttribute("aria-valuetext", String(names[i]).toUpperCase());
+      }
     }
 
     // Paint the AUTO state (climate.fan_mode == "auto"): full ring, dim, "AUTO".
@@ -1563,6 +1806,11 @@
       this._refs.fanPct.textContent = "AUTO";
       this._refs.fanName.textContent = "";
       this._applyFanSpin(100, true);
+      // a11y: AUTO is a state, not a ring position (issue #5).
+      if (this._refs.fanGrab) {
+        this._refs.fanGrab.removeAttribute("aria-valuenow");
+        this._refs.fanGrab.setAttribute("aria-valuetext", "Automatic");
+      }
     }
 
     _paintModeGlyph(mode, accent, off) {
@@ -1604,6 +1852,8 @@
       const s = this._st(this._config.entity);
 
       if (this._refs.title) this._refs.title.textContent = this._acName();
+      // a11y: name the control group so it isn't read as one unlabeled graphic (issue #5).
+      if (this._refs.svg) this._refs.svg.setAttribute("aria-label", this._acName() + " climate control");
 
       // scale: rebuild when range/unit/step changed; honor show_scale.
       {
@@ -1633,6 +1883,9 @@
         this._refs.swingChip.style.display = "none";
         this._refs.swingCap.style.display = "none";
         this._refs.svg.style.opacity = "0.5";
+        // a11y: nothing is settable while unavailable -> take the fan slider out of
+        // the tab order (the temp slider's key handler already no-ops here, issue #5).
+        if (this._refs.fanGrab) { this._refs.fanGrab.setAttribute("tabindex", "-1"); this._refs.fanGrab.setAttribute("aria-hidden", "true"); }
         this._paintModeGlyph(s ? s.state : "off", this._modeColor("off"), true);
         return;
       }
@@ -1754,6 +2007,10 @@
         const fanOptActive = this._optimisticFanUntil && Date.now() < this._optimisticFanUntil;
         const fanOptPct = fanOptActive && this._optimisticFanPct != null;
         const fanOptName = fanOptActive && this._optimisticFanName != null;
+        // a11y: fan slider operable; clover aria-pressed tracks the AUTO state (issue #5).
+        if (this._refs.fanGrab) { this._refs.fanGrab.setAttribute("tabindex", "0"); this._refs.fanGrab.removeAttribute("aria-hidden"); }
+        const isAutoNow = String(attr.fan_mode).toLowerCase() === "auto" && !fanOptPct && !fanOptName;
+        this._refs.fanIconHit.setAttribute("aria-pressed", isAutoNow ? "true" : "false");
         if (fanNumId) {
           const fanIsAuto = String(attr.fan_mode).toLowerCase() === "auto";
           if (fanIsAuto && !fanOptPct) {
@@ -1781,6 +2038,8 @@
         this._refs.fanIconHit.style.display = "none";
         this._refs.fanHandle.style.display = "none";
         this._refs.fanFill.style.display = "none";
+        // a11y: no fan source -> remove the fan slider from the tab order (issue #5).
+        if (this._refs.fanGrab) { this._refs.fanGrab.setAttribute("tabindex", "-1"); this._refs.fanGrab.setAttribute("aria-hidden", "true"); }
       }
 
       // ---- face VERTICAL SWING chip ----
@@ -1793,9 +2052,15 @@
         this._refs.swingChipBg.setAttribute("fill", on ? this._glow(14) : "rgba(40,52,66,.45)");
         this._refs.swingChip.style.filter = on ? `drop-shadow(0 0 6px ${this._glow(55)})` : "none";
         this._refs.swingChip.style.opacity = off ? "0.4" : "1";
+        // a11y: toggle button state for screen readers (issue #5).
+        this._refs.swingChip.setAttribute("aria-pressed", on ? "true" : "false");
+        this._refs.swingChip.removeAttribute("aria-hidden");
+        this._refs.swingChip.setAttribute("tabindex", "0");
       } else {
         this._refs.swingChip.style.display = "none";
         this._refs.swingCap.style.display = "none";
+        this._refs.swingChip.setAttribute("aria-hidden", "true");
+        this._refs.swingChip.setAttribute("tabindex", "-1");
       }
 
       if (this._popOpen) this._paintPop();
@@ -1917,6 +2182,29 @@
 .ct-toggle .ct-tg-ic{ width:24px; height:24px; display:block; }
 .ct-toggle .ct-tg-lb{ display:block; }
 @media (max-width:480px){ .ct-sheet button.ct-toggle{ min-width:72px; padding:9px 8px; } }
+
+/* ---- ACCESSIBILITY (issue #5) ---- */
+/* Visually-hidden polite live region: announced by screen readers, never shown. */
+.ct-sr{
+  position:absolute; width:1px; height:1px; margin:-1px; padding:0; border:0;
+  overflow:hidden; clip:rect(0 0 0 0); clip-path:inset(50%); white-space:nowrap;
+}
+/* High-contrast keyboard focus ring on every focusable control (center button,
+   clover, swing chip, popup buttons). :focus-visible so a pointer click stays clean. */
+.ct-card :focus-visible{ outline:3px solid var(--ct-accent); outline-offset:2px; }
+/* The ring grab-bands span out to the card edge, so an outline rectangle would be
+   clipped by .ct-svg overflow:hidden. Tint the band stroke instead so the focused
+   slider lights up along the arc it actually controls. */
+.ct-svg path[role="slider"]:focus-visible{
+  outline:none;
+  stroke:color-mix(in srgb, var(--ct-accent) 26%, transparent);
+}
+/* Respect the reduce-motion setting: stop the fan-clover spin and the popup
+   open/close transitions. !important so it also beats the inline fanSpin animation. */
+@media (prefers-reduced-motion: reduce){
+  .ct-clover g{ animation:none !important; }
+  .ct-pop, .ct-pop .ct-sheet{ transition:none !important; }
+}
 `;
     }
   }
