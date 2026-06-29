@@ -108,6 +108,11 @@
   const END_ANG = START_ANG + SPAN;    // 470 (= 110 deg)
   const PICK_INNER = 150, PICK_OUTER = 275; // WIDE drag accept band
   const FAN_HANDLE_OFFSET = 3;         // float just off the thin arc
+  // Tap-vs-drag gate (px of pointer travel). A pointerdown on a ring band or the
+  // fan clover ARMS the gesture; we only treat it as a drag/tap-discard once the
+  // pointer moves past this. A pure tap never crosses it, so it can't nudge a
+  // setpoint, and a vertical swipe that starts here can still scroll (issue #4).
+  const DRAG_THRESH_PX = 8;
 
   // ---- FAN (percent control) ----------------------------------------------
   // The fan ring drives a number.*_fan_speed entity (min 1, max 100), snapping to
@@ -272,6 +277,8 @@
     disconnectedCallback() {
       this._popOpen = false;
       this._dragging = false;
+      this._ringArmed = false;
+      this._ringStart = null;
       // Capturing touch guards live on the svg; tear them down here.
       if (this._svg) {
         if (this._onSvgTouchStart) this._svg.removeEventListener("touchstart", this._onSvgTouchStart, true);
@@ -460,12 +467,15 @@
       this._svg = svg;
       this._refs.svg = svg;
 
-      // KILL VIEW-SWIPE ON DRAG. touch-action:none (CSS) stops the browser's native
-      // scroll/swipe; these CAPTURING guards stop the touch event from reaching the
-      // ancestor's JS swipe handler. Pointer events fire independently, so the ring
-      // drag is unaffected.
+      // KILL VIEW-SWIPE ON DRAG -- WITHOUT eating page scroll (issue #4). The grab
+      // bands carry touch-action:none (CSS) so a ring drag owns the gesture, while
+      // the card stays pan-y so a vertical swipe elsewhere scrolls the dashboard.
+      // These CAPTURING guards stop the touch from reaching the ancestor's JS swipe
+      // handler; preventDefault is held back until a drag is actually CONFIRMED
+      // (this._dragging) so a non-drag touch can still scroll natively. Pointer
+      // events fire independently, so the ring drag is unaffected.
       this._onSvgTouchStart = (e) => { e.stopPropagation(); };
-      this._onSvgTouchMove = (e) => { e.stopPropagation(); if (e.cancelable) e.preventDefault(); };
+      this._onSvgTouchMove = (e) => { e.stopPropagation(); if (this._dragging && e.cancelable) e.preventDefault(); };
       svg.addEventListener("touchstart", this._onSvgTouchStart, { capture: true, passive: false });
       svg.addEventListener("touchmove", this._onSvgTouchMove, { capture: true, passive: false });
 
@@ -903,9 +913,14 @@
       this._active = (rad != null && rad >= PICK_INNER && rad <= PICK_OUTER)
         ? (rad < PICK_SPLIT ? "temp" : "fan")
         : ring;
-      e.preventDefault();
+      // ARM, don't paint yet: a pure tap must NOT commit a setpoint (issue #4).
+      // We hold off on preventDefault and on the first paint until the pointer
+      // travels past DRAG_THRESH_PX, so a stray tap is discarded and a vertical
+      // swipe that begins here can still start a page scroll.
       e.stopPropagation();
-      this._dragging = true;
+      this._ringArmed = true;
+      this._dragging = false;
+      this._ringStart = { x: e.clientX, y: e.clientY };
       this._pendingTemp = null;
       this._fanPendingPct = null;
       this._fanPendingName = null;
@@ -913,24 +928,38 @@
       window.addEventListener("pointermove", this._onRingMove);
       window.addEventListener("pointerup", this._onRingUp);
       window.addEventListener("pointercancel", this._onRingUp);
-      this._applyRingDrag(e);
     }
     _ringPointerMove(e) {
-      if (!this._dragging) return;
+      if (!this._ringArmed) return;
+      if (!this._dragging) {
+        // tap-vs-drag gate: nothing paints or commits until travel crosses the
+        // threshold (same ~8px the fan clover uses). Below it, leave the gesture
+        // free so the browser can still scroll.
+        const st = this._ringStart;
+        if (!st || Math.hypot(e.clientX - st.x, e.clientY - st.y) <= DRAG_THRESH_PX) return;
+        this._dragging = true; // drag CONFIRMED -> from here touchmove preventDefaults
+      }
       this._applyRingDrag(e);
     }
     _ringPointerUp() {
-      if (!this._dragging) return;
+      if (!this._ringArmed) return;
+      const wasDragging = this._dragging;
+      this._ringArmed = false;
       this._dragging = false;
+      this._ringStart = null;
       window.removeEventListener("pointermove", this._onRingMove);
       window.removeEventListener("pointerup", this._onRingUp);
       window.removeEventListener("pointercancel", this._onRingUp);
-      // COMMIT ONCE on release.
-      if (this._active === "temp" && this._pendingTemp != null && isFinite(this._pendingTemp)) {
-        this._commitTemp(this._pendingTemp);
-      } else if (this._active === "fan") {
-        if (this._fanPendingPct != null) this._commitFanPct(this._fanPendingPct);
-        else if (this._fanPendingName != null) this._commitFanName(this._fanPendingName);
+      // COMMIT ONCE on release -- but only for a real drag. A pure tap never
+      // crossed the threshold (no pending value, wasDragging false) so it is
+      // discarded and cannot change the setpoint (issue #4).
+      if (wasDragging) {
+        if (this._active === "temp" && this._pendingTemp != null && isFinite(this._pendingTemp)) {
+          this._commitTemp(this._pendingTemp);
+        } else if (this._active === "fan") {
+          if (this._fanPendingPct != null) this._commitFanPct(this._fanPendingPct);
+          else if (this._fanPendingName != null) this._commitFanName(this._fanPendingName);
+        }
       }
       this._active = null;
       this._pendingTemp = null;
@@ -1065,7 +1094,7 @@
       this._fanIconStart = null;
       if (!st || e.type === "pointercancel") return;
       const moved = Math.hypot(e.clientX - st.x, e.clientY - st.y);
-      if (moved > 8) return; // it was a drag, not a tap
+      if (moved > DRAG_THRESH_PX) return; // it was a drag, not a tap
       this._fanCloverTap();
     }
     // Clover tap: percent mode OR auto-capable -> AUTO; named-without-auto -> cycle.
@@ -1602,21 +1631,26 @@
 .ct-card{
   position:relative; width:100%; margin:0 auto; overflow:visible;
   --ct-accent:${DEFAULT_ACCENT};
-  /* block the view's native scroll/swipe on touch within the card. */
-  touch-action:none;
+  /* pan-y (NOT none): a vertical swipe over the card still scrolls the dashboard;
+     only the .ct-hit grab bands below opt out so a ring drag owns the gesture. */
+  touch-action:pan-y;
   /* NEVER put backdrop-filter here or on :host: it would re-anchor the fixed .ct-pop. */
 }
 /* height-capped mode: width follows the arc viewBox aspect (600/392 = 1.5306), centered. */
 .ct-card[data-capped]{ width:min(100%, calc(var(--ct-max-h) * 1.5306)); }
 .ct-card[data-capped] .ct-svg{ max-height:var(--ct-max-h); }
 
-/* touch-action:none here too. overflow:hidden: clipping the svg to its own 600x392 box
-   is the hard backstop so the arcs / round caps / temp needle / fan chevron can never
-   bleed past the card edge. */
-.ct-svg{ display:block; width:100%; height:auto; position:relative; z-index:2; touch-action:none; overflow:hidden; }
+/* pan-y like the card (NOT none) so a vertical swipe over empty svg space still
+   scrolls. overflow:hidden: clipping the svg to its own 600x392 box is the hard
+   backstop so the arcs / round caps / temp needle / fan chevron can never bleed
+   past the card edge. */
+.ct-svg{ display:block; width:100%; height:auto; position:relative; z-index:2; touch-action:pan-y; overflow:hidden; }
 .ct-svg text{ font-family:'Rajdhani','DIN Alternate','Oswald','Roboto Condensed','Segoe UI',system-ui,sans-serif; }
 .nope{ pointer-events:none; }
-.ct-hit{ cursor:pointer; }
+/* The interactive grab bands/buttons own the touch: touch-action:none keeps the
+   browser from stealing a ring drag for a scroll. The tap-vs-drag threshold (JS)
+   makes sure a pure tap on a band is still discarded, not committed. */
+.ct-hit{ cursor:pointer; touch-action:none; }
 
 /* Frosted-glass slab: dark translucent fill, 1px hairline outline, 14px radius. Its OWN
    backdrop-blur div BEHIND the svg, full-card inset; backdrop-filter kept for glass. */
