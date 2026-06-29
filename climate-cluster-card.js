@@ -425,6 +425,31 @@
       return d.step;
     }
 
+    // ---- dual-setpoint (heat_cool) detection + readers (issue #14) ---------
+    // A heat/cool entity reports target_temp_low/target_temp_high and leaves the
+    // single `temperature` attribute null. Treat the dial as dual-setpoint when
+    // both range attrs are present AND (the state is heat_cool, or the single
+    // target is empty). A normal single-target entity never satisfies this (no
+    // range attrs), so its behavior is untouched.
+    _isHeatCool() {
+      const s = this._st(this._config && this._config.entity);
+      if (!s) return false;
+      const attr = s.attributes || {};
+      const hasRange = num(attr.target_temp_low) != null && num(attr.target_temp_high) != null;
+      if (!hasRange) return false;
+      if (String(s.state).toLowerCase() === "heat_cool") return true;
+      return num(attr.temperature) == null;
+    }
+    // Low / high setpoints in DISPLAY units (or null when unavailable).
+    _hcLow() {
+      const s = this._st(this._config && this._config.entity);
+      return s ? this._toDisplay(num((s.attributes || {}).target_temp_low)) : null;
+    }
+    _hcHigh() {
+      const s = this._st(this._config && this._config.entity);
+      return s ? this._toDisplay(num((s.attributes || {}).target_temp_high)) : null;
+    }
+
     // accent-derived translucent color (lit chips / glow).
     _glow(pct) { return `color-mix(in srgb, ${this._accent} ${pct}%, transparent)`; }
 
@@ -560,6 +585,20 @@
         'fill="rgba(255,225,170,.45)" stroke="none"/>';
       this._refs.tempNeedle = tempNeedle;
       svg.appendChild(tempNeedle);
+
+      // ---- LOW-setpoint needle (cold/cyan), heat_cool dual mode ONLY (issue #14).
+      // The warm needle above doubles as the HIGH handle; this cyan twin is the LOW
+      // handle. Hidden by default so single-target dials look exactly as before.
+      const tempNeedleLo = el("g", { class: "ct-needle-lo nope" });
+      tempNeedleLo.innerHTML =
+        '<path d="M 0 15 Q 5.6 10 7.2 2.5 Q 8.2 -4.5 4.2 -9.5 Q 2.2 -11.5 0 -10 Q -2.2 -11.5 -4.2 -9.5 ' +
+        'Q -8.2 -4.5 -7.2 2.5 Q -5.6 10 0 15 Z" fill="#5CD6FF" stroke="#CFF4FF" stroke-width="1" ' +
+        'stroke-opacity=".55" stroke-linejoin="round" filter="url(#aNeedleGlow)"/>' +
+        '<path d="M 0 12 Q 3.2 6 3.6 0 Q 1.8 -3 0 -2.5 Q -1.8 -3 -3.6 0 Q -3.2 6 0 12 Z" ' +
+        'fill="rgba(207,244,255,.45)" stroke="none"/>';
+      tempNeedleLo.style.display = "none";
+      this._refs.tempNeedleLo = tempNeedleLo;
+      svg.appendChild(tempNeedleLo);
 
       // ---- FAN HANDLE (glass chevron; tip at +Y so rotate(ang) faces inward) ----
       // overflow:hidden on .ct-svg is the hard backstop so the chevron never bleeds.
@@ -831,6 +870,12 @@
       this._optimisticUntil = 0;
       this._render();
     }
+    _revertHeatCool() {
+      this._optimisticLow = null;
+      this._optimisticHigh = null;
+      this._optimisticHcUntil = 0;
+      this._render();
+    }
     _revertFan() {
       this._optimisticFanPct = null;
       this._optimisticFanName = null;
@@ -864,6 +909,27 @@
               && Math.abs(liveT - this._optimisticTarget) < 0.1) {
             this._optimisticTarget = null;
             this._optimisticUntil = 0;
+          }
+        }
+      }
+
+      // HEAT_COOL: optimistic low/high (display units) clear once both live
+      // setpoints catch up, same as the single-target reconcile (issue #14).
+      if (this._optimisticHcUntil) {
+        if (now >= this._optimisticHcUntil) {
+          this._optimisticLow = null;
+          this._optimisticHigh = null;
+          this._optimisticHcUntil = 0;
+        } else {
+          const liveLo = this._toDisplay(num(attr.target_temp_low));
+          const liveHi = this._toDisplay(num(attr.target_temp_high));
+          if (liveLo != null && liveHi != null
+              && this._optimisticLow != null && this._optimisticHigh != null
+              && Math.abs(liveLo - this._optimisticLow) < 0.1
+              && Math.abs(liveHi - this._optimisticHigh) < 0.1) {
+            this._optimisticLow = null;
+            this._optimisticHigh = null;
+            this._optimisticHcUntil = 0;
           }
         }
       }
@@ -924,6 +990,25 @@
       this._pendingTemp = null;
       this._fanPendingPct = null;
       this._fanPendingName = null;
+      // heat_cool two-handle: lock which setpoint (low/high) this drag owns and
+      // seed BOTH pending values, so the handle the user is not dragging holds
+      // its position. _hcHandle stays null for normal single-target dials, which
+      // keeps them on the unchanged single-temperature path below (issue #14).
+      this._hcHandle = null;
+      this._hcPendingLow = null;
+      this._hcPendingHigh = null;
+      if (this._active === "temp" && this._isHeatCool()) {
+        const lo = this._hcLow(), hi = this._hcHigh();
+        this._hcPendingLow = lo;
+        this._hcPendingHigh = hi;
+        const f = this._eventToFrac(e);
+        const r = this._range();
+        const span = (r.hi - r.lo) || 1;
+        const fLo = clamp((lo - r.lo) / span, 0, 1);
+        const fHi = clamp((hi - r.lo) / span, 0, 1);
+        const ff = (f != null) ? f : 0;
+        this._hcHandle = Math.abs(ff - fLo) <= Math.abs(ff - fHi) ? "low" : "high";
+      }
       try { e.target.setPointerCapture(e.pointerId); } catch (err) {}
       window.addEventListener("pointermove", this._onRingMove);
       window.addEventListener("pointerup", this._onRingUp);
@@ -954,8 +1039,15 @@
       // crossed the threshold (no pending value, wasDragging false) so it is
       // discarded and cannot change the setpoint (issue #4).
       if (wasDragging) {
-        if (this._active === "temp" && this._pendingTemp != null && isFinite(this._pendingTemp)) {
-          this._commitTemp(this._pendingTemp);
+        if (this._active === "temp") {
+          if (this._hcHandle) {
+            // heat_cool: write the low/high pair (issue #14).
+            if (this._hcPendingLow != null && this._hcPendingHigh != null) {
+              this._commitHeatCool(this._hcPendingLow, this._hcPendingHigh);
+            }
+          } else if (this._pendingTemp != null && isFinite(this._pendingTemp)) {
+            this._commitTemp(this._pendingTemp);
+          }
         } else if (this._active === "fan") {
           if (this._fanPendingPct != null) this._commitFanPct(this._fanPendingPct);
           else if (this._fanPendingName != null) this._commitFanName(this._fanPendingName);
@@ -963,6 +1055,9 @@
       }
       this._active = null;
       this._pendingTemp = null;
+      this._hcHandle = null;
+      this._hcPendingLow = null;
+      this._hcPendingHigh = null;
       this._fanPendingPct = null;
       this._fanPendingName = null;
     }
@@ -970,6 +1065,22 @@
       if (this._active === "temp") {
         const t = this._eventToTemp(e);
         if (t == null) return;
+        if (this._hcHandle) {
+          // heat_cool: move only the locked handle; keep the other fixed and
+          // separated by at least one step so we never send low > high (issue #14).
+          const st = this._step();
+          const r = this._range();
+          let lo = this._hcPendingLow, hi = this._hcPendingHigh;
+          if (this._hcHandle === "low") lo = clamp(t, r.lo, hi - st);
+          else hi = clamp(t, lo + st, r.hi);
+          this._hcPendingLow = lo;
+          this._hcPendingHigh = hi;
+          this._optimisticLow = lo;
+          this._optimisticHigh = hi;
+          this._optimisticHcUntil = Date.now() + OPT_HOLD_MS;
+          this._paintHeatCool(lo, hi);
+          return;
+        }
         this._pendingTemp = t;
         // optimistic paint every move; NO service call here.
         this._optimisticTarget = t;
@@ -1013,6 +1124,24 @@
       this._optimisticUntil = Date.now() + OPT_HOLD_MS;
       this._paintTempArc(t);
       this._callTemp(t);
+    }
+
+    // ---- HEAT_COOL service call: write BOTH setpoints in one set_temperature
+    // call (the correct shape for a dual-setpoint entity), optimistic + revert
+    // on failure like the single-target path (issue #14). ----
+    _commitHeatCool(lo, hi) {
+      if (lo == null || hi == null || !this._hass) return;
+      const s = this._st(this._config.entity);
+      if (!s) return;
+      this._optimisticLow = lo;
+      this._optimisticHigh = hi;
+      this._optimisticHcUntil = Date.now() + OPT_HOLD_MS;
+      this._paintHeatCool(lo, hi);
+      this._svc("climate", "set_temperature",
+        { entity_id: this._config.entity,
+          target_temp_low: this._toHa(lo),
+          target_temp_high: this._toHa(hi) },
+        () => this._revertHeatCool());
     }
 
     // ---- FAN service calls ----
@@ -1357,6 +1486,39 @@
       this._refs.bigNum.setAttribute("font-size", txt.length > 2 ? "84" : "104");
     }
 
+    // Paint the dual-setpoint (heat_cool) view (issue #14): a comfort band on the
+    // temp arc between the two setpoints (cyan near the low handle, warm near the
+    // high), the cyan LOW + warm HIGH needles, and a two-tone "68 - 74" readout.
+    // Only ever called when _isHeatCool() is true, so single-target dials are
+    // entirely unaffected.
+    _paintHeatCool(lo, hi) {
+      if (lo == null || hi == null) return;
+      const aLo = this._tempToAng(lo);
+      const aHi = this._tempToAng(hi);
+      const mid = (aLo + aHi) / 2;
+      // band split at the midpoint: cyan from low->mid, warm from mid->high.
+      const coldD = arcPath(CX, CY, R_TEMP, aLo, Math.max(aLo + 0.01, mid));
+      const warmD = arcPath(CX, CY, R_TEMP, Math.min(mid, aHi - 0.01), aHi);
+      this._refs.coldFill.setAttribute("d", coldD);
+      this._refs.coldHalo.setAttribute("d", coldD);
+      this._refs.warmFill.setAttribute("d", warmD);
+      this._refs.warmHalo.setAttribute("d", warmD);
+      const seatLo = polar(CX, CY, R_TEMP, aLo);
+      this._refs.tempNeedleLo.setAttribute("transform",
+        `translate(${seatLo[0].toFixed(1)},${seatLo[1].toFixed(1)}) rotate(${aLo.toFixed(1)})`);
+      const seatHi = polar(CX, CY, R_TEMP, aHi);
+      this._refs.tempNeedle.setAttribute("transform",
+        `translate(${seatHi[0].toFixed(1)},${seatHi[1].toFixed(1)}) rotate(${aHi.toFixed(1)})`);
+      const loTxt = this._fmt(lo), hiTxt = this._fmt(hi);
+      const plain = loTxt + " - " + hiTxt;
+      // two-tone readout: low value cyan, high value warm, separator grey.
+      this._refs.bigNum.innerHTML =
+        '<tspan fill="#5CD6FF">' + loTxt + '</tspan>' +
+        '<tspan fill="#8c99a7"> - </tspan>' +
+        '<tspan fill="#F2933A">' + hiTxt + '</tspan>';
+      this._refs.bigNum.setAttribute("font-size", plain.length > 8 ? "42" : "54");
+    }
+
     // Paint the fan ring for a percent (number.* entity).
     _paintFanPct(p) {
       p = clamp(p, FAN_MIN, FAN_MAX);
@@ -1463,6 +1625,7 @@
         this._refs.nowCap.style.display = "none";
         this._refs.caret.style.display = "none";
         this._refs.curMarker.style.display = "none";
+        if (this._refs.tempNeedleLo) this._refs.tempNeedleLo.style.display = "none";
         this._refs.clover.style.display = "none";
         this._refs.fanPct.style.display = "none";
         this._refs.fanName.style.display = "none";
@@ -1480,6 +1643,7 @@
       this._reconcileOptimistic(attr);
       const mode = s.state;
       const off = mode === "off";
+      const isHc = this._isHeatCool(); // dual-setpoint dial (issue #14)
       const accent = this._modeColor(mode);
       const showCurrent = this._config.show_current !== false;
       card.setAttribute("data-mode", mode);
@@ -1494,12 +1658,30 @@
       }
 
       // ---- TEMP (optimistic-or-real, unit-converted for display) ----
-      const optActive = this._optimisticUntil && Date.now() < this._optimisticUntil
-        && this._optimisticTarget != null;
-      const target = optActive ? this._optimisticTarget : this._toDisplay(num(attr.temperature));
-      if (target != null) this._paintTempArc(target);
-      else { this._refs.bigNum.textContent = "--"; this._refs.bigNum.setAttribute("font-size", "104"); }
+      if (isHc) {
+        // heat_cool: paint the low/high pair (optimistic-or-live) and show the
+        // cyan LOW needle (issue #14).
+        const hcOpt = this._optimisticHcUntil && Date.now() < this._optimisticHcUntil
+          && this._optimisticLow != null && this._optimisticHigh != null;
+        const lo = hcOpt ? this._optimisticLow : this._hcLow();
+        const hi = hcOpt ? this._optimisticHigh : this._hcHigh();
+        if (lo != null && hi != null) {
+          this._refs.tempNeedleLo.style.display = "";
+          this._paintHeatCool(lo, hi);
+        } else {
+          this._refs.tempNeedleLo.style.display = "none";
+          this._refs.bigNum.textContent = "--"; this._refs.bigNum.setAttribute("font-size", "104");
+        }
+      } else {
+        this._refs.tempNeedleLo.style.display = "none";
+        const optActive = this._optimisticUntil && Date.now() < this._optimisticUntil
+          && this._optimisticTarget != null;
+        const target = optActive ? this._optimisticTarget : this._toDisplay(num(attr.temperature));
+        if (target != null) this._paintTempArc(target);
+        else { this._refs.bigNum.textContent = "--"; this._refs.bigNum.setAttribute("font-size", "104"); }
+      }
       this._refs.tempNeedle.style.opacity = off ? "0.45" : "1";
+      this._refs.tempNeedleLo.style.opacity = off ? "0.45" : "1";
       this._refs.coldFill.style.opacity = off ? "0.30" : "1";
       this._refs.warmFill.style.opacity = off ? "0.30" : "1";
       this._refs.coldHalo.style.opacity = off ? "0" : "0.40";
@@ -1532,8 +1714,12 @@
       }
 
       // ---- caret (cooling = down, heating = up) ----
+      // Hidden in heat_cool: the wider "68 - 74" readout sits where the caret
+      // would, and the single up/down caret is ambiguous for dual setpoints.
       const action = attr.hvac_action;
-      if (!off && action === "cooling") {
+      if (isHc) {
+        this._refs.caret.style.display = "none";
+      } else if (!off && action === "cooling") {
         this._refs.caret.setAttribute("d", CARET_DOWN);
         this._refs.caret.setAttribute("fill", this._accent);
         this._refs.caret.style.filter = `drop-shadow(0 0 4px ${this._glow(55)})`;
