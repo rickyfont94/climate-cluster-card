@@ -127,7 +127,7 @@ All options are optional except `entity`. Defaults reproduce sensible behavior, 
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `accent` | color | theme accent | Primary accent color. |
+| `accent` | color | `#4fc3f7` | Primary UI accent color. |
 | `mode_colors` | map | built-in | Per-mode color overrides (e.g. `cool: "#4fc3f7"`). |
 | `temperature_unit` | `auto` \| `F` \| `C` | `auto` | `auto` uses HA's unit system / the entity's `temperature_unit`. |
 | `min_temp` | number | entity `min_temp` | Lower bound of the dial. |
@@ -147,7 +147,7 @@ All options are optional except `entity`. Defaults reproduce sensible behavior, 
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `fan_entity` | `number.*` | auto-discovered | Percent entity for the draggable fan ring. |
-| `show_fan` | bool | auto | Force show/hide the fan ring. |
+| `show_fan` | bool | auto-detect when unset | Force show/hide the fan ring. |
 | `fan_animation` | bool | `true` | Enable the clover spin. |
 | `fan_animation_speed` | `dynamic` \| `constant` \| `off` | `dynamic` | Spin behavior. |
 
@@ -165,7 +165,6 @@ All options are optional except `entity`. Defaults reproduce sensible behavior, 
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `max_height` | CSS length | unset | Caps the card height. |
-| `power_switch` | `switch.*` | unset | Optional power switch. |
 
 **Resolution order (everywhere):** explicit config → auto-discovered Midea sibling → generic climate attribute → hide.
 
@@ -188,9 +187,9 @@ When the fan is a percent entity (`number.*_fan_speed`), the outer ring is a con
 | 41-60% | Medium |
 | 61-80% | High |
 | 81-100% | Full |
-| Center tap | Auto |
+| Lower-left clover tap | Auto |
 
-Dragging a percent nudges the climate `fan_mode` off `auto` so the chosen speed actually applies (a unit left on `auto` overrides a manual percent). Tapping the center returns the fan to `auto`.
+Dragging a percent nudges the climate `fan_mode` off `auto` so the chosen speed actually applies (a unit left on `auto` overrides a manual percent). Tapping the lower-left clover returns the fan to `auto`; tapping the center opens the mode popup.
 
 If the climate entity exposes named `fan_modes` instead of a percent entity, the ring drives those discrete stops rather than a 1-100 % sweep.
 
