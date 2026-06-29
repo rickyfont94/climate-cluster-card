@@ -155,6 +155,36 @@
     return s ? s : null;
   }
 
+  // Color -> [r,g,b] for the ha-form color_rgb selector (it ONLY renders an array;
+  // a string or undefined shows a BLACK swatch). Handles a stored array, an
+  // rgb()/rgba() string, and #rgb / #rrggbb hex. Returns null if unparseable.
+  function colorToRgb(v) {
+    if (v == null) return null;
+    if (Array.isArray(v)) return v.length >= 3 ? [+v[0], +v[1], +v[2]] : null;
+    const s = String(v).trim();
+    let m = s.match(/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/i);
+    if (m) return [Math.round(+m[1]), Math.round(+m[2]), Math.round(+m[3])];
+    m = s.match(/^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/);
+    if (m) {
+      let h = m[1];
+      if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+      return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+    }
+    return null;
+  }
+  // True when two [r,g,b] arrays match (used to drop seeded defaults on save).
+  function rgbEq(a, b) {
+    return Array.isArray(a) && Array.isArray(b) && a.length === b.length
+      && a.every((x, i) => +x === +b[i]);
+  }
+
+  // Display-side defaults for the editor color swatches / default-on toggles.
+  const DEFAULT_ACCENT_RGB = colorToRgb(DEFAULT_ACCENT);   // [79,195,247]
+  const MODE_COLORS_RGB = {};                              // per-mode defaults as [r,g,b]
+  for (const k in MODE_COLORS) MODE_COLORS_RGB[k] = colorToRgb(MODE_COLORS[k]);
+  // Booleans the CARD treats as on unless explicitly false (seed ON in the editor).
+  const DEFAULT_ON_KEYS = ["show_scale", "show_current", "fan_animation"];
+
   // Polar helper (CW from top): x = cx + r*sin(deg), y = cy - r*cos(deg).
   function polar(cx, cy, r, angDeg) {
     const a = ((angDeg - 90) * Math.PI) / 180;
@@ -2400,9 +2430,41 @@
         root.appendChild(this._form);
       }
       this._form.hass = this._hass;
-      this._form.data = this._config;
+      // Feed the form a DISPLAY copy with the swatch/toggle defaults seeded so the
+      // color_rgb swatches and default-on toggles reflect real state instead of
+      // black / OFF (issues #12, #13). _valueChanged prunes the seeds back out so
+      // the saved YAML still carries only user-changed keys.
+      this._form.data = this._computeFormData(this._config);
       // Re-derive each time so the Modes options live-populate from the picked entity.
       this._form.schema = this._schema(this._hass, this._config);
+    }
+
+    // Build the ha-form `data` from the real config, seeding display-only defaults:
+    //   (1) accent  -> the card default #4fc3f7 as [r,g,b] when unset, else the
+    //       stored value coerced to [r,g,b] (so the swatch never renders black);
+    //   (2) mode_colors[*] -> the built-in MODE_COLORS default (as [r,g,b]) for
+    //       any mode the user has not overridden (so no swatch renders black);
+    //   (3) show_scale / show_current / fan_animation -> true when unset (the card
+    //       treats them as on by default, so the toggle must read ON).
+    // This is DISPLAY ONLY; the seeds are removed again in _valueChanged.
+    _computeFormData(config) {
+      const data = Object.assign({}, config);
+
+      data.accent = colorToRgb(config.accent) || DEFAULT_ACCENT_RGB.slice();
+
+      const srcMc = (config.mode_colors && typeof config.mode_colors === "object"
+        && !Array.isArray(config.mode_colors)) ? config.mode_colors : {};
+      const mc = {};
+      for (const m of MODE_KEYS) {
+        mc[m] = colorToRgb(srcMc[m])
+          || (MODE_COLORS_RGB[m] ? MODE_COLORS_RGB[m].slice() : null);
+      }
+      data.mode_colors = mc;
+
+      for (const k of DEFAULT_ON_KEYS) {
+        if (data[k] === undefined || data[k] === null) data[k] = true;
+      }
+      return data;
     }
 
     // ha-form fires `value-changed` with the FULL merged config. Prune empties and
@@ -2410,6 +2472,26 @@
     _valueChanged(ev) {
       ev.stopPropagation();
       const cfg = Object.assign({}, ev.detail.value);
+
+      // Undo the display seeding (issues #12, #13): the form re-emits the FULL
+      // value including the seeded accent / per-mode colors / default-on toggles,
+      // so drop any field still sitting at its seeded default and persist only
+      // what the user actually changed (keeps the YAML lean; unset still = default).
+      if (rgbEq(cfg.accent, DEFAULT_ACCENT_RGB)) delete cfg.accent;
+      if (cfg.mode_colors && typeof cfg.mode_colors === "object" && !Array.isArray(cfg.mode_colors)) {
+        const mc = {};
+        for (const m of Object.keys(cfg.mode_colors)) {
+          const v = cfg.mode_colors[m];
+          if (v == null) continue;
+          if (rgbEq(v, MODE_COLORS_RGB[m])) continue; // unchanged default -> drop
+          mc[m] = v;
+        }
+        if (Object.keys(mc).length) cfg.mode_colors = mc; else delete cfg.mode_colors;
+      }
+      for (const k of DEFAULT_ON_KEYS) {
+        if (cfg[k] === true) delete cfg[k]; // true is the default -> only persist explicit false
+      }
+
       for (const k of Object.keys(cfg)) {
         const v = cfg[k];
         if (v === "" || v === undefined || v === null) { delete cfg[k]; continue; }
