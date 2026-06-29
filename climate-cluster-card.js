@@ -372,16 +372,31 @@
       if (du === hu) return v;
       return hu === "F" ? cToF(v) : fToC(v);
     }
+    // HA-unit STEP -> display-unit step. A step is a delta, so scale by the
+    // slope only (9/5 for C->F, 5/9 for F->C) with no +/-32 offset, then snap
+    // to a tidy granularity for the display unit so e.g. a 0.5C step becomes 1F
+    // instead of an awkward 0.9F (issue #11). No-op when units match.
+    _toDisplayStep(s) {
+      if (s == null) return null;
+      const du = this._unit(), hu = this._haUnit();
+      if (du === hu) return s;
+      const scaled = du === "F" ? s * 9 / 5 : s * 5 / 9;
+      const grain = du === "F" ? 0.5 : 0.1; // F snaps to half-degrees, C to tenths
+      return Math.max(grain, Math.round(scaled / grain) * grain);
+    }
 
     _range() {
       const s = this._st(this._config && this._config.entity);
       const attr = (s && s.attributes) || {};
       const cfg = this._config || {};
       const d = this._unitDefaults(this._unit());
+      // Config min/max are authored in the display unit already; the entity's
+      // min_temp/max_temp are reported in HA's unit, so push those through
+      // _toDisplay so the whole dial lives in one unit (issue #11).
       const lo = (cfg.min_temp != null && num(cfg.min_temp) != null) ? num(cfg.min_temp)
-               : (num(attr.min_temp) != null ? num(attr.min_temp) : d.min);
+               : (num(attr.min_temp) != null ? this._toDisplay(num(attr.min_temp)) : d.min);
       const hi = (cfg.max_temp != null && num(cfg.max_temp) != null) ? num(cfg.max_temp)
-               : (num(attr.max_temp) != null ? num(attr.max_temp) : d.max);
+               : (num(attr.max_temp) != null ? this._toDisplay(num(attr.max_temp)) : d.max);
       return { lo, hi };
     }
     _step() {
@@ -389,8 +404,10 @@
       const attr = (s && s.attributes) || {};
       const cfg = this._config || {};
       const d = this._unitDefaults(this._unit());
+      // Config temp_step is authored in the display unit; the entity's
+      // target_temp_step is in HA's unit, so convert it (issue #11).
       if (cfg.temp_step != null && num(cfg.temp_step) != null) return num(cfg.temp_step);
-      if (num(attr.target_temp_step) != null) return num(attr.target_temp_step);
+      if (num(attr.target_temp_step) != null) return this._toDisplayStep(num(attr.target_temp_step));
       return d.step;
     }
 
