@@ -177,6 +177,13 @@
     return Array.isArray(a) && Array.isArray(b) && a.length === b.length
       && a.every((x, i) => +x === +b[i]);
   }
+  // True when two arrays hold the same SET of values (order-independent; used to
+  // drop a `modes` selection that still equals the entity's full hvac_modes).
+  function arrSetEq(a, b) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+    const sb = new Set(b.map(String));
+    return a.every((x) => sb.has(String(x)));
+  }
 
   // Display-side defaults for the editor color swatches / default-on toggles.
   const DEFAULT_ACCENT_RGB = colorToRgb(DEFAULT_ACCENT);   // [79,195,247]
@@ -2276,12 +2283,15 @@
   // The mode keys exposed by the per-mode color sub-section (matches MODE_COLORS).
   const MODE_KEYS = ["cool", "heat", "heat_cool", "dry", "fan_only", "auto", "off"];
 
-  // Tri-state visibility selector for the swing / LED / sound features.
+  // Tri-state visibility selector for the fan / swing / LED / sound features.
   const AUTO_TF = [
     { value: "auto", label: "Auto" },
     { value: true, label: "Show" },
     { value: false, label: "Hide" },
   ];
+  // Fields using the AUTO_TF tri-state select. Seeded to "auto" for display when
+  // unset and pruned back out on save (the card treats unset / "auto" as auto).
+  const TRISTATE_KEYS = ["show_fan", "show_swing", "show_led", "show_sound"];
 
   // Friendly field labels (computeLabel). Falls back to MODE_LABEL then prettified name.
   const EDITOR_LABELS = {
@@ -2350,12 +2360,19 @@
       this._update();
     }
 
+    // The SELECTED entity's hvac_modes (or a sensible fallback when none is set).
+    // Single source for both the Modes multi-select options and the display seed.
+    _hvacModes(config) {
+      const hass = this._hass;
+      const st = hass && config && config.entity && hass.states ? hass.states[config.entity] : null;
+      return (st && st.attributes && st.attributes.hvac_modes)
+        || ["off", "cool", "heat", "heat_cool", "dry", "fan_only", "auto"];
+    }
+
     // Build the ha-form schema. Re-derived on every change so the Modes multi-select
     // options track the SELECTED entity's live `hvac_modes`.
     _schema(hass, config) {
-      const st = hass && config && config.entity && hass.states ? hass.states[config.entity] : null;
-      const hvac = (st && st.attributes && st.attributes.hvac_modes)
-        || ["off", "cool", "heat", "heat_cool", "dry", "fan_only", "auto"];
+      const hvac = this._hvacModes(config);
       const modeOptions = hvac.map((m) => ({ value: m, label: MODE_LABEL[m] || String(m).toUpperCase() }));
 
       return [
@@ -2389,7 +2406,7 @@
         { type: "expandable", name: "", title: "Fan", icon: "mdi:fan", schema: [
           { name: "fan_entity", selector: { entity: { domain: "number" } } },
           { type: "grid", schema: [
-            { name: "show_fan", selector: { boolean: {} } },
+            { name: "show_fan", selector: { select: { mode: "dropdown", options: AUTO_TF } } },
             { name: "fan_animation", selector: { boolean: {} } },
           ] },
           { name: "fan_animation_speed", selector: { select: { mode: "dropdown", options: [
@@ -2445,7 +2462,11 @@
     //   (2) mode_colors[*] -> the built-in MODE_COLORS default (as [r,g,b]) for
     //       any mode the user has not overridden (so no swatch renders black);
     //   (3) show_scale / show_current / fan_animation -> true when unset (the card
-    //       treats them as on by default, so the toggle must read ON).
+    //       treats them as on by default, so the toggle must read ON);
+    //   (4) modes -> the entity's full hvac_modes when unset (the card shows every
+    //       mode by default, so the multi-select must read all-checked);
+    //   (5) show_fan / show_swing / show_led / show_sound -> "auto" when unset (the
+    //       card auto-detects by default, so the tri-state select must read Auto).
     // This is DISPLAY ONLY; the seeds are removed again in _valueChanged.
     _computeFormData(config) {
       const data = Object.assign({}, config);
@@ -2463,6 +2484,18 @@
 
       for (const k of DEFAULT_ON_KEYS) {
         if (data[k] === undefined || data[k] === null) data[k] = true;
+      }
+
+      // Modes: unset means "all of the entity's hvac_modes", so seed the full list
+      // and every checkbox renders CHECKED instead of all-unchecked.
+      if (data.modes === undefined || data.modes === null) {
+        const hvac = this._hvacModes(config);
+        if (hvac && hvac.length) data.modes = hvac.slice();
+      }
+
+      // Tri-state visibility: unset means auto-detect, so the select reads "Auto".
+      for (const k of TRISTATE_KEYS) {
+        if (data[k] === undefined || data[k] === null) data[k] = "auto";
       }
       return data;
     }
@@ -2491,6 +2524,13 @@
       for (const k of DEFAULT_ON_KEYS) {
         if (cfg[k] === true) delete cfg[k]; // true is the default -> only persist explicit false
       }
+      // Tri-state selects: "auto" is the default -> only persist an explicit Show/Hide.
+      for (const k of TRISTATE_KEYS) {
+        if (cfg[k] === "auto") delete cfg[k];
+      }
+      // Modes: a selection equal to the entity's full hvac_modes is the default ->
+      // drop it so an unchanged all-checked list is not persisted (only save subsets).
+      if (Array.isArray(cfg.modes) && arrSetEq(cfg.modes, this._hvacModes(cfg))) delete cfg.modes;
 
       for (const k of Object.keys(cfg)) {
         const v = cfg[k];
