@@ -1,0 +1,36 @@
+name: Feature request
+description: Suggest an idea or improvement for the Climate Cluster Card
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the suggestion. Please describe the problem first, then the change you would like to see.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What are you trying to do, and what is getting in the way?
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: Describe what you would like the card to do
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Entity or integration context
+      description: Which climate entities or integrations does this involve (for example midea_ac_lan)?
+    validations:
+      required: false
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches or workarounds you have already tried
+    validations:
+      required: false

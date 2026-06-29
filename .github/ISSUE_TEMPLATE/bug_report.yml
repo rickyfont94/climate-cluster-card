@@ -1,0 +1,72 @@
+name: Bug report
+description: Report a problem with the Climate Cluster Card
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug report. Please fill out the fields below so the issue can be reproduced.
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Before you start
+      options:
+        - label: I am on the latest release of the card
+          required: true
+        - label: I searched existing issues and did not find a duplicate
+          required: true
+  - type: input
+    id: card-version
+    attributes:
+      label: Card version
+      description: The version of the Climate Cluster Card you are running
+      placeholder: v1.0.5
+    validations:
+      required: true
+  - type: input
+    id: ha-version
+    attributes:
+      label: Home Assistant version
+      placeholder: 2026.6.0
+    validations:
+      required: true
+  - type: dropdown
+    id: install-method
+    attributes:
+      label: Install method
+      options:
+        - HACS
+        - Manual
+    validations:
+      required: true
+  - type: input
+    id: climate-integration
+    attributes:
+      label: Climate integration
+      description: The integration that provides your climate entities
+      placeholder: midea_ac_lan
+    validations:
+      required: true
+  - type: textarea
+    id: yaml-config
+    attributes:
+      label: Card YAML config
+      description: The full YAML configuration for the card
+      render: yaml
+    validations:
+      required: true
+  - type: textarea
+    id: console-errors
+    attributes:
+      label: Browser console errors
+      description: Open the browser developer tools console, reproduce the issue, and paste any errors here
+      render: shell
+    validations:
+      required: false
+  - type: textarea
+    id: screenshot
+    attributes:
+      label: Screenshot or description
+      description: A screenshot of the problem, or a clear description of expected vs actual behavior
+    validations:
+      required: true

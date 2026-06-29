@@ -321,7 +321,6 @@
       out.sound = cfg.sound_entity || pick("_prompt_tone", "switch");   // SOUND / beep toggle
       out.swing_h = pick("_swing_horizontal", "switch");
       out.swing_v = cfg.swing_entity || pick("_swing_vertical", "switch");
-      out.fresh_air = cfg.fresh_air || pick("_fresh_air", "fan");
       out.dust = pick("_full_dust", "binary_sensor");
       // fan_entity (preferred) / fan_speed (back-compat alias) / sibling number.*_fan_speed
       out.fan_speed = cfg.fan_entity || cfg.fan_speed || pick("_fan_speed", "number");

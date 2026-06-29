@@ -5,8 +5,10 @@
 A wide-arc, **instrument-cluster** climate card for Home Assistant, drag the **inner ring** for temperature and the **outer ring** for fan speed, with a glass mode popup, swing / LED / sound toggles, a numbered gauge scale, and a full visual editor.
 
 [![Release](https://img.shields.io/github/v/release/rickyfont94/climate-cluster-card?style=for-the-badge&color=4fc3f7&label=Release)](https://github.com/rickyfont94/climate-cluster-card/releases)
+<!-- HACS Custom for now. This becomes "HACS Default" once the card is accepted into the HACS default store. Leave the badge unchanged until then. -->
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5?style=for-the-badge)](https://github.com/hacs/integration)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](LICENSE)
+[![Downloads](https://img.shields.io/github/downloads/rickyfont94/climate-cluster-card/total?style=for-the-badge)](https://github.com/rickyfont94/climate-cluster-card/releases)
 
 [![Validate](https://github.com/rickyfont94/climate-cluster-card/actions/workflows/validate.yml/badge.svg)](https://github.com/rickyfont94/climate-cluster-card/actions/workflows/validate.yml)
 [![Last commit](https://img.shields.io/github/last-commit/rickyfont94/climate-cluster-card)](https://github.com/rickyfont94/climate-cluster-card/commits/main)
@@ -41,6 +43,7 @@ The **dual-ring AC control** card: set temperature on the inner ring and fan spe
 ## Requirements
 
 - Home Assistant with any `climate.*` entity.
+- Requires **Home Assistant 2024.1.0** or newer (matches `hacs.json`).
 - Built for and tested with **Midea** units via [`midea_ac_lan`](https://github.com/wuwentao/midea_ac_lan). It works with any climate entity, but auto-discovery of the fan / swing / LED / sound siblings is tuned for Midea.
 - The **fan ring** needs one of:
   - a `number.*_fan_speed` (percent) entity, a smooth draggable 1-100 % ring, or
@@ -48,6 +51,10 @@ The **dual-ring AC control** card: set temperature on the inner ring and fan spe
   - If neither exists, the fan ring is hidden automatically.
 
 ## Installation
+
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=rickyfont94&repository=climate-cluster-card&category=dashboard)
+
+One-click: the **My Home Assistant** badge above opens this repository directly in HACS on your own instance. Otherwise follow the manual HACS steps below.
 
 ### HACS (recommended)
 
@@ -167,11 +174,45 @@ All options are optional except `entity`. Defaults reproduce sensible behavior, 
 - **Fan ring missing.** The entity has neither a `number.*_fan_speed` nor named `fan_modes`. Set `fan_entity` explicitly or add a percent number helper.
 - **A toggle (swing/LED/sound) doesn't appear.** Nothing resolved, set the matching `*_entity`, or set `show_swing` / `show_led` / `show_sound` to `true`.
 
+## FAQ
+
+**How does the fan ring map to speeds?**
+
+When the fan is a percent entity (`number.*_fan_speed`), the outer ring is a continuous 1-100 % control that reads back into named bands:
+
+| Fan ring position | Band |
+|---|---|
+| <= 20% | Silent |
+| 21-40% | Low |
+| 41-60% | Medium |
+| 61-80% | High |
+| 81-100% | Full |
+| Center tap | Auto |
+
+Dragging a percent nudges the climate `fan_mode` off `auto` so the chosen speed actually applies (a unit left on `auto` overrides a manual percent). Tapping the center returns the fan to `auto`.
+
+If the climate entity exposes named `fan_modes` instead of a percent entity, the ring drives those discrete stops rather than a 1-100 % sweep.
+
+## Known limitations
+
+- **Tuned for `midea_ac_lan`.** The swing / LED / sound toggles and the fan / swing / LED / sound auto-discovery target Midea units. For a generic `climate.*` entity, set `swing_entity` / `led_entity` / `sound_entity` / `fan_entity` explicitly.
+- **Fan ring needs a source.** The fan ring is hidden unless a `number.*_fan_speed` entity or named `fan_modes` exist.
+- **Limited feature surface.** Only the Swing / LED / Sound toggles are surfaced on the card. Expose any other features (boost, eco, sleep, and so on) with your own cards.
+- **Rajdhani font not bundled.** The card references the **Rajdhani** font by name for its numerals but does not bundle it; it degrades gracefully to your UI font when Rajdhani is unavailable.
+
 ## Notes
 
 The card references the **Rajdhani** font by name for its numerals but does **not** bundle it; it degrades gracefully to your UI font if Rajdhani isn't available.
 
 Midea is a trademark of its respective owner. This project is independent and unaffiliated.
+
+## Contributing
+
+Issues and pull requests are welcome, see [CONTRIBUTING.md](CONTRIBUTING.md) or open an issue.
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 ## License
 
