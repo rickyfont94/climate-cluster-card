@@ -9,6 +9,7 @@ A wide-arc, **instrument-cluster** climate card for Home Assistant, drag the **i
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5?style=for-the-badge)](https://github.com/hacs/integration)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](LICENSE)
 [![Downloads](https://img.shields.io/github/downloads/rickyfont94/climate-cluster-card/total?style=for-the-badge)](https://github.com/rickyfont94/climate-cluster-card/releases)
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black)](https://www.buymeacoffee.com/rickyfont9l)
 
 [![Validate](https://github.com/rickyfont94/climate-cluster-card/actions/workflows/validate.yml/badge.svg)](https://github.com/rickyfont94/climate-cluster-card/actions/workflows/validate.yml)
 [![Last commit](https://img.shields.io/github/last-commit/rickyfont94/climate-cluster-card)](https://github.com/rickyfont94/climate-cluster-card/commits/main)
@@ -213,6 +214,12 @@ Issues and pull requests are welcome, see [CONTRIBUTING.md](CONTRIBUTING.md) or 
 ## Changelog
 
 See [CHANGELOG.md](CHANGELOG.md) for release notes.
+
+## Support
+
+If this card is useful to you, you can support its development with a coffee:
+
+[<img src="https://cdn.buymeacoffee.com/buttons/v2/default-green.png" alt="Buy Me a Coffee" height="44">](https://www.buymeacoffee.com/rickyfont9l)
 
 ## License
 
