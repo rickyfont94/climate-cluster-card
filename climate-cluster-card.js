@@ -26,7 +26,7 @@
   const NS = "http://www.w3.org/2000/svg";
 
   // ---- console version banner ---------------------------------------------
-  const VERSION = "1.0.7";
+  const VERSION = "1.0.8";
   console.info(
     "%c CLIMATE-CLUSTER-CARD %c v" + VERSION + " ",
     "color:#0b0f16;background:#4fc3f7;font-weight:700;border-radius:4px 0 0 4px;padding:2px 6px",
@@ -114,9 +114,12 @@
   // setpoint, and a vertical swipe that starts here can still scroll (issue #4).
   const DRAG_THRESH_PX = 8;
 
-  // ---- FAN (percent control) ----------------------------------------------
-  // The fan ring drives a number.*_fan_speed entity (min 1, max 100), snapping to
-  // {1, 5,10,...,100}. AUTO is the named climate fan_mode, not a ring position.
+  // ---- FAN (numeric control) ----------------------------------------------
+  // The fan ring drives a number.*_fan_speed entity. Its real range is read from
+  // the number entity's own min/max/step attributes (HA `number` entities expose
+  // them); these consts are only the fallback when those attributes are missing.
+  // AUTO is the named climate fan_mode, not a ring position. When there is no
+  // usable numeric source the ring degrades to the climate entity's fan_modes.
   const FAN_MIN = 1;
   const FAN_MAX = 100;
   const FAN_STEP = 5;
@@ -127,13 +130,6 @@
   // This is only the fallback for a device that never confirms; a rejected
   // service call reverts sooner via its .catch() (issue #9).
   const OPT_HOLD_MS = 5000;
-
-  // fraction 0..1 along the arc -> snapped percent in {1, 5,10,...,100}.
-  function fanSnapPct(frac) {
-    const raw = FAN_MIN + clamp(frac, 0, 1) * (FAN_MAX - FAN_MIN); // 1..100 continuous
-    if (raw <= (FAN_MIN + FAN_STEP) / 2) return FAN_MIN;           // floor snaps to 1
-    return clamp(Math.round(raw / FAN_STEP) * FAN_STEP, FAN_STEP, FAN_MAX);
-  }
 
   // ---- small helpers ------------------------------------------------------
   function el(tag, attrs, text) {
@@ -397,6 +393,57 @@
       const s = this._st(this._config && this._config.entity);
       const fm = (s && s.attributes && s.attributes.fan_modes) || [];
       return fm.filter((m) => String(m).toLowerCase() !== "auto");
+    }
+
+    // The numeric fan source's STATE object, or null when there is no USABLE
+    // numeric source (no entity, or unavailable/unknown/non-numeric). null means
+    // the ring should drive the climate entity's fan_modes instead.
+    _fanNumState() {
+      const id = this._fanNumberId();
+      if (!id) return null;
+      const s = this._st(id);
+      if (!s) return null;
+      const st = String(s.state).toLowerCase();
+      if (st === "unavailable" || st === "unknown") return null;
+      if (num(s.state) == null) return null;   // non-numeric -> not usable
+      return s;
+    }
+    // True when the ring runs in numeric (value) mode, false for named fan_modes.
+    _fanUsesNumber() { return this._fanNumState() != null; }
+    // {min,max,step} read from the number entity's own attributes; sane fallbacks.
+    _fanNumRange() {
+      const s = this._fanNumState();
+      if (!s) return null;
+      const a = s.attributes || {};
+      let min = num(a.min); if (min == null) min = FAN_MIN;
+      let max = num(a.max); if (max == null) max = FAN_MAX;
+      if (max <= min) max = min + 1;             // guard a degenerate range
+      let step = num(a.step); if (step == null || step <= 0) step = 1;
+      return { min, max, step };
+    }
+    // 0..1 fraction along the arc -> value snapped to the entity's {min,max,step}.
+    _snapFanValue(frac) {
+      const r = this._fanNumRange();
+      if (!r) return null;
+      const raw = r.min + clamp(frac, 0, 1) * (r.max - r.min);
+      const snapped = Math.round((raw - r.min) / r.step) * r.step + r.min;
+      return clamp(snapped, r.min, r.max);
+    }
+    // Nearest fan_mode (from the entity's OWN non-auto list) for a numeric value,
+    // case-preserving. Replaces the old hardcoded silent/low/.../full bucketer so
+    // the auto-pull picks a mode the entity actually supports (issue #8).
+    _nearestFanMode(value) {
+      const names = this._fanNamedModes();
+      if (!names.length) return null;
+      const r = this._fanNumRange() || { min: FAN_MIN, max: FAN_MAX };
+      const frac = clamp((value - r.min) / ((r.max - r.min) || 1), 0, 1);
+      const i = clamp(Math.round(frac * (names.length - 1)), 0, names.length - 1);
+      return names[i];
+    }
+    // Value label: integer unless the step has a fractional part.
+    _fmtFan(v, step) {
+      const dec = (step != null && step % 1 !== 0) ? 1 : 0;
+      return dec ? v.toFixed(dec) : String(Math.round(v));
     }
 
     _st(id) {
@@ -945,10 +992,10 @@
       const st = this._step();
       return clamp(Math.round((lo + f * (hi - lo)) / st) * st, lo, hi); // snap to step
     }
-    _eventToFanPct(e) {
+    _eventToFanValue(e) {
       const f = this._eventToFrac(e);
       if (f == null) return null;
-      return fanSnapPct(f);
+      return this._snapFanValue(f);
     }
     _eventToFanIndex(e, n) {
       const f = this._eventToFrac(e);
@@ -1063,7 +1110,8 @@
         } else if (this._optimisticFanPct != null) {
           const id = this._fanNumberId();
           const liveP = id ? num((this._st(id) || {}).state) : null;
-          if (liveP != null && Math.abs(liveP - this._optimisticFanPct) < 0.5) {
+          const tol = Math.max(0.5, ((this._fanNumRange() || {}).step || 1) / 2);
+          if (liveP != null && Math.abs(liveP - this._optimisticFanPct) < tol) {
             this._optimisticFanPct = null;
             this._optimisticFanUntil = 0;
           }
@@ -1207,8 +1255,8 @@
         this._optimisticUntil = Date.now() + OPT_HOLD_MS;
         this._paintTempArc(t);
       } else if (this._active === "fan") {
-        if (this._fanNumberId()) {
-          const p = this._eventToFanPct(e);
+        if (this._fanUsesNumber()) {
+          const p = this._eventToFanValue(e);
           if (p == null) return;
           this._fanPendingPct = p;
           this._optimisticFanPct = p;
@@ -1294,25 +1342,26 @@
     // Percent ring: arrows step by FAN_STEP, Page by five steps, Home/End = min/max.
     // Named-mode ring: arrows/Page move one stop, Home/End jump to first/last mode.
     _fanKeyDown(e, s) {
-      const fanNumId = this._fanNumberId();
+      const useNum = this._fanUsesNumber();
       const k = e.key;
       let handled = true;
       const fanOptActive = this._optimisticFanUntil && Date.now() < this._optimisticFanUntil;
 
-      if (fanNumId) {
+      if (useNum) {
+        const r = this._fanNumRange();
         let p;
         if (fanOptActive && this._optimisticFanPct != null) p = this._optimisticFanPct;
-        else { const liveP = num((this._st(fanNumId) || {}).state); p = liveP != null ? liveP : FAN_MIN; }
-        const big = FAN_STEP * 5;
+        else { const liveP = num((this._fanNumState() || {}).state); p = liveP != null ? liveP : r.min; }
+        const big = r.step * 5;
         let np = p;
-        if (k === "ArrowUp" || k === "ArrowRight") np = p + FAN_STEP;
-        else if (k === "ArrowDown" || k === "ArrowLeft") np = p - FAN_STEP;
+        if (k === "ArrowUp" || k === "ArrowRight") np = p + r.step;
+        else if (k === "ArrowDown" || k === "ArrowLeft") np = p - r.step;
         else if (k === "PageUp") np = p + big;
         else if (k === "PageDown") np = p - big;
-        else if (k === "Home") np = FAN_MIN;
-        else if (k === "End") np = FAN_MAX;
+        else if (k === "Home") np = r.min;
+        else if (k === "End") np = r.max;
         else handled = false;
-        if (handled) { e.preventDefault(); this._commitFanPct(clamp(np, FAN_MIN, FAN_MAX)); }
+        if (handled) { e.preventDefault(); this._commitFanPct(clamp(np, r.min, r.max)); }
         return;
       }
 
@@ -1395,40 +1444,41 @@
     }
 
     // ---- FAN service calls ----
-    _fanNamedForPct(p) {
-      if (p <= 20) return "silent";
-      if (p <= 40) return "low";
-      if (p <= 60) return "medium";
-      if (p <= 80) return "high";
-      return "full";
-    }
-    // Authoritative fan write: set the percent number. Also pull the climate
-    // fan_mode off "auto" to a named bucket so the percent actually applies (Midea).
+    // Authoritative numeric fan write: set the number value, snapped to its real
+    // range. Also pull the climate fan_mode off "auto" to the nearest supported
+    // mode so the value actually applies (Midea). When there is NO number entity,
+    // fall back to the nearest named fan_mode (issue #8).
     _callFanPct(p) {
       if (!this._hass) return;
       const id = this._fanNumberId();
       if (!id) {
-        this._svc("climate", "set_fan_mode",
-          { entity_id: this._config.entity, fan_mode: this._fanNamedForPct(p) },
+        const nm = this._nearestFanMode(p);
+        if (nm) this._svc("climate", "set_fan_mode",
+          { entity_id: this._config.entity, fan_mode: nm },
           () => this._revertFan());
         return;
       }
+      const r = this._fanNumRange() || { min: FAN_MIN, max: FAN_MAX };
       const s = this._st(this._config.entity);
       if (s && String(s.attributes.fan_mode).toLowerCase() === "auto") {
-        this._svc("climate", "set_fan_mode",
-          { entity_id: this._config.entity, fan_mode: this._fanNamedForPct(p) },
+        const nm = this._nearestFanMode(p);
+        if (nm) this._svc("climate", "set_fan_mode",
+          { entity_id: this._config.entity, fan_mode: nm },
           () => this._revertFan());
       }
       this._svc("number", "set_value",
-        { entity_id: id, value: clamp(p, FAN_MIN, FAN_MAX) },
+        { entity_id: id, value: clamp(p, r.min, r.max) },
         () => this._revertFan());
     }
     _commitFanPct(p) {
-      this._optimisticFanPct = clamp(p, FAN_MIN, FAN_MAX);
+      const r = this._fanNumRange() || { min: FAN_MIN, max: FAN_MAX };
+      this._optimisticFanPct = clamp(p, r.min, r.max);
       this._optimisticFanName = null;
       this._optimisticFanUntil = Date.now() + OPT_HOLD_MS;
       this._paintFanPct(this._optimisticFanPct);
-      this._announce("Fan " + Math.round(this._optimisticFanPct) + " percent");
+      this._announce("Fan " + (r.max === 100
+        ? Math.round(this._optimisticFanPct) + " percent"
+        : this._fmtFan(this._optimisticFanPct, r.step)));
       this._callFanPct(this._optimisticFanPct);
     }
     // Named fan_mode commit (discrete-stop ring), optimistic + climate.set_fan_mode.
@@ -1485,7 +1535,7 @@
       const attr = (s && s.attributes) || {};
       const fanModes = attr.fan_modes || [];
       const hasAuto = fanModes.some((m) => String(m).toLowerCase() === "auto");
-      if (this._fanNumberId() || hasAuto) { this._callFanAuto(); return; }
+      if (this._fanUsesNumber() || hasAuto) { this._callFanAuto(); return; }
       const names = this._fanNamedModes();
       if (!names.length) return;
       let i = names.findIndex((m) => String(m).toLowerCase() === String(attr.fan_mode).toLowerCase());
@@ -1727,8 +1777,9 @@
       const { lo, hi } = this._range();
       return START_ANG + SPAN * clamp((t - lo) / (hi - lo), 0, 1);
     }
-    _fanPctToAng(p) {
-      return START_ANG + SPAN * clamp((p - FAN_MIN) / (FAN_MAX - FAN_MIN), 0, 1);
+    _fanValToAng(v) {
+      const r = this._fanNumRange() || { min: FAN_MIN, max: FAN_MAX };
+      return START_ANG + SPAN * clamp((v - r.min) / ((r.max - r.min) || 1), 0, 1);
     }
 
     // Centralized fan-clover spin per fan_animation / fan_animation_speed.
@@ -1820,22 +1871,27 @@
 
     // Paint the fan ring for a percent (number.* entity).
     _paintFanPct(p) {
-      p = clamp(p, FAN_MIN, FAN_MAX);
-      const ang = this._fanPctToAng(p);
+      const r = this._fanNumRange() || { min: FAN_MIN, max: FAN_MAX, step: 1 };
+      p = clamp(p, r.min, r.max);
+      const ang = this._fanValToAng(p);
       this._refs.fanFill.setAttribute("d", arcPath(CX, CY, R_FAN, START_ANG, Math.max(START_ANG + 0.01, ang)));
       this._refs.fanFill.style.opacity = "1";
       const seat = polar(CX, CY, R_FAN + FAN_HANDLE_OFFSET, ang);
       this._refs.fanHandle.setAttribute("transform",
         `translate(${seat[0].toFixed(1)},${seat[1].toFixed(1)}) rotate(${ang.toFixed(1)})`);
-      this._refs.fanPct.textContent = Math.round(p) + "%";
-      this._refs.fanName.textContent = this._fanNamedForPct(p).toUpperCase();
-      this._applyFanSpin(p, false);
-      // a11y: sync the fan slider value (issue #5).
+      // 0..100 equivalent drives the clover spin and the "%" label for a 1..100 source.
+      const pctEq = ((p - r.min) / ((r.max - r.min) || 1)) * 100;
+      this._refs.fanPct.textContent = (r.max === 100) ? Math.round(pctEq) + "%" : this._fmtFan(p, r.step);
+      const nm = this._nearestFanMode(p);
+      this._refs.fanName.textContent = nm ? String(nm).toUpperCase() : "";
+      this._applyFanSpin(pctEq, false);
+      // a11y: report the fan slider against its REAL numeric range (issue #5/#8).
       if (this._refs.fanGrab) {
-        this._refs.fanGrab.setAttribute("aria-valuemin", String(FAN_MIN));
-        this._refs.fanGrab.setAttribute("aria-valuemax", String(FAN_MAX));
-        this._refs.fanGrab.setAttribute("aria-valuenow", String(Math.round(p)));
-        this._refs.fanGrab.setAttribute("aria-valuetext", Math.round(p) + " percent");
+        this._refs.fanGrab.setAttribute("aria-valuemin", String(r.min));
+        this._refs.fanGrab.setAttribute("aria-valuemax", String(r.max));
+        this._refs.fanGrab.setAttribute("aria-valuenow", this._fmtFan(p, r.step));
+        this._refs.fanGrab.setAttribute("aria-valuetext",
+          (r.max === 100) ? Math.round(pctEq) + " percent" : this._fmtFan(p, r.step));
       }
     }
 
@@ -2059,10 +2115,10 @@
       // ---- mode glyph ----
       this._paintModeGlyph(mode, accent, off);
 
-      // ---- FAN ring + clover (percent number OR named fan_modes) ----
-      const fanNumId = this._fanNumberId();
+      // ---- FAN ring + clover (numeric number OR named fan_modes) ----
+      const useNum = this._fanUsesNumber();
       const namedModes = this._fanNamedModes();
-      const fanAvail = !!(fanNumId || namedModes.length);
+      const fanAvail = !!(useNum || namedModes.length);
       const cfgShowFan = this._config.show_fan;
       const haveFan = cfgShowFan === true ? fanAvail
                     : cfgShowFan === false ? false
@@ -2081,13 +2137,14 @@
         if (this._refs.fanGrab) { this._refs.fanGrab.setAttribute("tabindex", "0"); this._refs.fanGrab.removeAttribute("aria-hidden"); }
         const isAutoNow = String(attr.fan_mode).toLowerCase() === "auto" && !fanOptPct && !fanOptName;
         this._refs.fanIconHit.setAttribute("aria-pressed", isAutoNow ? "true" : "false");
-        if (fanNumId) {
+        if (useNum) {
+          const r = this._fanNumRange();
           const fanIsAuto = String(attr.fan_mode).toLowerCase() === "auto";
           if (fanIsAuto && !fanOptPct) {
             this._paintFanAuto();
           } else {
-            const liveP = num((this._st(fanNumId) || {}).state);
-            const p = fanOptPct ? this._optimisticFanPct : (liveP != null ? liveP : FAN_MIN);
+            const liveP = num((this._fanNumState() || {}).state);
+            const p = fanOptPct ? this._optimisticFanPct : (liveP != null ? liveP : r.min);
             this._paintFanPct(p);
           }
         } else {
