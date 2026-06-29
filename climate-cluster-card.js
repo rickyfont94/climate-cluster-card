@@ -26,7 +26,7 @@
   const NS = "http://www.w3.org/2000/svg";
 
   // ---- console version banner ---------------------------------------------
-  const VERSION = "1.0.0";
+  const VERSION = "1.0.5";
   console.info(
     "%c CLIMATE-CLUSTER-CARD %c v" + VERSION + " ",
     "color:#0b0f16;background:#4fc3f7;font-weight:700;border-radius:4px 0 0 4px;padding:2px 6px",
@@ -368,7 +368,6 @@
         }
         return null;
       };
-      out.power = cfg.power_switch || pick("_power", "switch");
       out.boost = pick("_boost_mode", "switch");
       out.eco = pick("_eco_mode", "switch");
       out.comfort = pick("_comfort_mode", "switch");
@@ -2316,7 +2315,6 @@
     sound_entity: "Sound / beep entity (switch.*)",
     show_sound: "Show sound",
     max_height: "Max height",
-    power_switch: "Power switch",
   };
 
   // Per-field helper text (computeHelper).
@@ -2341,7 +2339,6 @@
     sound_entity: "Override the beep/prompt-tone switch. Leave empty to auto-discover (Midea).",
     show_sound: "Auto shows it when the entity resolves; Hide always hides it.",
     max_height: "CSS length cap, e.g. 34vh or 360px. Width follows the dial aspect.",
-    power_switch: "Optional power switch override (used by sibling discovery).",
   };
 
   // snake_case / dotted name -> Title Case (label fallback).
@@ -2427,7 +2424,6 @@
 
         { type: "expandable", name: "", title: "Layout", icon: "mdi:arrange-bring-forward", schema: [
           { name: "max_height", selector: { text: {} } },
-          { name: "power_switch", selector: { entity: { domain: "switch" } } },
         ] },
       ];
     }

@@ -37,7 +37,7 @@ git tag vX.Y.Z
 git push origin vX.Y.Z
 ```
 
-The release workflow (`release.yml`) publishes from the tag. Please do not open pull requests that only bump the version.
+The release workflow (`release.yml`) publishes from the tag. When cutting a release, update the `VERSION` constant in `climate-cluster-card.js` before tagging so the console banner matches the release. Please do not open pull requests that only bump the version.
 
 ## Questions and bugs
 
