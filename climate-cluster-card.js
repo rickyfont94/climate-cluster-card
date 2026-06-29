@@ -304,6 +304,11 @@
         this._refs.pop.removeEventListener("keydown", this._onPopKeydown);
         this._onPopKeydown = null;
       }
+      // The document-level Escape listener lives on document while the popup is
+      // open; detach it here in case the card is removed while still open. Keep
+      // the function reference (the shadow DOM persists across reconnect and is
+      // not rebuilt) so the next _openPop can re-attach it.
+      if (this._onDocKeydown) document.removeEventListener("keydown", this._onDocKeydown, true);
     }
 
     // ============================================================================
@@ -801,6 +806,16 @@
       pop.addEventListener("click", (e) => { if (e.target === pop) this._closePop(); });
       this._onPopKeydown = (e) => this._popKeyDown(e);
       pop.addEventListener("keydown", this._onPopKeydown);
+      // Escape must close the popup no matter where focus landed. The pop-level
+      // handler only fires when focus is INSIDE the dialog, but the popup opens
+      // from the SVG center disc (a sibling of .ct-pop), so an Escape keydown can
+      // bubble up the svg and never reach .ct-pop. A document-level capture
+      // listener (added on open, removed on close) catches Escape regardless.
+      this._onDocKeydown = (e) => {
+        if (this._popOpen && e.key === "Escape") {
+          e.preventDefault(); e.stopPropagation(); this._closePop();
+        }
+      };
       const sheet = document.createElement("div");
       sheet.className = "ct-sheet";
       pop.appendChild(sheet);
@@ -1642,6 +1657,9 @@
       this._buildPop();
       this._paintPop();
       this._refs.pop.classList.add("open");
+      // Catch Escape even when focus never made it into the dialog (dedup by the
+      // DOM: re-adding the same listener is a no-op). Removed in _closePop.
+      if (this._onDocKeydown) document.addEventListener("keydown", this._onDocKeydown, true);
       // a11y (issue #5): move focus into the dialog (active mode -> first mode ->
       // any button). rAF so the element is visible before we focus it.
       const target = this._refs.sheet.querySelector("button[data-mode].active")
@@ -1652,6 +1670,7 @@
     _closePop() {
       this._popOpen = false;
       if (this._refs.pop) this._refs.pop.classList.remove("open");
+      if (this._onDocKeydown) document.removeEventListener("keydown", this._onDocKeydown, true);
       // a11y (issue #5): return focus to the trigger (the center button).
       if (this._refs.centerHit) { try { this._refs.centerHit.focus(); } catch (err) {} }
     }
