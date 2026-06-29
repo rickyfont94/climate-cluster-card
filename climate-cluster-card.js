@@ -6,7 +6,7 @@
  * The render / interaction engine is a wide two-ring arc gauge:
  *   - inner thick ring = TEMPERATURE (drag to set), outer thin ring = FAN SPEED.
  *   - manual letterbox pointer mapping (NOT getScreenCTM), build-once-then-patch,
- *     optimistic paint + 1500ms echo-guard, commit-on-pointerUP, window-bound
+ *     optimistic paint reconciled against live state, commit-on-pointerUP, window-bound
  *     move/up listeners, touch-swipe kill so the view doesn't navigate on drag.
  *   - center tap -> glass MODE POPUP with a TOGGLES ROW (SWING / LED / SOUND).
  *   - frosted-glass slab (its own backdrop-blur div, never on :host/.ct-card so the
@@ -115,6 +115,13 @@
   const FAN_MIN = 1;
   const FAN_MAX = 100;
   const FAN_STEP = 5;
+
+  // Optimistic-paint safety timeout (ms). We hold the optimistic value until the
+  // entity reports the value we asked for (then clear immediately, see
+  // _reconcileOptimistic), so a slow device no longer flickers back then jumps.
+  // This is only the fallback for a device that never confirms; a rejected
+  // service call reverts sooner via its .catch() (issue #9).
+  const OPT_HOLD_MS = 5000;
 
   // fraction 0..1 along the arc -> snapped percent in {1, 5,10,...,100}.
   function fanSnapPct(frac) {
@@ -783,7 +790,108 @@
     }
 
     // ============================================================================
-    // DRAG-TO-SET  (commit-on-pointerUP; optimistic paint + 1500ms echo-guard)
+    // SERVICE CALLS  (failure-aware: optimistic paint must self-correct, issue #9)
+    // ============================================================================
+    // Fire a service call and handle BOTH failure modes: callService can throw
+    // synchronously (e.g. no _hass), and the promise it returns can reject (the
+    // device refused / connection dropped). On either, run onRevert so the
+    // optimistic paint drops back to real state instead of holding a false
+    // success that snaps back on a blind timer.
+    _svc(domain, service, data, onRevert) {
+      if (!this._hass) return;
+      let p;
+      try {
+        p = this._hass.callService(domain, service, data);
+      } catch (e) {
+        console.warn("climate-cluster-card: " + domain + "." + service + " failed", e);
+        if (onRevert) onRevert();
+        return;
+      }
+      if (p && typeof p.then === "function") {
+        p.catch((e) => {
+          console.warn("climate-cluster-card: " + domain + "." + service + " failed", e);
+          if (onRevert) onRevert();
+        });
+      }
+    }
+
+    // ---- optimistic reverts (drop the optimistic value, repaint real state) ----
+    _revertTemp() {
+      this._optimisticTarget = null;
+      this._optimisticUntil = 0;
+      this._render();
+    }
+    _revertFan() {
+      this._optimisticFanPct = null;
+      this._optimisticFanName = null;
+      this._optimisticFanUntil = 0;
+      this._render();
+    }
+    _revertToggle(kind) {
+      if (this._optToggle) this._optToggle[kind] = null;
+      if (this._popOpen) this._paintPop();
+      this._render();
+    }
+
+    // Reconcile optimistic paints against the real incoming state (issue #9):
+    // the moment the entity reports the value we asked for, drop the optimistic
+    // hold so we track live state again (no flicker-then-jump on a slow device).
+    // A failed call never matches, so it falls through to the OPT_HOLD_MS
+    // fallback (and its .catch() reverts it sooner). Skipped mid-drag: the user
+    // still owns the value until they release.
+    _reconcileOptimistic(attr) {
+      if (this._dragging) return;
+      const now = Date.now();
+
+      // TEMP: optimistic is stored in DISPLAY units, so compare display-side.
+      if (this._optimisticUntil) {
+        if (now >= this._optimisticUntil) {
+          this._optimisticTarget = null;
+          this._optimisticUntil = 0;
+        } else {
+          const liveT = this._toDisplay(num(attr.temperature));
+          if (liveT != null && this._optimisticTarget != null
+              && Math.abs(liveT - this._optimisticTarget) < 0.1) {
+            this._optimisticTarget = null;
+            this._optimisticUntil = 0;
+          }
+        }
+      }
+
+      // FAN: percent reconciles against the number entity; a named mode against
+      // climate.fan_mode.
+      if (this._optimisticFanUntil) {
+        if (now >= this._optimisticFanUntil) {
+          this._optimisticFanPct = null;
+          this._optimisticFanName = null;
+          this._optimisticFanUntil = 0;
+        } else if (this._optimisticFanPct != null) {
+          const id = this._fanNumberId();
+          const liveP = id ? num((this._st(id) || {}).state) : null;
+          if (liveP != null && Math.abs(liveP - this._optimisticFanPct) < 0.5) {
+            this._optimisticFanPct = null;
+            this._optimisticFanUntil = 0;
+          }
+        } else if (this._optimisticFanName != null) {
+          if (String(attr.fan_mode).toLowerCase() === String(this._optimisticFanName).toLowerCase()) {
+            this._optimisticFanName = null;
+            this._optimisticFanUntil = 0;
+          }
+        }
+      }
+
+      // TOGGLES (swing / led / sound): clear once the live on/off matches the flag.
+      if (this._optToggle) {
+        ["swing", "led", "sound"].forEach((kind) => {
+          const o = this._optToggle[kind];
+          if (!o) return;
+          if (now >= o.until || this._liveFeatureOn(kind) === o.val) this._optToggle[kind] = null;
+        });
+      }
+    }
+
+    // ============================================================================
+    // DRAG-TO-SET  (commit-on-pointerUP; optimistic paint, reconciled to live state)
     // ============================================================================
     _ringPointerDown(e, ring) {
       const s = this._st(this._config.entity);
@@ -836,7 +944,7 @@
         this._pendingTemp = t;
         // optimistic paint every move; NO service call here.
         this._optimisticTarget = t;
-        this._optimisticUntil = Date.now() + 1500;
+        this._optimisticUntil = Date.now() + OPT_HOLD_MS;
         this._paintTempArc(t);
       } else if (this._active === "fan") {
         if (this._fanNumberId()) {
@@ -845,7 +953,7 @@
           this._fanPendingPct = p;
           this._optimisticFanPct = p;
           this._optimisticFanName = null;
-          this._optimisticFanUntil = Date.now() + 1500;
+          this._optimisticFanUntil = Date.now() + OPT_HOLD_MS;
           this._paintFanPct(p);
         } else {
           const names = this._fanNamedModes();
@@ -855,7 +963,7 @@
           this._fanPendingName = names[i];
           this._optimisticFanName = names[i];
           this._optimisticFanPct = null;
-          this._optimisticFanUntil = Date.now() + 1500;
+          this._optimisticFanUntil = Date.now() + OPT_HOLD_MS;
           this._paintFanNamed(names, names[i]);
         }
       }
@@ -864,17 +972,16 @@
     // ---- TEMPERATURE service calls (signature preserved; value unit-converted) ----
     _callTemp(t) {
       if (t == null || !this._hass) return;
-      try {
-        this._hass.callService("climate", "set_temperature",
-          { entity_id: this._config.entity, temperature: this._toHa(t) });
-      } catch (e) {}
+      this._svc("climate", "set_temperature",
+        { entity_id: this._config.entity, temperature: this._toHa(t) },
+        () => this._revertTemp());
     }
     _commitTemp(t) {
       if (t == null || !this._hass) return;
       const s = this._st(this._config.entity);
       if (!s) return;
       this._optimisticTarget = t;
-      this._optimisticUntil = Date.now() + 1500;
+      this._optimisticUntil = Date.now() + OPT_HOLD_MS;
       this._paintTempArc(t);
       this._callTemp(t);
     }
@@ -893,26 +1000,25 @@
       if (!this._hass) return;
       const id = this._fanNumberId();
       if (!id) {
-        try {
-          this._hass.callService("climate", "set_fan_mode",
-            { entity_id: this._config.entity, fan_mode: this._fanNamedForPct(p) });
-        } catch (e) {}
+        this._svc("climate", "set_fan_mode",
+          { entity_id: this._config.entity, fan_mode: this._fanNamedForPct(p) },
+          () => this._revertFan());
         return;
       }
-      try {
-        const s = this._st(this._config.entity);
-        if (s && String(s.attributes.fan_mode).toLowerCase() === "auto") {
-          this._hass.callService("climate", "set_fan_mode",
-            { entity_id: this._config.entity, fan_mode: this._fanNamedForPct(p) });
-        }
-        this._hass.callService("number", "set_value",
-          { entity_id: id, value: clamp(p, FAN_MIN, FAN_MAX) });
-      } catch (e) {}
+      const s = this._st(this._config.entity);
+      if (s && String(s.attributes.fan_mode).toLowerCase() === "auto") {
+        this._svc("climate", "set_fan_mode",
+          { entity_id: this._config.entity, fan_mode: this._fanNamedForPct(p) },
+          () => this._revertFan());
+      }
+      this._svc("number", "set_value",
+        { entity_id: id, value: clamp(p, FAN_MIN, FAN_MAX) },
+        () => this._revertFan());
     }
     _commitFanPct(p) {
       this._optimisticFanPct = clamp(p, FAN_MIN, FAN_MAX);
       this._optimisticFanName = null;
-      this._optimisticFanUntil = Date.now() + 1500;
+      this._optimisticFanUntil = Date.now() + OPT_HOLD_MS;
       this._paintFanPct(this._optimisticFanPct);
       this._callFanPct(this._optimisticFanPct);
     }
@@ -921,7 +1027,7 @@
       if (!name) return;
       this._optimisticFanName = name;
       this._optimisticFanPct = null;
-      this._optimisticFanUntil = Date.now() + 1500;
+      this._optimisticFanUntil = Date.now() + OPT_HOLD_MS;
       this._paintFanNamed(this._fanNamedModes(), name);
       this._svcSetFanMode(name);
     }
@@ -932,10 +1038,11 @@
       this._optimisticFanPct = null;
       this._optimisticFanName = null;
       this._paintFanAuto();
-      try {
-        this._hass.callService("climate", "set_fan_mode",
-          { entity_id: this._config.entity, fan_mode: "auto" });
-      } catch (e) {}
+      // No optimistic value to revert here (AUTO drops optimism above); on
+      // failure just repaint live state so the ring snaps back to reality.
+      this._svc("climate", "set_fan_mode",
+        { entity_id: this._config.entity, fan_mode: "auto" },
+        () => this._render());
     }
 
     // Fan ICON tap. Movement-thresholded so a drag never fires it.
@@ -1013,7 +1120,8 @@
       if (m.kind === "switch") {
         const st = this._st(m.ref);
         const on = !!(st && st.state === "on");
-        try { this._hass.callService("switch", on ? "turn_off" : "turn_on", { entity_id: m.ref }); } catch (e) {}
+        this._svc("switch", on ? "turn_off" : "turn_on", { entity_id: m.ref },
+          () => this._revertToggle("swing"));
         return;
       }
       // climate generic: toggle between first non-off swing_mode and "off".
@@ -1029,19 +1137,24 @@
       const ref = kind === "led" ? this._ledRef() : this._soundRef();
       return !!(ref && this._st(ref));
     }
-    // Optimistic-or-live on/off (1500ms echo-guard like temp/fan).
-    _featureOn(kind) {
-      const o = this._optToggle && this._optToggle[kind];
-      if (o && Date.now() < o.until) return o.val;
+    // Raw live on/off for a feature, bypassing any optimistic hold (used by the
+    // reconciler to decide when the real state has caught up).
+    _liveFeatureOn(kind) {
       if (kind === "swing") return this._swingIsOn();
       const ref = kind === "led" ? this._ledRef() : this._soundRef();
       const st = ref ? this._st(ref) : null;
       return !!(st && st.state === "on");
     }
+    // Optimistic-or-live on/off (held until reconciled or OPT_HOLD_MS, like temp/fan).
+    _featureOn(kind) {
+      const o = this._optToggle && this._optToggle[kind];
+      if (o && Date.now() < o.until) return o.val;
+      return this._liveFeatureOn(kind);
+    }
     _featureToggle(kind) {
       if (kind === "swing") {
         this._optToggle = this._optToggle || {};
-        this._optToggle.swing = { val: !this._swingIsOn(), until: Date.now() + 1500 };
+        this._optToggle.swing = { val: !this._swingIsOn(), until: Date.now() + OPT_HOLD_MS };
         this._paintPop();
         this._swingToggle();
         return;
@@ -1051,9 +1164,10 @@
       const st = this._st(ref);
       const on = !!(st && st.state === "on");
       this._optToggle = this._optToggle || {};
-      this._optToggle[kind] = { val: !on, until: Date.now() + 1500 };
+      this._optToggle[kind] = { val: !on, until: Date.now() + OPT_HOLD_MS };
       this._paintPop();
-      try { this._hass.callService("switch", on ? "turn_off" : "turn_on", { entity_id: ref }); } catch (e) {}
+      this._svc("switch", on ? "turn_off" : "turn_on", { entity_id: ref },
+        () => this._revertToggle(kind));
     }
 
     // ---- face VERTICAL SWING chip ----
@@ -1065,11 +1179,11 @@
       this._render(); // optimistic face repaint
     }
 
-    // ---- service-call signatures preserved for contract parity ----
-    _svcSetSwingMode(v) { try { this._hass.callService("climate", "set_swing_mode", { entity_id: this._config.entity, swing_mode: v }); } catch (e) {} }
-    _svcSetPresetMode(v) { try { this._hass.callService("climate", "set_preset_mode", { entity_id: this._config.entity, preset_mode: v }); } catch (e) {} }
-    _svcSetFanMode(v) { try { this._hass.callService("climate", "set_fan_mode", { entity_id: this._config.entity, fan_mode: v }); } catch (e) {} }
-    _svcPower(on) { try { this._hass.callService("climate", on ? "turn_on" : "turn_off", { entity_id: this._config.entity }); } catch (e) {} }
+    // ---- service-call signatures preserved for contract parity (failure-aware) ----
+    _svcSetSwingMode(v) { this._svc("climate", "set_swing_mode", { entity_id: this._config.entity, swing_mode: v }, () => this._revertToggle("swing")); }
+    _svcSetPresetMode(v) { this._svc("climate", "set_preset_mode", { entity_id: this._config.entity, preset_mode: v }, () => this._render()); }
+    _svcSetFanMode(v) { this._svc("climate", "set_fan_mode", { entity_id: this._config.entity, fan_mode: v }, () => this._revertFan()); }
+    _svcPower(on) { this._svc("climate", on ? "turn_on" : "turn_off", { entity_id: this._config.entity }, () => this._render()); }
 
     // ============================================================================
     // MODE POPUP  (from config.modes or hvac_modes; active = UI accent)
@@ -1125,14 +1239,14 @@
         const ent = this._config.entity;
         const s = this._st(ent);
         const isOff = s && s.state === "off";
-        try {
-          if (mode === "off") {
-            this._hass.callService("climate", "turn_off", { entity_id: ent });
-          } else {
-            if (isOff) { try { this._hass.callService("climate", "turn_on", { entity_id: ent }); } catch (e) {} }
-            this._hass.callService("climate", "set_hvac_mode", { entity_id: ent, hvac_mode: mode });
-          }
-        } catch (e) {}
+        // Mode has no optimistic paint (the dial reads live s.state), so on
+        // failure there is nothing to snap back; just repaint live state.
+        if (mode === "off") {
+          this._svc("climate", "turn_off", { entity_id: ent }, () => this._render());
+        } else {
+          if (isOff) this._svc("climate", "turn_on", { entity_id: ent }, () => this._render());
+          this._svc("climate", "set_hvac_mode", { entity_id: ent, hvac_mode: mode }, () => this._render());
+        }
       }
       this._closePop();
     }
@@ -1332,6 +1446,9 @@
       }
 
       const attr = s.attributes || {};
+      // Drop any optimistic hold the moment live state catches up (issue #9), so
+      // the optimistic-vs-live checks below paint live as soon as it is real.
+      this._reconcileOptimistic(attr);
       const mode = s.state;
       const off = mode === "off";
       const accent = this._modeColor(mode);
