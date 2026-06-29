@@ -499,15 +499,20 @@
       // the whole dial as one unlabeled graphic. aria-label is refreshed in _render.
       svg.setAttribute("role", "group");
 
-      // KILL VIEW-SWIPE ON DRAG -- WITHOUT eating page scroll (issue #4). The grab
-      // bands carry touch-action:none (CSS) so a ring drag owns the gesture, while
-      // the card stays pan-y so a vertical swipe elsewhere scrolls the dashboard.
-      // These CAPTURING guards stop the touch from reaching the ancestor's JS swipe
-      // handler; preventDefault is held back until a drag is actually CONFIRMED
-      // (this._dragging) so a non-drag touch can still scroll natively. Pointer
-      // events fire independently, so the ring drag is unaffected.
+      // KILL VIEW-SWIPE/PAGE-SCROLL ON A RING DRAG -- WITHOUT eating page scroll
+      // elsewhere (issues #4 + the touch regression). The grab bands carry
+      // touch-action:none (CSS), but WebKit ignores touch-action on inner SVG nodes
+      // and the browser begins panning within the first few px -- before the 8px
+      // tap-vs-drag threshold -- so the ring gesture is lost to a scroll. Fix: the
+      // moment a touch lands on a ring grab band, _ringPointerDown sets _ringArmed;
+      // from that first move we preventDefault here so the page can never scroll
+      // during the gesture. The 8px threshold no longer gates preventDefault -- it
+      // ONLY decides whether a value is committed (a pure tap arms+claims but commits
+      // nothing). A touch that did NOT start on a ring leaves _ringArmed false, so
+      // this guard stays out of the way and a card-body swipe still scrolls. These
+      // CAPTURING guards also stop the touch reaching an ancestor's JS swipe handler.
       this._onSvgTouchStart = (e) => { e.stopPropagation(); };
-      this._onSvgTouchMove = (e) => { e.stopPropagation(); if (this._dragging && e.cancelable) e.preventDefault(); };
+      this._onSvgTouchMove = (e) => { e.stopPropagation(); if (this._ringArmed && e.cancelable) e.preventDefault(); };
       svg.addEventListener("touchstart", this._onSvgTouchStart, { capture: true, passive: false });
       svg.addEventListener("touchmove", this._onSvgTouchMove, { capture: true, passive: false });
 
@@ -1042,10 +1047,10 @@
       this._active = (rad != null && rad >= PICK_INNER && rad <= PICK_OUTER)
         ? (rad < PICK_SPLIT ? "temp" : "fan")
         : ring;
-      // ARM, don't paint yet: a pure tap must NOT commit a setpoint (issue #4).
-      // We hold off on preventDefault and on the first paint until the pointer
-      // travels past DRAG_THRESH_PX, so a stray tap is discarded and a vertical
-      // swipe that begins here can still start a page scroll.
+      // ARM the gesture NOW so the svg touchmove guard claims it from the very
+      // first move and the page can never scroll mid-drag (touch regression). We
+      // still hold off PAINTING until the pointer travels past DRAG_THRESH_PX, so a
+      // pure tap is discarded and cannot commit a setpoint (issue #4).
       e.stopPropagation();
       this._ringArmed = true;
       this._dragging = false;
@@ -1081,11 +1086,12 @@
       if (!this._ringArmed) return;
       if (!this._dragging) {
         // tap-vs-drag gate: nothing paints or commits until travel crosses the
-        // threshold (same ~8px the fan clover uses). Below it, leave the gesture
-        // free so the browser can still scroll.
+        // threshold (same ~8px the fan clover uses). The gesture is ALREADY claimed
+        // (page scroll blocked) since _ringArmed went true on pointerdown; below the
+        // threshold we simply paint/commit nothing so a tap can't nudge the value.
         const st = this._ringStart;
         if (!st || Math.hypot(e.clientX - st.x, e.clientY - st.y) <= DRAG_THRESH_PX) return;
-        this._dragging = true; // drag CONFIRMED -> from here touchmove preventDefaults
+        this._dragging = true; // drag CONFIRMED -> from here we paint + will commit
       }
       this._applyRingDrag(e);
     }
