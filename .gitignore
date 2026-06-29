@@ -1,0 +1,50 @@
+# Dependencies
+node_modules/
+jspm_packages/
+.pnp/
+.pnp.js
+
+# Build output
+dist/
+build/
+*.tgz
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Caches
+.npm/
+.eslintcache
+.cache/
+.parcel-cache/
+.rollup.cache/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.settings/
+
+# OS cruft
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
