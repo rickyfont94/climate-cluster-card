@@ -583,9 +583,16 @@
       style.textContent = this._css();
       root.appendChild(style);
 
+      // Wrap the dial in a real <ha-card> so it inherits the active theme's
+      // background / border / radius / shadow and becomes the default card-mod
+      // target. The inner .ct-card keeps all the layout + interaction wiring, so
+      // no code that queries .ct-card needs to change. Outside HA, ha-card is an
+      // inert inline element and the dark literal fallbacks below keep the look.
+      const haCard = document.createElement("ha-card");
       const card = document.createElement("div");
       card.className = "ct-card";
-      root.appendChild(card);
+      haCard.appendChild(card);
+      root.appendChild(haCard);
 
       // Frosted-glass slab: its OWN backdrop-blur div BEHIND the svg (z-index:1),
       // a SIBLING of .ct-pop. backdrop-filter lives on THIS div, never on
@@ -748,6 +755,9 @@
         fill: "rgba(234,235,238,.8)", "font-size": "16", "letter-spacing": "4", opacity: ".95",
       }, "COOL");
       this._refs.labelTop.style.fontWeight = "600";
+      // Theme-driven neutral fill (inline style beats the leftover presentation
+      // attr); kept JS-set so the off / unavailable dim states still apply below.
+      this._refs.labelTop.style.fill = "var(--primary-text-color, rgba(234,235,238,.8))";
       svg.appendChild(this._refs.labelTop);
 
       // NOW xx, two-tone: grey "NOW " + bright value.
@@ -756,7 +766,9 @@
         "font-size": "15", "letter-spacing": "2.5",
       });
       this._refs.nowCap.style.fontWeight = "600";
-      this._refs.nowCap.appendChild(el("tspan", { fill: "#8c99a7" }, "NOW "));
+      const nowPrefix = el("tspan", { fill: "#8c99a7" }, "NOW ");
+      nowPrefix.style.fill = "var(--secondary-text-color, #8c99a7)";
+      this._refs.nowCap.appendChild(nowPrefix);
       this._refs.nowVal = el("tspan", { fill: "rgba(234,235,238,.92)" }, "--°");
       this._refs.nowCap.appendChild(this._refs.nowVal);
       svg.appendChild(this._refs.nowCap);
@@ -2053,6 +2065,13 @@
         if (this._refs.ticks) this._refs.ticks.style.display = (this._config.show_scale === false) ? "none" : "";
       }
 
+      // Accent follows the theme: a configured accent always wins, else the
+      // theme's --accent-color, else the signature cyan. Resolved to a CONCRETE
+      // color (not a var() string) so every SVG consumer below keeps working, and
+      // recomputed each render so it tracks live light/dark theme switches.
+      const cfgA = toColor(this._config.accent);
+      this._accent = cfgA || getComputedStyle(this).getPropertyValue("--accent-color").trim() || DEFAULT_ACCENT;
+
       // UI accent var (popup / chips inherit it through the DOM).
       card.style.setProperty("--ct-accent", this._accent);
 
@@ -2062,7 +2081,7 @@
         this._refs.bigNum.textContent = "--";
         this._refs.bigNum.setAttribute("font-size", "104");
         this._refs.labelTop.textContent = s ? s.state.toUpperCase() : "MISSING";
-        this._refs.labelTop.setAttribute("fill", "#6b7a88");
+        this._refs.labelTop.style.fill = "var(--secondary-text-color, #6b7a88)";
         this._refs.nowCap.style.display = "none";
         this._refs.caret.style.display = "none";
         this._refs.curMarker.style.display = "none";
@@ -2147,10 +2166,10 @@
 
       // ---- center labels ----
       this._refs.labelTop.textContent = MODE_LABEL[mode] || mode.toUpperCase();
-      this._refs.labelTop.setAttribute("fill", off ? "#5e6b78" : "rgba(234,235,238,.8)");
+      this._refs.labelTop.style.fill = off ? "var(--disabled-text-color, #5e6b78)" : "var(--primary-text-color, rgba(234,235,238,.8))";
       if (cur != null && showCurrent) {
         this._refs.nowVal.textContent = this._fmt(cur) + "°";
-        this._refs.nowVal.setAttribute("fill", off ? "#8c99a7" : accent);
+        this._refs.nowVal.style.fill = off ? "var(--secondary-text-color, #8c99a7)" : accent;
         this._refs.nowCap.style.display = "";
         this._refs.nowCap.style.opacity = off ? "0.5" : "1";
       } else {
@@ -2286,6 +2305,23 @@
     _css() {
       return `
 :host{ display:block; }
+/* The themed shell. ha-card already paints background / border / radius / shadow
+   from the active theme; overflow:visible preserves the dial, temp needle, fan
+   chevron, the :focus-visible ring, and the .ct-frost drop shadow that bleed past
+   the inner .ct-card box. ha-card sets no transform / filter / contain, so it does
+   NOT become the containing block for the fixed .ct-pop. */
+ha-card{ position:relative; display:block; overflow:visible; }
+/* Neutral structural text follows the theme (these are never runtime fill-patched).
+   CSS fill overrides the SVG presentation attribute. labelTop / the NOW caption /
+   nowVal are deliberately NOT listed here - they stay JS-driven so their off /
+   unavailable dim + per-mode accent states still apply. The heat_cool bigNum tspans
+   carry their OWN cyan/orange fill attrs, which beat this inherited .ct-big value. */
+.ct-title{ fill:var(--primary-text-color, rgba(234,235,238,.92)); }
+.ct-big{ fill:var(--primary-text-color, rgba(234,235,238,.98)); }
+.ct-fanpct{ fill:var(--primary-text-color, rgba(234,235,238,.92)); }
+.ct-fanname{ fill:var(--secondary-text-color, rgba(234,235,238,.7)); }
+.ct-swingcap{ fill:var(--secondary-text-color, rgba(234,235,238,.7)); }
+.ct-ticks text{ fill:var(--secondary-text-color, rgba(234,235,238,.88)); }
 .ct-card{
   position:relative; width:100%; margin:0 auto; overflow:visible;
   --ct-accent:${DEFAULT_ACCENT};
@@ -2323,10 +2359,10 @@
    backdrop-blur div BEHIND the svg, full-card inset; backdrop-filter kept for glass. */
 .ct-frost{
   position:absolute; z-index:1; inset:6px; border-radius:14px;
-  background:rgba(18,22,30,.62);
+  background:var(--ha-card-background, var(--card-background-color, rgba(18,22,30,.62)));
   backdrop-filter:blur(14px) saturate(1.1);
   -webkit-backdrop-filter:blur(14px) saturate(1.1);
-  border:1px solid rgba(255,255,255,.16);
+  border:1px solid var(--divider-color, rgba(255,255,255,.16));
   box-shadow:
     inset 0 2px 10px rgba(255,255,255,.08),
     inset 0 -10px 28px rgba(0,0,0,.42),
@@ -2347,8 +2383,8 @@
 }
 .ct-pop.open{ opacity:1; visibility:visible; pointer-events:auto; transition:opacity .18s ease; }
 .ct-sheet{
-  background:linear-gradient(180deg, rgba(24,31,40,.92), rgba(12,17,23,.94));
-  border:1px solid rgba(234,235,238,.12); border-radius:22px; padding:22px;
+  background:var(--ha-card-background, var(--card-background-color, linear-gradient(180deg, rgba(24,31,40,.92), rgba(12,17,23,.94))));
+  border:1px solid var(--divider-color, rgba(234,235,238,.12)); border-radius:22px; padding:22px;
   -webkit-backdrop-filter:blur(18px) saturate(120%); backdrop-filter:blur(18px) saturate(120%);
   box-shadow:0 24px 60px rgba(0,0,0,.6), inset 0 1px 1px rgba(255,255,255,.05);
   display:grid; grid-template-columns:repeat(3,1fr); gap:12px;
@@ -2358,13 +2394,13 @@
 .ct-pop.open .ct-sheet{ transform:scale(1); }
 .ct-sheet button{
   min-width:120px; padding:18px 14px; cursor:pointer;
-  background:rgba(30,40,52,.55); color:#9aa8b6;
-  border:1px solid rgba(234,235,238,.14); border-radius:12px;
+  background:var(--secondary-background-color, rgba(30,40,52,.55)); color:var(--secondary-text-color, #9aa8b6);
+  border:1px solid var(--divider-color, rgba(234,235,238,.14)); border-radius:12px;
   font:inherit; font-size:15px; letter-spacing:2px; text-transform:uppercase; transition:.15s;
 }
-.ct-sheet button:hover{ border-color:color-mix(in srgb, var(--ct-accent) 45%, transparent); color:#c6d3df; }
+.ct-sheet button:hover{ border-color:color-mix(in srgb, var(--ct-accent) 45%, transparent); color:var(--primary-text-color, #c6d3df); }
 .ct-sheet button.active{
-  background:color-mix(in srgb, var(--ct-accent) 16%, transparent); color:rgba(234,235,238,.98);
+  background:color-mix(in srgb, var(--ct-accent) 16%, transparent); color:var(--primary-text-color, rgba(234,235,238,.98));
   border:1.5px solid var(--ct-accent);
   box-shadow:0 0 14px color-mix(in srgb, var(--ct-accent) 40%, transparent),
     inset 0 0 12px color-mix(in srgb, var(--ct-accent) 14%, transparent);
@@ -2383,11 +2419,11 @@
 .ct-sheet button.ct-toggle{
   min-width:86px; padding:10px 14px;
   display:flex; flex-direction:column; align-items:center; gap:6px;
-  background:rgba(30,40,52,.45); color:#8a98a6;
-  border:1px solid rgba(234,235,238,.14); border-radius:12px;
+  background:var(--secondary-background-color, rgba(30,40,52,.45)); color:var(--secondary-text-color, #8a98a6);
+  border:1px solid var(--divider-color, rgba(234,235,238,.14)); border-radius:12px;
   font-size:12px; letter-spacing:1.5px; line-height:1; transition:.15s;
 }
-.ct-sheet button.ct-toggle:hover{ border-color:color-mix(in srgb, var(--ct-accent) 45%, transparent); color:#c6d3df; }
+.ct-sheet button.ct-toggle:hover{ border-color:color-mix(in srgb, var(--ct-accent) 45%, transparent); color:var(--primary-text-color, #c6d3df); }
 .ct-sheet button.ct-toggle.on{
   color:var(--ct-accent);
   background:color-mix(in srgb, var(--ct-accent) 16%, transparent);
