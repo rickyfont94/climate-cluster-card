@@ -2,7 +2,7 @@
 
 # Climate Cluster Card
 
-A wide-arc, **instrument-cluster** climate card for Home Assistant, drag the **inner ring** for temperature and the **outer ring** for fan speed, with a glass mode popup, swing / LED / sound toggles, a numbered gauge scale, and a full visual editor.
+An instrument-cluster climate dial for Home Assistant that follows your theme.
 
 [![Release](https://img.shields.io/github/v/release/rickyfont94/climate-cluster-card?style=for-the-badge&color=4fc3f7&label=Release)](https://github.com/rickyfont94/climate-cluster-card/releases)
 <!-- HACS Custom for now. This becomes "HACS Default" once the card is accepted into the HACS default store. Leave the badge unchanged until then. -->
@@ -17,13 +17,45 @@ A wide-arc, **instrument-cluster** climate card for Home Assistant, drag the **i
 
 </div>
 
-The **dual-ring AC control** card: set temperature on the inner ring and fan speed on the outer ring at once, in an automotive instrument-cluster face. Built for and tested with **Midea** (`midea_ac_lan`), and works with any `climate.*` entity. Vanilla single-file web component, no dependencies, no build step.
+The **dual-ring AC control** card: drag the **inner ring** for temperature and the **outer ring** for fan speed at once, in a wide-arc automotive instrument-cluster face, with a glass mode popup, swing / LED / sound toggles, a numbered gauge scale, and a full visual editor. Built for and tested with **Midea** (`midea_ac_lan`), and works with any `climate.*` entity. Vanilla single-file web component, no dependencies, no build step.
+
+## Contents
+
+- [Demo](#demo)
+- [Features](#features)
+  - [What's new in v1.1.0](#whats-new-in-v110)
+- [Screenshots](#screenshots)
+- [Theming and frosted glass](#theming-and-frosted-glass)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Usage](#usage)
+- [Fan control (Midea and generic)](#fan-control-midea-and-generic)
+- [Options](#options)
+- [Sections view](#sections-view)
+- [Troubleshooting](#troubleshooting)
+- [FAQ](#faq)
+- [Known limitations](#known-limitations)
+- [Notes](#notes)
+- [Translations](#translations)
+- [Contributing](#contributing)
+- [License](#license)
 
 ## Demo
 
 <img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/demo.gif" alt="Climate Cluster Card demo" width="470">
 
 ## Features
+
+### What's new in v1.1.0
+
+- **Follows your Home Assistant theme** - the card now renders on `ha-card` and adapts to light and dark automatically; `accent`, `mode_colors`, and `font` still override.
+- **Configurable center actions** - `tap_action` / `hold_action` / `double_tap_action` (default tap opens the mode menu, hold opens more-info).
+- **English + Spanish built in** - labels auto-select from your Home Assistant language.
+- **Generic fan support** - the fan ring now works with non-Midea `climate` / `fan` entities, honoring the entity's real range or its `fan_modes`.
+- **Correct Sections-view sizing** - the dial sizes properly in the grid Sections layout.
+- **Bug fixes** - the gauge no longer vanishes when `min == max`, whole degrees drop the trailing `.0`, the `show_swing` / `show_led` / `show_sound` choice is honored, and the font falls back cleanly to your theme font.
+
+No breaking changes, safe to update via HACS.
 
 - **Wide-arc instrument dial** - a car-cluster gauge with a numbered tick scale, a glowing setpoint needle, and a current-temp marker.
 - **Two-ring control** - drag the **inner ring** to set the target temperature and the **outer ring** to set the fan speed.
@@ -41,6 +73,50 @@ The **dual-ring AC control** card: set temperature on the inner ring and fan spe
   <td><img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/preview.png" alt="Two-ring dial" width="360"><br><b>Two-ring dial</b> - inner=temp, outer=fan</td>
   <td><img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/view-modes.png" alt="Mode popup" width="360"><br><b>Mode popup</b> - modes + Swing/LED/Sound</td>
 </tr></table>
+
+## Theming and frosted glass
+
+The card renders inside a standard Home Assistant `ha-card`, so it follows your **active theme automatically** in both light and dark, picking up the theme's card background, text, and font variables. The dial now reads on light themes too: the gesture hint labels and the numbered tick scale stay legible against a light background. Drop it on any dashboard and it blends in with no configuration.
+
+When you want to deviate from the theme, three options override the defaults:
+
+- `accent` - the primary UI accent color.
+- `mode_colors` - per-mode color overrides (e.g. `cool: "#4fc3f7"`).
+- `font` (and optional `font_url`) - the font family for the numerals.
+
+```yaml
+type: custom:climate-cluster-card
+entity: climate.living_room
+accent: "#ffb74d"
+mode_colors:
+  cool: "#4fc3f7"
+  heat: "#ff7043"
+```
+
+![Light theme](assets/theme-light.png)
+![Dark theme](assets/theme-dark.png)
+
+### Frosted glass
+
+By default `appearance: theme` keeps the themed card. Set `appearance` to `glass-dark` or `glass-light` to force a translucent frosted-glass panel that frosts the dashboard wallpaper behind it and holds its look on any theme: `glass-dark` is a dark indigo finish, `glass-light` a bright one.
+
+Two more options tune the panel:
+
+- `glass_color` - tints the frosted-glass panel (frosted-glass appearances only).
+- `glass_opacity` - how solid the panel is, `0` clear to `1` solid (frosted-glass appearances only).
+
+```yaml
+type: custom:climate-cluster-card
+entity: climate.living_room
+appearance: glass-dark
+glass_color: "#2a6f6a"
+glass_opacity: 0.6
+```
+
+![Aurora glass](assets/glass-aurora.png)
+![Teal glass](assets/glass-teal.png)
+![Grey glass](assets/glass-grey.png)
+![Purple glass](assets/glass-purple.png)
 
 ## Requirements
 
@@ -67,6 +143,8 @@ One-click: the **My Home Assistant** badge above opens this repository directly 
 5. Hard-refresh your browser.
 
 HACS registers the resource as `type: module` automatically, no manual resource entry or `?v=` cache-buster needed.
+
+> After **updating** in HACS, hard-refresh the browser (Ctrl+F5 / Cmd+Shift+R) or clear its cache so the new version loads. A cached old build is the usual reason an update looks like it did nothing.
 
 ### Manual
 
@@ -115,6 +193,31 @@ fan_animation: true
 fan_animation_speed: dynamic
 ```
 
+## Fan control (Midea and generic)
+
+The **outer ring** sets fan speed. How that speed is sourced depends on the entity.
+
+**Midea (`midea_ac_lan`) - auto-wired**
+
+With a Midea unit the card discovers the `number.*_fan_speed` sibling on its own, so the outer ring is a smooth 1-100 % control with no extra config.
+
+```yaml
+type: custom:climate-cluster-card
+entity: climate.living_room
+```
+
+**Generic climate - explicit fan entity**
+
+For a non-Midea entity, point `fan_entity` at a percent `number.*` helper, or rely on the entity's named `fan_modes`, which the ring drives as discrete stops.
+
+```yaml
+type: custom:climate-cluster-card
+entity: climate.bedroom
+fan_entity: number.bedroom_fan_speed
+```
+
+`show_fan` controls the ring's visibility. Left unset it auto-detects (shown when a percent entity or `fan_modes` exist, hidden otherwise); set `show_fan: true` or `false` to force it.
+
 ## Options
 
 All options are optional except `entity`. Defaults reproduce sensible behavior, and the visual editor exposes every option.
@@ -132,6 +235,9 @@ All options are optional except `entity`. Defaults reproduce sensible behavior, 
 | `mode_colors` | map | built-in | Per-mode color overrides (e.g. `cool: "#4fc3f7"`). |
 | `font` | string | unset | Font family prepended to the default stack (Rajdhani-if-installed, then your HA theme font). |
 | `font_url` | string | unset | Optional stylesheet URL (e.g. a Google Fonts link) that loads the `font`. No font is fetched by default. |
+| `appearance` | `theme` \| `glass-dark` \| `glass-light` | `theme` | Card background. `theme` follows your active Home Assistant theme (light and dark); `glass-dark` / `glass-light` force a translucent frosted-glass panel that frosts the dashboard wallpaper behind it. |
+| `glass_color` | color | per-variant | Tint for the frosted-glass panel. Applies only to the `glass-dark` / `glass-light` appearances. |
+| `glass_opacity` | number `0`..`1` | per-variant | How solid the frosted-glass panel is, `0` clear to `1` solid. Applies only to the frosted-glass appearances. |
 | `temperature_unit` | `auto` \| `F` \| `C` | `auto` | `auto` uses HA's unit system / the entity's `temperature_unit`. |
 | `min_temp` | number | entity `min_temp` | Lower bound of the dial. |
 | `max_temp` | number | entity `max_temp` | Upper bound of the dial. |
@@ -191,13 +297,38 @@ double_tap_action:
 
 Dragging the rings and tapping the clover are unaffected by these actions; the tap/hold/double-tap detector lives on the center disc and respects the drag threshold, so a swipe is never read as a tap.
 
+All three center gestures are configurable together. Leave `tap_action` unset to keep the default mode popup:
+
+```yaml
+type: custom:climate-cluster-card
+entity: climate.living_room
+tap_action:
+  action: more-info
+hold_action:
+  action: navigate
+  navigation_path: /lovelace/climate
+double_tap_action:
+  action: toggle
+```
+
 **Resolution order (everywhere):** explicit config → auto-discovered Midea sibling → generic climate attribute → hide.
+
+## Sections view
+
+In the grid **Sections** layout the card fills its grid cell width and scales the dial to fit, so it sits flush next to other cards instead of overflowing the column. Use `max_height` to cap how tall it grows in a tall cell:
+
+```yaml
+type: custom:climate-cluster-card
+entity: climate.living_room
+max_height: 34vh
+```
 
 ## Troubleshooting
 
 - **Blank card.** The resource must be registered as **`type: module`** (HACS does this automatically). A stale manual resource of the wrong type is the usual cause, fix it and hard-refresh.
 - **Fan ring missing.** The entity has neither a `number.*_fan_speed` nor named `fan_modes`. Set `fan_entity` explicitly or add a percent number helper.
 - **A toggle (swing/LED/sound) doesn't appear.** Nothing resolved, set the matching `*_entity`, or set `show_swing` / `show_led` / `show_sound` to `true`.
+- **An update did not take effect.** The browser is serving a cached build. Hard-refresh (Ctrl+F5 / Cmd+Shift+R), or clear the cache, after updating in HACS.
 
 ## FAQ
 
@@ -243,6 +374,8 @@ The card prefers the **Rajdhani** font for its numerals when it is installed loc
 Midea is a trademark of its respective owner. This project is independent and unaffiliated.
 
 ## Translations
+
+**English and Spanish ship built in** and auto-select from your Home Assistant language; everything else falls back to English.
 
 The card follows your Home Assistant language. HVAC mode names and fan mode names are localized through Home Assistant itself, so they always match the rest of your dashboard. The card's own labels (NOW, SWING, LED, SOUND, AUTO), tooltips, screen-reader text and editor labels ship with English and Spanish, and numbers (temperatures, the tick scale) are formatted with your locale's decimal separator and grouping.
 
