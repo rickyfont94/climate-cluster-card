@@ -362,6 +362,11 @@
   // pointer moves past this. A pure tap never crosses it, so it can't nudge a
   // setpoint, and a vertical swipe that starts here can still scroll (issue #4).
   const DRAG_THRESH_PX = 8;
+  // A finger tap jitters more than a mouse click, so the center tap/hold uses a larger
+  // cancel slop on touch. Below this a tap still fires (opens the mode popup); above it
+  // the gesture is treated as a swipe. Too small here = the "white square but no popup"
+  // bug where a touch tap is misread as a drag and discarded.
+  const CENTER_TAP_SLOP = 16;
 
   // ---- center-disc tap / hold / double-tap action timing ------------------
   // HOLD_MS: a pointer held still on the center disc past this fires hold_action.
@@ -647,10 +652,15 @@
       this._dragging = false;
       this._ringArmed = false;
       this._ringStart = null;
+      this._touchOnRing = false;
       // Capturing touch guards live on the svg; tear them down here.
       if (this._svg) {
         if (this._onSvgTouchStart) this._svg.removeEventListener("touchstart", this._onSvgTouchStart, true);
         if (this._onSvgTouchMove) this._svg.removeEventListener("touchmove", this._onSvgTouchMove, true);
+        if (this._onSvgTouchEnd) {
+          this._svg.removeEventListener("touchend", this._onSvgTouchEnd, true);
+          this._svg.removeEventListener("touchcancel", this._onSvgTouchEnd, true);
+        }
       }
       // Move/up listeners live on window (survive a failed setPointerCapture).
       if (this._onRingMove) window.removeEventListener("pointermove", this._onRingMove);
@@ -957,10 +967,29 @@
       // nothing). A touch that did NOT start on a ring leaves _ringArmed false, so
       // this guard stays out of the way and a card-body swipe still scrolls. These
       // CAPTURING guards also stop the touch reaching an ancestor's JS swipe handler.
-      this._onSvgTouchStart = (e) => { e.stopPropagation(); };
-      this._onSvgTouchMove = (e) => { e.stopPropagation(); if (this._ringArmed && e.cancelable) e.preventDefault(); };
+      this._onSvgTouchStart = (e) => {
+        e.stopPropagation();
+        // Arm the scroll-block on TOUCHSTART, not on pointerdown: iOS WebKit often
+        // fires the first touchmove BEFORE the synthesized pointerdown, so _ringArmed
+        // is still false on that move, the page begins scrolling, and a late
+        // preventDefault is ignored. _touchOnRing is set the instant a touch lands on
+        // a ring grab band (radius inside the dial) so the very first touchmove is
+        // preventDefaulted. It is independent of _ringArmed (which still gates the
+        // pointer-driven commit) and is cleared on touchend/cancel below.
+        this._touchOnRing = false;
+        const t = e.touches && e.touches[0];
+        if (!t || this._popOpen) return;
+        const s = this._st(this._config.entity);
+        if (!s || s.state === "off" || s.state === "unavailable" || s.state === "unknown") return;
+        const rad = this._eventToRadius({ clientX: t.clientX, clientY: t.clientY });
+        if (rad != null && rad >= PICK_INNER && rad <= PICK_OUTER) this._touchOnRing = true;
+      };
+      this._onSvgTouchMove = (e) => { e.stopPropagation(); if ((this._ringArmed || this._touchOnRing) && e.cancelable) e.preventDefault(); };
+      this._onSvgTouchEnd = () => { this._touchOnRing = false; };
       svg.addEventListener("touchstart", this._onSvgTouchStart, { capture: true, passive: false });
       svg.addEventListener("touchmove", this._onSvgTouchMove, { capture: true, passive: false });
+      svg.addEventListener("touchend", this._onSvgTouchEnd, { capture: true, passive: true });
+      svg.addEventListener("touchcancel", this._onSvgTouchEnd, { capture: true, passive: true });
 
       // ---- defs: gradients + tight glow filters ----
       const defs = el("defs");
@@ -1323,18 +1352,13 @@
       // tiny captions are hidden via the ct-compact class (CSS in _css). Guarded so it
       // no-ops on engines without ResizeObserver. width 0 (hidden/detached) stays
       // non-compact so there is no compact flash before the first real layout.
+      // Compact-mode relayout removed: hiding the ticks + tiny captions below a width
+      // breakpoint made the dial visibly RE-LAY-OUT when the browser was merely zoomed
+      // (the card's CSS-px width crosses the breakpoint), which reads as broken. The SVG
+      // already scales uniformly via its viewBox, so we keep ONE layout at every size.
+      // The .ct-compact CSS and the connected/disconnected _ro guards stay as harmless
+      // no-ops (this._ro is never created).
       this._compact = false;
-      if (typeof ResizeObserver !== "undefined") {
-        this._ro = new ResizeObserver((entries) => {
-          const w = entries[0] && entries[0].contentRect ? entries[0].contentRect.width : 0;
-          const compact = w > 0 && w < COMPACT_W;
-          if (compact !== this._compact) {
-            this._compact = compact;
-            card.classList.toggle("ct-compact", compact);
-          }
-        });
-        this._ro.observe(card);
-      }
     }
 
     // Re-observe after a reconnect (the shadow DOM persists, so .ct-card is reused).
@@ -2063,6 +2087,7 @@
       if (e.button && e.button !== 0) return;
       e.stopPropagation();
       this._centerStart = { x: e.clientX, y: e.clientY };
+      this._centerPointerType = e.pointerType || "mouse";
       this._centerMoved = false;
       this._centerHeld = false;
       this._setPress(true);
@@ -2087,8 +2112,9 @@
     _centerPointerMove(e) {
       const st = this._centerStart;
       if (!st) return;
-      if (Math.hypot(e.clientX - st.x, e.clientY - st.y) > DRAG_THRESH_PX) {
-        // a swipe off the disc: never a tap or hold (respects DRAG_THRESH_PX like the ring).
+      const slop = this._centerPointerType === "touch" ? CENTER_TAP_SLOP : DRAG_THRESH_PX;
+      if (Math.hypot(e.clientX - st.x, e.clientY - st.y) > slop) {
+        // a swipe off the disc: never a tap or hold (touch gets a wider slop than mouse).
         this._centerMoved = true;
         this._setPress(false);
         if (this._centerHoldTimer) { clearTimeout(this._centerHoldTimer); this._centerHoldTimer = null; }
@@ -2913,7 +2939,7 @@
     // ============================================================================
     _css() {
       return `
-:host{ display:block; }
+:host{ display:block; -webkit-tap-highlight-color:transparent; }
 /* The themed shell. ha-card already paints background / border / radius / shadow
    from the active theme; overflow:visible preserves the dial, temp needle, fan
    chevron, the :focus-visible ring, and the .ct-frost drop shadow that bleed past
@@ -2963,7 +2989,7 @@ ha-card{ position:relative; display:block; overflow:visible; }
 /* The interactive grab bands/buttons own the touch: touch-action:none keeps the
    browser from stealing a ring drag for a scroll. The tap-vs-drag threshold (JS)
    makes sure a pure tap on a band is still discarded, not committed. */
-.ct-hit{ cursor:pointer; touch-action:none; }
+.ct-hit{ cursor:pointer; touch-action:none; -webkit-tap-highlight-color:transparent; -webkit-user-select:none; user-select:none; }
 /* Center press-feedback disc (issue #15): faint accent fill flashed on a center
    pointerdown. Opacity-only transition so it survives prefers-reduced-motion and
    never clobbers a presentation transform. */
