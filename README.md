@@ -28,6 +28,7 @@ The **dual-ring AC control** card: set temperature on the inner ring and fan spe
 - **Wide-arc instrument dial** - a car-cluster gauge with a numbered tick scale, a glowing setpoint needle, and a current-temp marker.
 - **Two-ring control** - drag the **inner ring** to set the target temperature and the **outer ring** to set the fan speed.
 - **Glass mode popup** - tap the center to open a frosted mode picker (`cool` / `heat` / `heat_cool` / `dry` / `fan_only` / `auto` / `off`) with per-mode glyphs; the center caret follows `hvac_action` (down = cooling, up = heating).
+- **Discoverable gestures + custom actions** - faint MODE / FAN / AUTO hints and press feedback show the dial is interactive; the center supports the standard `tap_action` / `hold_action` / `double_tap_action` (hold opens more-info by default).
 - **On-card feature toggles** - swing, LED display, and beep/sound toggles, auto-wired to Midea sibling entities when present.
 - **Fan animation** - a clover fan that can spin proportional to the fan value, at a constant rate, or off.
 - **Fahrenheit & Celsius** - unit, range, and step auto-detected from Home Assistant (or set them explicitly).
@@ -137,6 +138,7 @@ All options are optional except `entity`. Defaults reproduce sensible behavior, 
 | `temp_step` | number | entity `target_temp_step` | Setpoint step increment. |
 | `show_scale` | bool | `true` | Show the numbered tick scale. |
 | `show_current` | bool | `true` | Show the current ("NOW") reading. |
+| `show_hints` | bool | `true` | Show the faint MODE / FAN / AUTO gesture hint labels. |
 
 #### Modes
 
@@ -168,6 +170,27 @@ All options are optional except `entity`. Defaults reproduce sensible behavior, 
 |---|---|---|---|
 | `max_height` | CSS length | unset | Caps the card height. |
 
+#### Actions
+
+The center disc supports the standard Home Assistant action config. Each takes an action object (e.g. `action: more-info`, `action: navigate`, `action: call-service`, `action: toggle`, `action: url`, `action: none`).
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `tap_action` | action | open the mode popup | Action on a single center tap. Leave unset to keep the mode menu. |
+| `hold_action` | action | `more-info` | Action on a center press-and-hold. Defaults to the more-info dialog (history, attributes, presets). |
+| `double_tap_action` | action | `none` | Action on a center double tap. Off by default. |
+
+```yaml
+type: custom:climate-cluster-card
+entity: climate.living_room
+hold_action:
+  action: more-info
+double_tap_action:
+  action: toggle
+```
+
+Dragging the rings and tapping the clover are unaffected by these actions; the tap/hold/double-tap detector lives on the center disc and respects the drag threshold, so a swipe is never read as a tap.
+
 **Resolution order (everywhere):** explicit config → auto-discovered Midea sibling → generic climate attribute → hide.
 
 ## Troubleshooting
@@ -194,6 +217,17 @@ When the fan is a percent entity (`number.*_fan_speed`), the outer ring is a con
 Dragging a percent nudges the climate `fan_mode` off `auto` so the chosen speed actually applies (a unit left on `auto` overrides a manual percent). Tapping the lower-left clover returns the fan to `auto`; tapping the center opens the mode popup.
 
 If the climate entity exposes named `fan_modes` instead of a percent entity, the ring drives those discrete stops rather than a 1-100 % sweep.
+
+**What gestures does the dial support?**
+
+- **Tap the center** - opens the mode popup (or runs your `tap_action`).
+- **Press and hold the center** - opens the more-info dialog by default (or runs your `hold_action`).
+- **Double tap the center** - runs your `double_tap_action` (off by default).
+- **Drag the inner ring** - sets the target temperature.
+- **Drag the outer ring** - sets the fan speed.
+- **Tap the lower-left clover** - returns the fan to `auto`.
+
+Faint MODE / FAN / AUTO labels hint at these on a wall tablet where you cannot hover; turn them off with `show_hints: false`.
 
 ## Known limitations
 

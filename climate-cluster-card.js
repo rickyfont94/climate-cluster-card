@@ -120,6 +120,14 @@
   // setpoint, and a vertical swipe that starts here can still scroll (issue #4).
   const DRAG_THRESH_PX = 8;
 
+  // ---- center-disc tap / hold / double-tap action timing ------------------
+  // HOLD_MS: a pointer held still on the center disc past this fires hold_action.
+  // DBL_TAP_MS: the window a second center tap must land in to count as a double
+  // tap. The deferred single-tap is ONLY armed when double_tap_action is set, so
+  // the default (no double action) keeps tap firing immediately (no latency).
+  const HOLD_MS = 500;
+  const DBL_TAP_MS = 250;
+
   // ---- FAN (numeric control) ----------------------------------------------
   // The fan ring drives a number.*_fan_speed entity. Its real range is read from
   // the number entity's own min/max/step attributes (HA `number` entities expose
@@ -154,6 +162,20 @@
   function num(v) { const n = parseFloat(v); return isNaN(n) ? null : n; }
   const cToF = (c) => c * 9 / 5 + 32;
   const fToC = (f) => (f - 32) * 5 / 9;
+
+  // Vanilla HA-style event dispatcher (no custom-card-helpers dependency). composed
+  // is true so the event crosses this card's shadow boundaries up to home-assistant
+  // (mandatory for hass-more-info to actually open the dialog).
+  function fireEvent(node, type, detail, opts) {
+    const ev = new Event(type, {
+      bubbles: opts && opts.bubbles !== undefined ? opts.bubbles : true,
+      cancelable: !!(opts && opts.cancelable),
+      composed: opts && opts.composed !== undefined ? opts.composed : true,
+    });
+    ev.detail = detail == null ? {} : detail;
+    node.dispatchEvent(ev);
+    return ev;
+  }
 
   // Accept either [r,g,b] (editor color_rgb selector) or a plain color string.
   function toColor(v) {
@@ -198,7 +220,7 @@
   const MODE_COLORS_RGB = {};                              // per-mode defaults as [r,g,b]
   for (const k in MODE_COLORS) MODE_COLORS_RGB[k] = colorToRgb(MODE_COLORS[k]);
   // Booleans the CARD treats as on unless explicitly false (seed ON in the editor).
-  const DEFAULT_ON_KEYS = ["show_scale", "show_current", "fan_animation"];
+  const DEFAULT_ON_KEYS = ["show_scale", "show_current", "fan_animation", "show_hints"];
 
   // Polar helper (CW from top): x = cx + r*sin(deg), y = cy - r*cos(deg).
   function polar(cx, cy, r, angDeg) {
@@ -262,6 +284,15 @@
       this._popOpen = false;
       this._popBuilt = false;
       this._refs = {};
+      // center-disc tap / hold / double-tap gesture state (issue #15).
+      this._centerStart = null;
+      this._centerMoved = false;
+      this._centerHeld = false;
+      this._centerHoldTimer = null;
+      this._centerTapTimer = null;
+      this._onCenterMove = null;
+      this._onCenterUp = null;
+      this._lastCenterUp = 0;
     }
 
     // ---- PUBLIC CONTRACT --------------------------------------------------
@@ -403,6 +434,18 @@
       // the function reference (the shadow DOM persists across reconnect and is
       // not rebuilt) so the next _openPop can re-attach it.
       if (this._onDocKeydown) document.removeEventListener("keydown", this._onDocKeydown, true);
+      // center-disc gesture teardown (issue #15): clear timers + window listeners so
+      // a card moved/removed in Lovelace leaks nothing (mirrors the ring/fan-icon path).
+      if (this._centerHoldTimer) { clearTimeout(this._centerHoldTimer); this._centerHoldTimer = null; }
+      if (this._centerTapTimer) { clearTimeout(this._centerTapTimer); this._centerTapTimer = null; }
+      if (this._onCenterMove) window.removeEventListener("pointermove", this._onCenterMove);
+      if (this._onCenterUp) {
+        window.removeEventListener("pointerup", this._onCenterUp);
+        window.removeEventListener("pointercancel", this._onCenterUp);
+      }
+      this._centerStart = null;
+      this._centerMoved = false;
+      this._centerHeld = false;
     }
 
     // ============================================================================
@@ -791,6 +834,14 @@
       });
       svg.appendChild(this._refs.modeGlyph);
 
+      // ---- center press-feedback disc (issue #15): faint accent fill behind the
+      // readout, flashed on a center pointerdown so a touch registers visually.
+      // Inert (.nope) so it never intercepts the tap. fill comes from CSS. ----
+      this._refs.pressDisc = el("circle", {
+        class: "ct-pressdisc nope", cx: 300, cy: 255, r: 86, opacity: "0",
+      });
+      svg.appendChild(this._refs.pressDisc);
+
       // ---- CENTER TEXT BLOCK: glyph(apex) > MODE > NOW xx (two-tone) > big number ----
       this._refs.labelTop = el("text", {
         x: CX, y: 178, "text-anchor": "middle", class: "ct-labeltop nope",
@@ -911,18 +962,47 @@
         this._render(); // optimistic face repaint
       });
 
-      // ---- center disc: tap to open the MODE POPUP ----
-      // a11y (issue #5): a focusable button that opens the mode dialog on Enter/Space.
+      // ---- gesture HINT labels (issue #15): faint MODE / FAN / AUTO micro-labels so
+      // a wall-tablet user sees the dial is interactive. Inert (.nope) so they never
+      // steal a tap; visibility is driven in _render (show_hints + fan availability). ----
+      const hints = el("g", { class: "ct-hints nope" });
+      this._refs.hints = hints;
+      const hintAttrs = {
+        "text-anchor": "middle", "font-size": "10", "letter-spacing": "1.5",
+        "font-weight": "600", fill: "rgba(234,235,238,.4)",
+      };
+      this._refs.hintMode = el("text", Object.assign({ x: 300, y: 371 }, hintAttrs), "MODE");
+      this._refs.hintFan = el("text", Object.assign({ x: 120, y: 360 }, hintAttrs), "FAN");
+      this._refs.hintAuto = el("text", Object.assign({ x: 212, y: 300 }, hintAttrs), "AUTO");
+      hints.appendChild(this._refs.hintMode);
+      hints.appendChild(this._refs.hintFan);
+      hints.appendChild(this._refs.hintAuto);
+      svg.appendChild(hints);
+
+      // ---- center disc: tap / hold / double-tap actions (issues #5 + #15) ----
+      // a11y (issue #5): a focusable button. The pointer scheme (issue #15) routes a
+      // tap to tap_action (default = open the mode popup), a press to hold_action
+      // (default = more-info), and a double tap to double_tap_action (default none),
+      // while respecting DRAG_THRESH_PX so a swipe off the disc is never an action.
       this._refs.centerHit = el("circle", {
         class: "ct-hit", cx: 300, cy: 255, r: 86, fill: "transparent",
         role: "button", tabindex: "0", "aria-label": "Change mode", "aria-haspopup": "dialog",
       });
       svg.appendChild(this._refs.centerHit);
-      this._refs.centerHit.addEventListener("click", (e) => { e.stopPropagation(); this._openPop(); });
+      this._onCenterDown = (e) => this._centerPointerDown(e);
+      this._refs.centerHit.addEventListener("pointerdown", this._onCenterDown);
+      // Swallow the synthetic click that follows a pointer tap (the _lastCenterUp
+      // guard) so the action never double-fires; a pure assistive-tech click (no
+      // preceding pointer flow) still runs the tap action.
+      this._refs.centerHit.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (Date.now() - this._lastCenterUp < 700) return;
+        if (!this._popOpen) this._runTapAction();
+      });
       this._refs.centerHit.addEventListener("keydown", (e) => {
         if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
           e.preventDefault(); e.stopPropagation();
-          if (!this._popOpen) this._openPop();
+          if (!this._popOpen) this._runTapAction();
         }
       });
 
@@ -1654,6 +1734,152 @@
     }
 
     // ============================================================================
+    // CENTER-DISC TAP / HOLD / DOUBLE-TAP  (issue #15)
+    // A self-contained gesture detector on the center disc, independent of the ring
+    // drag (_ringArmed short-circuits it so the two never overlap). It respects
+    // DRAG_THRESH_PX so a swipe off the disc is neither a tap nor a hold, and only
+    // defers the single tap when a double_tap_action is configured (no tap latency
+    // otherwise). The default tap still opens the mode popup; default hold = more-info.
+    // ============================================================================
+    _centerPointerDown(e) {
+      if (this._popOpen || this._ringArmed) return;
+      if (e.button && e.button !== 0) return;
+      e.stopPropagation();
+      this._centerStart = { x: e.clientX, y: e.clientY };
+      this._centerMoved = false;
+      this._centerHeld = false;
+      this._setPress(true);
+      try { e.target.setPointerCapture(e.pointerId); } catch (err) {}
+      this._onCenterMove = (ev) => this._centerPointerMove(ev);
+      this._onCenterUp = (ev) => this._centerPointerUp(ev);
+      window.addEventListener("pointermove", this._onCenterMove);
+      window.addEventListener("pointerup", this._onCenterUp);
+      window.addEventListener("pointercancel", this._onCenterUp);
+      // Start the hold timer only when a hold action would actually fire.
+      const hold = this._config.hold_action || { action: "more-info" };
+      if (hold.action && hold.action !== "none") {
+        this._centerHoldTimer = setTimeout(() => {
+          this._centerHoldTimer = null;
+          if (this._centerMoved) return;
+          this._centerHeld = true;
+          this._setPress(false);
+          this._runHoldAction();
+        }, HOLD_MS);
+      }
+    }
+    _centerPointerMove(e) {
+      const st = this._centerStart;
+      if (!st) return;
+      if (Math.hypot(e.clientX - st.x, e.clientY - st.y) > DRAG_THRESH_PX) {
+        // a swipe off the disc: never a tap or hold (respects DRAG_THRESH_PX like the ring).
+        this._centerMoved = true;
+        this._setPress(false);
+        if (this._centerHoldTimer) { clearTimeout(this._centerHoldTimer); this._centerHoldTimer = null; }
+      }
+    }
+    _centerPointerUp(e) {
+      window.removeEventListener("pointermove", this._onCenterMove);
+      window.removeEventListener("pointerup", this._onCenterUp);
+      window.removeEventListener("pointercancel", this._onCenterUp);
+      this._onCenterMove = null;
+      this._onCenterUp = null;
+      if (this._centerHoldTimer) { clearTimeout(this._centerHoldTimer); this._centerHoldTimer = null; }
+      this._setPress(false);
+      this._lastCenterUp = Date.now();
+      const moved = this._centerMoved;
+      const held = this._centerHeld;
+      this._centerStart = null;
+      this._centerMoved = false;
+      this._centerHeld = false;
+      if (e.type === "pointercancel" || moved || held) return;
+      // a clean tap. Defer it only when a double-tap action is configured.
+      if (this._dblConfigured()) {
+        if (this._centerTapTimer) {
+          // second tap inside the window -> double tap.
+          clearTimeout(this._centerTapTimer);
+          this._centerTapTimer = null;
+          this._runDoubleTapAction();
+        } else {
+          this._centerTapTimer = setTimeout(() => {
+            this._centerTapTimer = null;
+            this._runTapAction();
+          }, DBL_TAP_MS);
+        }
+      } else {
+        this._runTapAction();
+      }
+    }
+    _dblConfigured() {
+      const d = this._config.double_tap_action;
+      return !!(d && d.action && d.action !== "none");
+    }
+    _runTapAction() {
+      if (this._config.tap_action) this._handleAction(this._config.tap_action);
+      else this._openPop();
+    }
+    _runHoldAction() {
+      this._handleAction(this._config.hold_action || { action: "more-info" });
+    }
+    _runDoubleTapAction() {
+      if (this._config.double_tap_action) this._handleAction(this._config.double_tap_action);
+    }
+    // Flash the center press-feedback disc (opacity only; no transform, so it plays
+    // nice with prefers-reduced-motion and never clobbers a presentation transform).
+    _setPress(on) {
+      if (this._refs.pressDisc) this._refs.pressDisc.style.opacity = on ? "0.14" : "0";
+    }
+    // Fire the more-info dialog for an entity (composed event crosses the shadow roots).
+    _fireMoreInfo(id) {
+      if (!id) return;
+      fireEvent(this, "hass-more-info", { entityId: id });
+    }
+    // SPA navigation (mirrors HA's navigate handler).
+    _navigate(path) {
+      if (!path) return;
+      history.pushState(null, "", path);
+      fireEvent(window, "location-changed", { replace: false });
+    }
+    // Dispatch a standard HA action config (mirrors custom-card-helpers handleAction).
+    // Supports both the new perform_action/data/target and legacy service shapes.
+    _handleAction(cfg) {
+      if (!cfg || !cfg.action || cfg.action === "none") return;
+      if (cfg.confirmation && cfg.confirmation.text != null) {
+        if (!window.confirm(cfg.confirmation.text)) return;
+      } else if (cfg.confirmation === true) {
+        if (!window.confirm("Are you sure?")) return;
+      }
+      const entity = cfg.entity || this._config.entity;
+      switch (cfg.action) {
+        case "more-info":
+          this._fireMoreInfo(entity);
+          break;
+        case "toggle":
+          if (this._hass) this._hass.callService("homeassistant", "toggle", { entity_id: entity });
+          break;
+        case "navigate":
+          this._navigate(cfg.navigation_path);
+          break;
+        case "url":
+          if (cfg.url_path) window.open(cfg.url_path);
+          break;
+        case "perform-action":
+        case "call-service": {
+          if (!this._hass) break;
+          const svc = cfg.perform_action || cfg.service;
+          if (!svc || svc.indexOf(".") < 0) break;
+          const [d, sv] = svc.split(".");
+          this._hass.callService(d, sv, cfg.data || cfg.service_data || {}, cfg.target);
+          break;
+        }
+        case "fire-dom-event":
+          fireEvent(this, "ll-custom", cfg);
+          break;
+        default:
+          break;
+      }
+    }
+
+    // ============================================================================
     // FEATURES (swing / led / sound): config -> sibling -> climate attr -> hide
     // ============================================================================
     _featureCfg(kind) {
@@ -2139,6 +2365,7 @@
         // a11y: nothing is settable while unavailable -> take the fan slider out of
         // the tab order (the temp slider's key handler already no-ops here, issue #5).
         if (this._refs.fanGrab) { this._refs.fanGrab.setAttribute("tabindex", "-1"); this._refs.fanGrab.setAttribute("aria-hidden", "true"); }
+        if (this._refs.hints) this._refs.hints.style.display = "none"; // issue #15
         this._paintModeGlyph(s ? s.state : "off", this._modeColor("off"), true);
         return;
       }
@@ -2329,6 +2556,18 @@
         this._refs.swingChip.setAttribute("tabindex", "-1");
       }
 
+      // ---- gesture HINT labels (issue #15) ----
+      // MODE follows show_hints alone (the center is always interactive); FAN/AUTO
+      // also require a fan source so they never point at an absent control. Dimmed
+      // further when the unit is off, like the rest of the face.
+      if (this._refs.hints) {
+        const showHints = this._config.show_hints !== false;
+        this._refs.hints.style.display = showHints ? "" : "none";
+        this._refs.hints.style.opacity = off ? "0.5" : "1";
+        if (this._refs.hintFan) this._refs.hintFan.style.display = haveFan ? "" : "none";
+        if (this._refs.hintAuto) this._refs.hintAuto.style.display = haveFan ? "" : "none";
+      }
+
       if (this._popOpen) this._paintPop();
     }
 
@@ -2398,6 +2637,12 @@ ha-card{ position:relative; display:block; overflow:visible; }
    browser from stealing a ring drag for a scroll. The tap-vs-drag threshold (JS)
    makes sure a pure tap on a band is still discarded, not committed. */
 .ct-hit{ cursor:pointer; touch-action:none; }
+/* Center press-feedback disc (issue #15): faint accent fill flashed on a center
+   pointerdown. Opacity-only transition so it survives prefers-reduced-motion and
+   never clobbers a presentation transform. */
+.ct-pressdisc{ fill:var(--ct-accent); transition:opacity .14s ease; }
+/* Gesture hint labels (issue #15) never intercept a tap (also class .nope). */
+.ct-hints text{ pointer-events:none; }
 
 /* Frosted-glass slab: dark translucent fill, 1px hairline outline, 14px radius. Its OWN
    backdrop-blur div BEHIND the svg, full-card inset; backdrop-filter kept for glass. */
@@ -2501,6 +2746,7 @@ ha-card{ position:relative; display:block; overflow:visible; }
 @media (prefers-reduced-motion: reduce){
   .ct-clover g{ animation:none !important; }
   .ct-pop, .ct-pop .ct-sheet{ transition:none !important; }
+  .ct-pressdisc{ transition:none !important; } /* press feedback snaps, no fade (issue #15) */
 }
 `;
     }
@@ -2552,7 +2798,11 @@ ha-card{ position:relative; display:block; overflow:visible; }
     show_led: "Show LED",
     sound_entity: "Sound / beep entity (switch.*)",
     show_sound: "Show sound",
+    show_hints: "Show gesture hints",
     max_height: "Max height",
+    tap_action: "Tap action",
+    hold_action: "Hold action",
+    double_tap_action: "Double tap action",
   };
 
   // Per-field helper text (computeHelper).
@@ -2578,7 +2828,11 @@ ha-card{ position:relative; display:block; overflow:visible; }
     show_led: "Force the LED chip on or off. Auto shows it when the entity resolves; a forced chip with no source renders disabled.",
     sound_entity: "Override the beep/prompt-tone switch. Leave empty to auto-discover (Midea).",
     show_sound: "Force the sound chip on or off. Auto shows it when the entity resolves; a forced chip with no source renders disabled.",
+    show_hints: "Faint MODE / FAN / AUTO labels showing the dial is interactive.",
     max_height: "CSS length cap, e.g. 34vh or 360px. Width follows the dial aspect.",
+    tap_action: "Leave unset to keep the default: tap opens the mode menu.",
+    hold_action: "Defaults to opening the more-info dialog (history, attributes, presets).",
+    double_tap_action: "Off by default.",
   };
 
   // snake_case / dotted name -> Title Case (label fallback).
@@ -2633,6 +2887,7 @@ ha-card{ position:relative; display:block; overflow:visible; }
           { type: "grid", schema: [
             { name: "show_scale", selector: { boolean: {} } },
             { name: "show_current", selector: { boolean: {} } },
+            { name: "show_hints", selector: { boolean: {} } },
           ] },
           { type: "expandable", name: "mode_colors", title: "Per-mode colors", icon: "mdi:format-color-fill",
             schema: MODE_KEYS.map((m) => ({ name: m, selector: { color_rgb: {} } })) },
@@ -2666,6 +2921,15 @@ ha-card{ position:relative; display:block; overflow:visible; }
 
         { type: "expandable", name: "", title: "Layout", icon: "mdi:arrange-bring-forward", schema: [
           { name: "max_height", selector: { text: {} } },
+        ] },
+
+        // Center-disc actions (issue #15). ui_action renders HA's standard action
+        // picker; on an older frontend that key may not render, but the CARD still
+        // honors any tap_action / hold_action / double_tap_action set in YAML.
+        { type: "expandable", name: "", title: "Actions", icon: "mdi:gesture-tap", schema: [
+          { name: "tap_action", selector: { ui_action: { default_action: "none" } } },
+          { name: "hold_action", selector: { ui_action: { default_action: "more-info" } } },
+          { name: "double_tap_action", selector: { ui_action: { default_action: "none" } } },
         ] },
       ];
     }
