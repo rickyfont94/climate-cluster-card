@@ -5,24 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.1.0] - 2026-06-29
+## [1.1.0] - 2026-06-30
 
 ### Added
+- Follows the active Home Assistant theme through `ha-card` (light and dark). `accent`, `mode_colors`, and `font` still override the theme when set.
+- English and Spanish localization, auto-selected from the Home Assistant language.
+- Standard `tap_action` / `hold_action` / `double_tap_action` config on the center disc, dispatched through Home Assistant's action conventions (more-info, navigate, call-service, toggle, url, none). Tap opens the mode pop-up by default and hold opens the more-info dialog. The GUI editor gains an Actions section for these.
 - Discoverable gestures: faint MODE / FAN / AUTO hint labels (toggle with `show_hints`) and a press-feedback highlight on the center disc, so the dial reads as interactive on a wall tablet.
-- Standard `tap_action` / `hold_action` / `double_tap_action` config on the center disc, dispatched through Home Assistant's action conventions (more-info, navigate, call-service, toggle, url, none). Tap still opens the mode popup by default and hold opens the more-info dialog. The GUI editor gains an Actions section for these.
+- The GUI editor now shows an inline warning when the configured minimum temperature is not below the maximum, instead of leaving the card blank.
 
-## [1.0.9] - 2026-06-29
+### Changed
+- The fan ring now works with non-Midea climate and fan entities, honoring the entity's real range or `fan_modes`.
+- Correct sizing in Sections-view dashboards.
 
 ### Fixed
 - The gauge no longer disappears when an entity's minimum and maximum temperature are equal (or inverted). The arc geometry now guards the range span so a degenerate range renders a flat dial instead of producing NaN SVG paths.
+- Whole degrees now drop the trailing `.0`.
+- The Show option for the swing, LED, and sound toggles now forces the chip visible (previously it behaved like Auto). A forced chip with no backing entity renders as an inert, dimmed chip.
+- The card font now falls back to the theme font.
 
-### Added
-- The GUI editor now shows an inline warning when the configured minimum temperature is not below the maximum, instead of leaving the card blank.
-
-## [1.0.7] - 2026-06-29
+## [1.0.6] - 2026-06-29
 
 ### Fixed
-- The Show option for the swing, LED, and sound toggles now forces the chip visible (previously it behaved like Auto). A forced chip with no backing entity renders as an inert, dimmed chip.
+- Keyboard and screen-reader accessibility for the dial and chips.
+- `heat_cool` (range) thermostats now behave correctly.
+- A touch scroll-trap on the dial.
+- Forced-unit conversion.
+- Silent service-call failures now surface errors instead of failing quietly.
 
 ## [1.0.5] - 2026-06-29
 
@@ -39,5 +48,5 @@ First public release of the Climate Cluster Card for Home Assistant.
 - Auto-discovery of fan / swing / LED / sound sibling entities, tuned for Midea (`midea_ac_lan`).
 
 [1.1.0]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v1.1.0
-[1.0.7]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v1.0.7
+[1.0.6]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v1.0.6
 [1.0.5]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v1.0.5
