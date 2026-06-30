@@ -129,6 +129,8 @@ All options are optional except `entity`. Defaults reproduce sensible behavior, 
 |---|---|---|---|
 | `accent` | color | `#4fc3f7` | Primary UI accent color. |
 | `mode_colors` | map | built-in | Per-mode color overrides (e.g. `cool: "#4fc3f7"`). |
+| `font` | string | unset | Font family prepended to the default stack (Rajdhani-if-installed, then your HA theme font). |
+| `font_url` | string | unset | Optional stylesheet URL (e.g. a Google Fonts link) that loads the `font`. No font is fetched by default. |
 | `temperature_unit` | `auto` \| `F` \| `C` | `auto` | `auto` uses HA's unit system / the entity's `temperature_unit`. |
 | `min_temp` | number | entity `min_temp` | Lower bound of the dial. |
 | `max_temp` | number | entity `max_temp` | Upper bound of the dial. |
@@ -198,11 +200,11 @@ If the climate entity exposes named `fan_modes` instead of a percent entity, the
 - **Tuned for `midea_ac_lan`.** The swing / LED / sound toggles and the fan / swing / LED / sound auto-discovery target Midea units. For a generic `climate.*` entity, set `swing_entity` / `led_entity` / `sound_entity` / `fan_entity` explicitly.
 - **Fan ring needs a source.** The fan ring is hidden unless a `number.*_fan_speed` entity or named `fan_modes` exist.
 - **Limited feature surface.** Only the Swing / LED / Sound toggles are surfaced on the card. Expose any other features (boost, eco, sleep, and so on) with your own cards.
-- **Rajdhani font not bundled.** The card references the **Rajdhani** font by name for its numerals but does not bundle it; it degrades gracefully to your UI font when Rajdhani is unavailable.
+- **Rajdhani font not bundled.** The card prefers the **Rajdhani** font for its numerals but does not bundle or fetch it. If you have Rajdhani installed locally it is used; otherwise the card falls back to your Home Assistant theme font, then to the system UI font. Nothing 404s and no network request is made by default. To force a specific font, set `font` (and optionally `font_url`); see the configuration options.
 
 ## Notes
 
-The card references the **Rajdhani** font by name for its numerals but does **not** bundle it; it degrades gracefully to your UI font if Rajdhani isn't available.
+The card prefers the **Rajdhani** font for its numerals when it is installed locally, but does **not** bundle or download it. Without Rajdhani the card uses your Home Assistant theme font (`--ha-card-header-font-family`), then a system UI font, so the default never depends on a missing font. Set `font` to prepend your own family to that stack, and `font_url` to point at a stylesheet (for example a Google Fonts link) that loads it.
 
 Midea is a trademark of its respective owner. This project is independent and unaffiliated.
 

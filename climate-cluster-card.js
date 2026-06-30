@@ -36,6 +36,12 @@
   // Default UI accent (HA "Frosted Glass" cyan). Overridable per-card via `accent`.
   const DEFAULT_ACCENT = "#4fc3f7";
 
+  // Card font stack. We do NOT ship or fetch any font, so this must not depend on a
+  // missing face: 'Rajdhani' is honored only if the user already has it installed,
+  // then we fall through to the Home Assistant theme font, then system UI fonts.
+  // Overridable per-card via the `font` / `font_url` config keys (see _applyFont).
+  const FONT_STACK = "'Rajdhani', var(--ha-card-header-font-family, var(--ha-font-family-body, var(--mdc-typography-font-family, 'Roboto'))), 'Segoe UI', system-ui, -apple-system, sans-serif";
+
   // Mode -> per-mode accent color (arc / glyph / center label fallbacks).
   const MODE_COLORS = {
     cool: "#27d3ff",
@@ -284,7 +290,15 @@
       // height is capped and width follows the viewBox aspect ratio (centered).
       const mh = this._config.max_height;
       this._maxHeight = (typeof mh === "string" && mh.trim()) ? mh.trim() : null;
+
+      // Optional font override. `font` prepends a family to the default stack (so a
+      // failed/blocked web font still degrades to the theme/system fonts); `font_url`
+      // loads a stylesheet (e.g. a Google Fonts URL) that declares its own @font-face.
+      this._font = (typeof this._config.font === "string" && this._config.font.trim()) ? this._config.font.trim() : null;
+      this._fontUrl = (typeof this._config.font_url === "string" && this._config.font_url.trim()) ? this._config.font_url.trim() : null;
+
       if (this._built) this._applyMaxHeight();
+      if (this._built) this._applyFont();
       if (this._built) this._render();
     }
 
@@ -299,6 +313,34 @@
       } else {
         card.removeAttribute("data-capped");
         card.style.removeProperty("--ct-max-h");
+      }
+    }
+
+    // Apply the optional `font` / `font_url` overrides. With neither set the CSS default
+    // --ct-font (FONT_STACK) is used. `font` is prepended so a missing/blocked override
+    // still degrades to the theme/system fonts. `font_url` injects one <link> stylesheet.
+    _applyFont() {
+      if (!this.shadowRoot) return;
+      const card = this.shadowRoot.querySelector(".ct-card");
+      if (card) {
+        if (this._font) {
+          card.style.setProperty("--ct-font", "'" + this._font + "', " + FONT_STACK);
+        } else {
+          card.style.removeProperty("--ct-font");
+        }
+      }
+      // Manage a single stylesheet <link> in the shadow root (create once, update in place).
+      let link = this.shadowRoot.querySelector("link[data-ct-font]");
+      if (this._fontUrl) {
+        if (!link) {
+          link = document.createElement("link");
+          link.setAttribute("data-ct-font", "");
+          link.setAttribute("rel", "stylesheet");
+          this.shadowRoot.appendChild(link);
+        }
+        if (link.getAttribute("href") !== this._fontUrl) link.setAttribute("href", this._fontUrl);
+      } else if (link) {
+        link.remove();
       }
     }
 
@@ -951,6 +993,7 @@
 
       this._built = true;
       this._applyMaxHeight(); // apply any max_height set before this build
+      this._applyFont();      // apply any font / font_url set before this build
 
       // Width-driven compact mode: below COMPACT_W the per-degree tick scale and the
       // tiny captions are hidden via the ct-compact class (CSS in _css). Guarded so it
@@ -2325,6 +2368,7 @@ ha-card{ position:relative; display:block; overflow:visible; }
 .ct-card{
   position:relative; width:100%; margin:0 auto; overflow:visible;
   --ct-accent:${DEFAULT_ACCENT};
+  --ct-font:${FONT_STACK};
   /* pan-y (NOT none): a vertical swipe over the card still scrolls the dashboard;
      only the .ct-hit grab bands below opt out so a ring drag owns the gesture. */
   touch-action:pan-y;
@@ -2348,7 +2392,7 @@ ha-card{ position:relative; display:block; overflow:visible; }
    backstop so the arcs / round caps / temp needle / fan chevron can never bleed
    past the card edge. */
 .ct-svg{ display:block; width:100%; height:auto; position:relative; z-index:2; touch-action:pan-y; overflow:hidden; }
-.ct-svg text{ font-family:'Rajdhani','DIN Alternate','Oswald','Roboto Condensed','Segoe UI',system-ui,sans-serif; }
+.ct-svg text{ font-family:var(--ct-font); }
 .nope{ pointer-events:none; }
 /* The interactive grab bands/buttons own the touch: touch-action:none keeps the
    browser from stealing a ring drag for a scroll. The tap-vs-drag threshold (JS)
@@ -2389,7 +2433,7 @@ ha-card{ position:relative; display:block; overflow:visible; }
   box-shadow:0 24px 60px rgba(0,0,0,.6), inset 0 1px 1px rgba(255,255,255,.05);
   display:grid; grid-template-columns:repeat(3,1fr); gap:12px;
   transform:scale(.92); transition:transform .18s ease;
-  font-family:'Rajdhani','DIN Alternate','Oswald','Segoe UI',system-ui,sans-serif;
+  font-family:var(--ct-font);
 }
 .ct-pop.open .ct-sheet{ transform:scale(1); }
 .ct-sheet button{
@@ -2489,6 +2533,8 @@ ha-card{ position:relative; display:block; overflow:visible; }
     entity: "Climate entity",
     name: "Name",
     accent: "Accent color",
+    font: "Font family",
+    font_url: "Font stylesheet URL",
     temperature_unit: "Temperature unit",
     temp_step: "Step",
     min_temp: "Minimum temperature",
@@ -2513,6 +2559,8 @@ ha-card{ position:relative; display:block; overflow:visible; }
   const EDITOR_HELPERS = {
     name: "Card title. Defaults to the entity's friendly name.",
     accent: "UI accent for the popup, lit chips, fan ring and caret. Defaults to #4fc3f7.",
+    font: "Leave empty to use Rajdhani if installed, then your Home Assistant theme font. A value here is prepended to that stack.",
+    font_url: "Optional stylesheet URL (e.g. a Google Fonts link) that loads the font named above. No font is fetched by default.",
     temperature_unit: "Auto follows your Home Assistant unit system.",
     temp_step: "Setpoint granularity. Defaults to the entity's target_temp_step.",
     min_temp: "Leave empty to use the entity's minimum.",
@@ -2570,6 +2618,8 @@ ha-card{ position:relative; display:block; overflow:visible; }
 
         { type: "expandable", name: "", title: "Appearance", icon: "mdi:palette", schema: [
           { name: "accent", selector: { color_rgb: {} } },
+          { name: "font", selector: { text: {} } },
+          { name: "font_url", selector: { text: {} } },
           { type: "grid", schema: [
             { name: "temperature_unit", selector: { select: { mode: "dropdown", options: [
               { value: "auto", label: "Auto" },
