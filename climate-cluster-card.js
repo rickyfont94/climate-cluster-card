@@ -26,7 +26,7 @@
   const NS = "http://www.w3.org/2000/svg";
 
   // ---- console version banner ---------------------------------------------
-  const VERSION = "1.1.0";
+  const VERSION = "1.2.0";
   console.info(
     "%c CLIMATE-CLUSTER-CARD %c v" + VERSION + " ",
     "color:#0b0f16;background:#4fc3f7;font-weight:700;border-radius:4px 0 0 4px;padding:2px 6px",
@@ -125,10 +125,13 @@
       "editor.opt.anim_dynamic": "Dynamic (scale with speed)",
       "editor.opt.anim_constant": "Constant",
       "editor.opt.anim_off": "Off",
+      "editor.opt.appearance_theme": "Theme (follows Home Assistant)",
+      "editor.opt.appearance_glass": "Frosted glass",
       "editor.warn_range": "Minimum temperature must be below maximum temperature. The dial uses a flat range until this is fixed.",
       editorLabels: {
         entity: "Climate entity",
         name: "Name",
+        appearance: "Background",
         accent: "Accent color",
         font: "Font family",
         font_url: "Font stylesheet URL",
@@ -157,6 +160,7 @@
       },
       editorHelpers: {
         name: "Card title. Defaults to the entity's friendly name.",
+        appearance: "Theme follows your active Home Assistant theme (works on light and dark). Frosted glass forces a premium deep-indigo glass look on any theme.",
         accent: "UI accent for the popup, lit chips, fan ring and caret. Defaults to #4fc3f7.",
         font: "Leave empty to use Rajdhani if installed, then your Home Assistant theme font. A value here is prepended to that stack.",
         font_url: "Optional stylesheet URL (e.g. a Google Fonts link) that loads the font named above. No font is fetched by default.",
@@ -224,10 +228,13 @@
       "editor.opt.anim_dynamic": "Dinamica (escala con la velocidad)",
       "editor.opt.anim_constant": "Constante",
       "editor.opt.anim_off": "Apagada",
+      "editor.opt.appearance_theme": "Tema (sigue a Home Assistant)",
+      "editor.opt.appearance_glass": "Vidrio esmerilado",
       "editor.warn_range": "La temperatura minima debe ser menor que la maxima. El dial usa un rango plano hasta que se corrija.",
       editorLabels: {
         entity: "Entidad de clima",
         name: "Nombre",
+        appearance: "Fondo",
         accent: "Color de acento",
         font: "Tipo de letra",
         font_url: "URL de la hoja de estilos de la fuente",
@@ -256,6 +263,7 @@
       },
       editorHelpers: {
         name: "Titulo de la tarjeta. Por defecto usa el nombre descriptivo de la entidad.",
+        appearance: "Tema sigue el tema activo de Home Assistant (funciona en claro y oscuro). Vidrio esmerilado fuerza un aspecto premium de vidrio indigo en cualquier tema.",
         accent: "Acento de la interfaz para el menu, los chips encendidos, el anillo del ventilador y la flecha. Por defecto #4fc3f7.",
         font: "Dejar vacio para usar Rajdhani si esta instalada, y luego la fuente del tema de Home Assistant. Un valor aqui se antepone a esa lista.",
         font_url: "URL opcional de una hoja de estilos (por ejemplo un enlace de Google Fonts) que carga la fuente indicada arriba. No se descarga ninguna fuente por defecto.",
@@ -576,8 +584,14 @@
       this._font = (typeof this._config.font === "string" && this._config.font.trim()) ? this._config.font.trim() : null;
       this._fontUrl = (typeof this._config.font_url === "string" && this._config.font_url.trim()) ? this._config.font_url.trim() : null;
 
+      // Appearance: "theme" (default) follows the active Home Assistant theme so the
+      // dial reads on light AND dark themes; "glass" forces the premium deep-indigo
+      // frosted-glass look on ANY theme. Anything else falls back to "theme".
+      this._appearance = this._config.appearance === "glass" ? "glass" : "theme";
+
       if (this._built) this._applyMaxHeight();
       if (this._built) this._applyFont();
+      if (this._built) this._applyAppearance();
       if (this._built) this._render();
     }
 
@@ -593,6 +607,18 @@
         card.removeAttribute("data-capped");
         card.style.removeProperty("--ct-max-h");
       }
+    }
+
+    // Toggle the frosted-glass appearance via [data-appearance="glass"] on the
+    // <ha-card>. Placed on ha-card (not .ct-card) so glass mode can also hide the
+    // themed card chrome (a light theme would otherwise show a white ring around the
+    // indigo slab). "theme" removes the attribute and the dial follows the theme.
+    _applyAppearance() {
+      if (!this.shadowRoot) return;
+      const haCard = this.shadowRoot.querySelector("ha-card");
+      if (!haCard) return;
+      if (this._appearance === "glass") haCard.setAttribute("data-appearance", "glass");
+      else haCard.removeAttribute("data-appearance");
     }
 
     // Apply the optional `font` / `font_url` overrides. With neither set the CSS default
@@ -929,6 +955,8 @@
       const haCard = document.createElement("ha-card");
       const card = document.createElement("div");
       card.className = "ct-card";
+      // Glass appearance lives on the ha-card so its themed chrome is hidden too.
+      if (this._appearance === "glass") haCard.setAttribute("data-appearance", "glass");
       haCard.appendChild(card);
       root.appendChild(haCard);
 
@@ -1396,7 +1424,7 @@
         const len = major ? 13 : 6;
         const a = polar(CX, CY, rTickOut - len, ang), b = polar(CX, CY, rTickOut, ang);
         tk += `<line x1="${a[0].toFixed(1)}" y1="${a[1].toFixed(1)}" x2="${b[0].toFixed(1)}" y2="${b[1].toFixed(1)}" ` +
-          `stroke="${major ? "rgba(234,235,238,.62)" : "rgba(234,235,238,.24)"}" stroke-width="${major ? 2.6 : 1.5}"/>`;
+          `class="${major ? "ct-tk-major" : "ct-tk-minor"}" stroke-width="${major ? 2.6 : 1.5}"/>`;
       }
       // numbered LABELS every labelStride (decoupled from `minor` so they always land)
       const firstLabel = Math.ceil(lo / labelStride - 1e-6) * labelStride;
@@ -2957,6 +2985,10 @@ ha-card{ position:relative; display:block; overflow:visible; }
 .ct-fanname{ fill:var(--secondary-text-color, rgba(234,235,238,.7)); }
 .ct-swingcap{ fill:var(--secondary-text-color, rgba(234,235,238,.7)); }
 .ct-ticks text{ fill:var(--secondary-text-color, rgba(234,235,238,.88)); }
+/* Tick HASH MARKS follow the theme too (they were a hardcoded near-white that
+   vanished on a light theme); major/minor hierarchy kept via the mix amount. */
+.ct-ticks .ct-tk-major{ stroke:color-mix(in srgb, var(--secondary-text-color, rgb(234,235,238)) 60%, transparent); }
+.ct-ticks .ct-tk-minor{ stroke:color-mix(in srgb, var(--secondary-text-color, rgb(234,235,238)) 26%, transparent); }
 .ct-card{
   position:relative; width:100%; margin:0 auto; overflow:visible;
   --ct-accent:${DEFAULT_ACCENT};
@@ -2998,8 +3030,11 @@ ha-card{ position:relative; display:block; overflow:visible; }
    pointerdown. Opacity-only transition so it survives prefers-reduced-motion and
    never clobbers a presentation transform. */
 .ct-pressdisc{ fill:var(--ct-accent); transition:opacity .14s ease; }
-/* Gesture hint labels (issue #15) never intercept a tap (also class .nope). */
-.ct-hints text{ pointer-events:none; }
+/* Gesture hint labels (issue #15) never intercept a tap (also class .nope). Their
+   fill follows the theme so the faint FAN / MODE / AUTO labels stay legible on a
+   light theme (they were a hardcoded near-white that washed out on white); the
+   color-mix keeps them faint on both themes. */
+.ct-hints text{ pointer-events:none; fill:color-mix(in srgb, var(--secondary-text-color, rgb(234,235,238)) 55%, transparent); }
 
 /* Frosted-glass slab: dark translucent fill, 1px hairline outline, 14px radius. Its OWN
    backdrop-blur div BEHIND the svg, full-card inset; backdrop-filter kept for glass. */
@@ -3014,6 +3049,37 @@ ha-card{ position:relative; display:block; overflow:visible; }
     inset 0 -10px 28px rgba(0,0,0,.42),
     0 18px 50px rgba(0,0,0,.50);
   pointer-events:none;
+}
+
+/* ----------------------------------------------------------------------------
+   GLASS appearance (config: appearance: glass). Forces the premium deep-indigo
+   frosted-glass look on ANY Home Assistant theme. Implementation: the attribute
+   sits on <ha-card>, so glass mode can (a) hide the themed card chrome -- a light
+   theme would otherwise paint a white ring around the indigo slab; (b) override the
+   theme text/divider/background CUSTOM PROPERTIES locally on .ct-card, which
+   retints every neutral text + the popup in one place so they stay light over the
+   dark glass even on a light theme; and (c) repaint .ct-frost as a full-bleed
+   indigo glass slab. Accent / per-mode / arc-gradient colors are untouched. The
+   default appearance ("theme") sets NO attribute, so themed mode is byte-unchanged.
+   ---------------------------------------------------------------------------- */
+ha-card[data-appearance="glass"]{ background:transparent; border:none; box-shadow:none; }
+ha-card[data-appearance="glass"] .ct-card{
+  --primary-text-color:rgba(236,239,247,.98);
+  --secondary-text-color:rgba(202,212,234,.80);
+  --divider-color:rgba(150,170,255,.20);
+  --ha-card-background:rgba(20,24,46,.92);
+  --card-background-color:rgba(20,24,46,.92);
+}
+ha-card[data-appearance="glass"] .ct-frost{
+  inset:0;
+  background:
+    radial-gradient(125% 110% at 50% -10%, rgba(78,90,176,.55), rgba(40,46,104,.28) 46%, transparent 72%),
+    linear-gradient(180deg, rgba(33,38,82,.94), rgba(11,14,38,.97));
+  border:1px solid rgba(150,170,255,.22);
+  box-shadow:
+    inset 0 2px 14px rgba(150,170,255,.12),
+    inset 0 -16px 38px rgba(0,0,0,.52),
+    0 18px 52px rgba(0,0,0,.55);
 }
 
 @keyframes ctfanspin{ to{ transform:rotate(360deg); } }
@@ -3176,6 +3242,10 @@ ha-card{ position:relative; display:block; overflow:visible; }
         { name: "name", selector: { text: {} } },
 
         { type: "expandable", name: "", title: this._t("editor.section.appearance"), icon: "mdi:palette", schema: [
+          { name: "appearance", selector: { select: { mode: "dropdown", options: [
+            { value: "theme", label: this._t("editor.opt.appearance_theme") },
+            { value: "glass", label: this._t("editor.opt.appearance_glass") },
+          ] } } },
           { name: "accent", selector: { color_rgb: {} } },
           { name: "font", selector: { text: {} } },
           { name: "font_url", selector: { text: {} } },
@@ -3333,6 +3403,8 @@ ha-card{ position:relative; display:block; overflow:visible; }
       for (const k of TRISTATE_KEYS) {
         if (data[k] === undefined || data[k] === null) data[k] = "auto";
       }
+      // Appearance: unset means "theme", so the select reads Theme instead of blank.
+      if (data.appearance === undefined || data.appearance === null) data.appearance = "theme";
       return data;
     }
 
@@ -3364,6 +3436,8 @@ ha-card{ position:relative; display:block; overflow:visible; }
       for (const k of TRISTATE_KEYS) {
         if (cfg[k] === "auto") delete cfg[k];
       }
+      // Appearance: "theme" is the default -> only persist an explicit "glass".
+      if (cfg.appearance === "theme") delete cfg.appearance;
       // Modes: a selection equal to the entity's full hvac_modes is the default ->
       // drop it so an unchanged all-checked list is not persisted (only save subsets).
       if (Array.isArray(cfg.modes) && arrSetEq(cfg.modes, this._hvacModes(cfg))) delete cfg.modes;
