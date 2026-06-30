@@ -36,6 +36,15 @@
   // Default UI accent (HA "Frosted Glass" cyan). Overridable per-card via `accent`.
   const DEFAULT_ACCENT = "#4fc3f7";
 
+  // Per-variant frosted-glass base: the rgb tint + alpha each glass appearance uses
+  // by default. The `glass_color` / `glass_opacity` config keys override these; the
+  // editor seeds the swatch/slider from here and prunes a value back out when it still
+  // equals the per-variant default, so an unchanged glass keeps a byte-lean YAML.
+  const GLASS_BASE = {
+    "glass-dark": { rgb: [20, 24, 46], alpha: 0.66 },
+    "glass-light": { rgb: [244, 247, 253], alpha: 0.60 },
+  };
+
   // Card font stack. We do NOT ship or fetch any font, so this must not depend on a
   // missing face: 'Rajdhani' is honored only if the user already has it installed,
   // then we fall through to the Home Assistant theme font, then system UI fonts.
@@ -133,6 +142,8 @@
         entity: "Climate entity",
         name: "Name",
         appearance: "Background",
+        glass_color: "Glass tint",
+        glass_opacity: "Glass opacity",
         accent: "Accent color",
         font: "Font family",
         font_url: "Font stylesheet URL",
@@ -162,6 +173,8 @@
       editorHelpers: {
         name: "Card title. Defaults to the entity's friendly name.",
         appearance: "Theme follows your active Home Assistant theme (works on light and dark). Frosted glass is a translucent panel, in a dark indigo or light finish, that holds its look on any theme.",
+        glass_color: "Tints the frosted glass panel. Applies only to the frosted glass backgrounds.",
+        glass_opacity: "How solid the frosted glass is (0 clear to 1 solid). Applies only to the frosted glass backgrounds.",
         accent: "UI accent for the popup, lit chips, fan ring and caret. Defaults to #4fc3f7.",
         font: "Leave empty to use Rajdhani if installed, then your Home Assistant theme font. A value here is prepended to that stack.",
         font_url: "Optional stylesheet URL (e.g. a Google Fonts link) that loads the font named above. No font is fetched by default.",
@@ -237,6 +250,8 @@
         entity: "Entidad de clima",
         name: "Nombre",
         appearance: "Fondo",
+        glass_color: "Tinte del vidrio",
+        glass_opacity: "Opacidad del vidrio",
         accent: "Color de acento",
         font: "Tipo de letra",
         font_url: "URL de la hoja de estilos de la fuente",
@@ -266,6 +281,8 @@
       editorHelpers: {
         name: "Titulo de la tarjeta. Por defecto usa el nombre descriptivo de la entidad.",
         appearance: "Tema sigue el tema activo de Home Assistant (funciona en claro y oscuro). Vidrio esmerilado es un panel translucido, en acabado indigo oscuro o claro, que mantiene su aspecto en cualquier tema.",
+        glass_color: "Tinta el panel de vidrio esmerilado. Solo aplica a los fondos de vidrio esmerilado.",
+        glass_opacity: "Que tan solido es el vidrio esmerilado (0 transparente a 1 solido). Solo aplica a los fondos de vidrio esmerilado.",
         accent: "Acento de la interfaz para el menu, los chips encendidos, el anillo del ventilador y la flecha. Por defecto #4fc3f7.",
         font: "Dejar vacio para usar Rajdhani si esta instalada, y luego la fuente del tema de Home Assistant. Un valor aqui se antepone a esa lista.",
         font_url: "URL opcional de una hoja de estilos (por ejemplo un enlace de Google Fonts) que carga la fuente indicada arriba. No se descarga ninguna fuente por defecto.",
@@ -594,6 +611,16 @@
       this._appearance = (_ap === "glass" || _ap === "glass-dark") ? "glass-dark"
         : _ap === "glass-light" ? "glass-light" : "theme";
 
+      // Glass tint + translucency overrides (glass appearances only; the per-variant
+      // CSS vars are the fallback when these are unset). glass_color is parsed to an
+      // "r,g,b" triple for rgba(var(--ct-glass-rgb), ...); glass_opacity must be a
+      // number in 0..1 (anything else, including "" or out-of-range, falls back to the
+      // per-variant default). Both stay null when unset (theme mode ignores them).
+      const _gc = colorToRgb(this._config.glass_color);
+      this._glassColorRgb = _gc ? _gc.join(",") : null;
+      const _go = this._config.glass_opacity;
+      this._glassOpacity = (typeof _go === "number" && isFinite(_go) && _go >= 0 && _go <= 1) ? _go : null;
+
       if (this._built) this._applyMaxHeight();
       if (this._built) this._applyFont();
       if (this._built) this._applyAppearance();
@@ -625,6 +652,14 @@
       if (this._appearance === "glass-dark" || this._appearance === "glass-light")
         haCard.setAttribute("data-appearance", this._appearance);
       else haCard.removeAttribute("data-appearance");
+
+      // Drive the glass tint/translucency custom props on the inner .ct-card. Unset
+      // values are removed so the per-variant CSS fallback applies unchanged.
+      const card = haCard.querySelector(".ct-card");
+      if (card) {
+        if (this._glassColorRgb) card.style.setProperty("--ct-glass-rgb", this._glassColorRgb); else card.style.removeProperty("--ct-glass-rgb");
+        if (this._glassOpacity != null) card.style.setProperty("--ct-glass-alpha", String(this._glassOpacity)); else card.style.removeProperty("--ct-glass-alpha");
+      }
     }
 
     // Apply the optional `font` / `font_url` overrides. With neither set the CSS default
@@ -1394,6 +1429,7 @@
       // The .ct-compact CSS and the connected/disconnected _ro guards stay as harmless
       // no-ops (this._ro is never created).
       this._compact = false;
+      this._applyAppearance(); // apply any glass tint / opacity set before this build
     }
 
     // Re-observe after a reconnect (the shadow DOM persists, so .ct-card is reused).
@@ -3073,6 +3109,9 @@ ha-card{ position:relative; display:block; overflow:visible; }
 ha-card[data-appearance^="glass"]{ background:transparent; border:none; box-shadow:none; }
 ha-card[data-appearance^="glass"] .ct-frost{
   inset:0;
+  background:
+    radial-gradient(125% 110% at 50% -10%, var(--ct-glass-sheen, transparent), transparent 72%),
+    rgba(var(--ct-glass-rgb, 20,24,46), var(--ct-glass-alpha, .66));
   backdrop-filter:blur(16px) saturate(1.25);
   -webkit-backdrop-filter:blur(16px) saturate(1.25);
 }
@@ -3084,11 +3123,9 @@ ha-card[data-appearance="glass-dark"] .ct-card{
   --divider-color:rgba(150,170,255,.22);
   --ha-card-background:rgba(20,24,46,.72);
   --card-background-color:rgba(20,24,46,.72);
+  --ct-glass-rgb:20,24,46; --ct-glass-alpha:.66; --ct-glass-sheen:rgba(150,165,235,.18);
 }
 ha-card[data-appearance="glass-dark"] .ct-frost{
-  background:
-    radial-gradient(125% 110% at 50% -10%, rgba(86,98,190,.42), rgba(40,46,104,.20) 46%, transparent 72%),
-    linear-gradient(180deg, rgba(33,38,82,.60), rgba(11,14,38,.70));
   border:1px solid rgba(150,170,255,.24);
   box-shadow:
     inset 0 2px 14px rgba(170,185,255,.14),
@@ -3103,11 +3140,9 @@ ha-card[data-appearance="glass-light"] .ct-card{
   --divider-color:rgba(40,52,90,.20);
   --ha-card-background:rgba(244,247,253,.60);
   --card-background-color:rgba(244,247,253,.60);
+  --ct-glass-rgb:244,247,253; --ct-glass-alpha:.60; --ct-glass-sheen:rgba(255,255,255,.55);
 }
 ha-card[data-appearance="glass-light"] .ct-frost{
-  background:
-    radial-gradient(125% 110% at 50% -10%, rgba(255,255,255,.55), rgba(228,234,248,.30) 46%, transparent 72%),
-    linear-gradient(180deg, rgba(246,248,253,.58), rgba(222,229,244,.64));
   border:1px solid rgba(255,255,255,.55);
   box-shadow:
     inset 0 2px 14px rgba(255,255,255,.60),
@@ -3280,6 +3315,8 @@ ha-card[data-appearance="glass-light"] .ct-frost{
             { value: "glass-dark", label: this._t("editor.opt.appearance_glass_dark") },
             { value: "glass-light", label: this._t("editor.opt.appearance_glass_light") },
           ] } } },
+          { name: "glass_color", selector: { color_rgb: {} } },
+          { name: "glass_opacity", selector: { number: { min: 0, max: 1, step: 0.05, mode: "slider" } } },
           { name: "accent", selector: { color_rgb: {} } },
           { name: "font", selector: { text: {} } },
           { name: "font_url", selector: { text: {} } },
@@ -3441,6 +3478,14 @@ ha-card[data-appearance="glass-light"] .ct-frost{
       // a legacy "glass" value maps to the dark variant so the select shows it.
       if (data.appearance === undefined || data.appearance === null) data.appearance = "theme";
       else if (data.appearance === "glass") data.appearance = "glass-dark";
+
+      // Glass tint/opacity: seed the per-variant default so the color swatch shows the
+      // real tint (not black) and the slider shows the real translucency (not 0). Theme
+      // mode reads the dark base; it is ignored at render and pruned back out on save.
+      const gb = GLASS_BASE[data.appearance === "glass-light" ? "glass-light" : "glass-dark"];
+      if (data.glass_color === undefined || data.glass_color === null) data.glass_color = gb.rgb.slice();
+      else data.glass_color = colorToRgb(data.glass_color) || gb.rgb.slice();
+      if (data.glass_opacity === undefined || data.glass_opacity === null) data.glass_opacity = gb.alpha;
       return data;
     }
 
@@ -3477,6 +3522,12 @@ ha-card[data-appearance="glass-light"] .ct-frost{
       // Modes: a selection equal to the entity's full hvac_modes is the default ->
       // drop it so an unchanged all-checked list is not persisted (only save subsets).
       if (Array.isArray(cfg.modes) && arrSetEq(cfg.modes, this._hvacModes(cfg))) delete cfg.modes;
+      // Glass tint/opacity: drop when still at the per-variant default so an unchanged
+      // glass keeps a lean YAML (theme mode, where appearance is already deleted above,
+      // compares against the dark base and prunes the seeded values out).
+      const gbase = GLASS_BASE[cfg.appearance === "glass-light" ? "glass-light" : "glass-dark"];
+      if (rgbEq(cfg.glass_color, gbase.rgb)) delete cfg.glass_color;
+      if (typeof cfg.glass_opacity === "number" && Math.abs(cfg.glass_opacity - gbase.alpha) < 1e-6) delete cfg.glass_opacity;
 
       for (const k of Object.keys(cfg)) {
         const v = cfg[k];
