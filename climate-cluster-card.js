@@ -26,7 +26,7 @@
   const NS = "http://www.w3.org/2000/svg";
 
   // ---- console version banner ---------------------------------------------
-  const VERSION = "1.0.10";
+  const VERSION = "1.1.0";
   console.info(
     "%c CLIMATE-CLUSTER-CARD %c v" + VERSION + " ",
     "color:#0b0f16;background:#4fc3f7;font-weight:700;border-radius:4px 0 0 4px;padding:2px 6px",
@@ -123,6 +123,12 @@
   const FAN_MIN = 1;
   const FAN_MAX = 100;
   const FAN_STEP = 5;
+
+  // Card CSS-px width below which the per-degree tick scale and the tiny captions
+  // (fan name, SWING caption) are dropped so the dial stays legible when the
+  // Sections grid hands the card a narrow cell. Measure-tuned: rendered tick px is
+  // ~14.5 * W/600, so W < 380 puts ticks under ~9px and the small captions blur.
+  const COMPACT_W = 380;
 
   // Optimistic-paint safety timeout (ms). We hold the optimistic value until the
   // entity reports the value we asked for (then clear immediately, see
@@ -303,11 +309,24 @@
     }
 
     getCardSize() {
-      // Wide arc (600x392, ratio 1.53) is shorter than a round puck -> ~5.
-      return 5;
+      // Wide arc (600x392, ratio 1.53). At a full-width column the natural height
+      // is ~300px, so ~6 masonry units (50px each). Kept in step with getGridOptions
+      // rows below so masonry and the Sections grid reserve the same vertical space.
+      return 6;
+    }
+
+    // Sections (grid) layout sizing. Without this HA gives a custom card columns:full
+    // and lets the aspect-locked SVG drive an unbounded height, so the dial renders
+    // huge. columns:12 keeps the default render width above COMPACT_W (full dial shows
+    // by default); rows:6 reserves enough height that the 1.5306-aspect SVG letterboxes
+    // instead of spilling past the cell. min 6x4 lets it shrink into compact mode (ticks
+    // and tiny captions hidden) without ever clipping the arcs.
+    getGridOptions() {
+      return { columns: 12, rows: 6, min_columns: 6, min_rows: 4 };
     }
 
     disconnectedCallback() {
+      if (this._ro) this._ro.disconnect(); // stop the compact-mode observer (re-observed on reconnect)
       this._popOpen = false;
       this._dragging = false;
       this._ringArmed = false;
@@ -920,6 +939,31 @@
 
       this._built = true;
       this._applyMaxHeight(); // apply any max_height set before this build
+
+      // Width-driven compact mode: below COMPACT_W the per-degree tick scale and the
+      // tiny captions are hidden via the ct-compact class (CSS in _css). Guarded so it
+      // no-ops on engines without ResizeObserver. width 0 (hidden/detached) stays
+      // non-compact so there is no compact flash before the first real layout.
+      this._compact = false;
+      if (typeof ResizeObserver !== "undefined") {
+        this._ro = new ResizeObserver((entries) => {
+          const w = entries[0] && entries[0].contentRect ? entries[0].contentRect.width : 0;
+          const compact = w > 0 && w < COMPACT_W;
+          if (compact !== this._compact) {
+            this._compact = compact;
+            card.classList.toggle("ct-compact", compact);
+          }
+        });
+        this._ro.observe(card);
+      }
+    }
+
+    // Re-observe after a reconnect (the shadow DOM persists, so .ct-card is reused).
+    connectedCallback() {
+      if (this._built && this._ro) {
+        const c = this.shadowRoot && this.shadowRoot.querySelector(".ct-card");
+        if (c) this._ro.observe(c); // observing an already-observed element is a safe no-op
+      }
     }
 
     // Rebuild the numbered scale. Ticks at `step` (coarsened if dense); labels every
@@ -2253,6 +2297,15 @@
 /* height-capped mode: width follows the arc viewBox aspect (600/392 = 1.5306), centered. */
 .ct-card[data-capped]{ width:min(100%, calc(var(--ct-max-h) * 1.5306)); }
 .ct-card[data-capped] .ct-svg{ max-height:var(--ct-max-h); }
+
+/* Compact mode (narrow grid cell, set by the ResizeObserver below COMPACT_W): drop
+   the per-degree tick scale and the tiny fan-name / SWING captions so they don't blur
+   into illegibility. !important beats the inline display _render writes on these refs;
+   leaving compact restores that last inline display. The focusable role=slider grab
+   bands are untouched (ticks are .nope, non-interactive). */
+.ct-card.ct-compact .ct-ticks,
+.ct-card.ct-compact .ct-fanname,
+.ct-card.ct-compact .ct-swingcap{ display:none !important; }
 
 /* pan-y like the card (NOT none) so a vertical swipe over empty svg space still
    scrolls. overflow:hidden: clipping the svg to its own 600x392 box is the hard
