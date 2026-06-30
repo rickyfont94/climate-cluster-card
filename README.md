@@ -23,7 +23,7 @@ The **dual-ring AC control** card: drag the **inner ring** for temperature and t
 
 - [Demo](#demo)
 - [Features](#features)
-  - [What's new in v1.1.0](#whats-new-in-v110)
+  - [What's new in v1.2.0](#whats-new-in-v120)
 - [Screenshots](#screenshots)
 - [Theming and frosted glass](#theming-and-frosted-glass)
 - [Requirements](#requirements)
@@ -46,14 +46,13 @@ The **dual-ring AC control** card: drag the **inner ring** for temperature and t
 
 ## Features
 
-### What's new in v1.1.0
+### What's new in v1.2.0
 
-- **Follows your Home Assistant theme** - the card now renders on `ha-card` and adapts to light and dark automatically; `accent`, `mode_colors`, and `font` still override.
-- **Configurable center actions** - `tap_action` / `hold_action` / `double_tap_action` (default tap opens the mode menu, hold opens more-info).
-- **English + Spanish built in** - labels auto-select from your Home Assistant language.
-- **Generic fan support** - the fan ring now works with non-Midea `climate` / `fan` entities, honoring the entity's real range or its `fan_modes`.
-- **Correct Sections-view sizing** - the dial sizes properly in the grid Sections layout.
-- **Bug fixes** - the gauge no longer vanishes when `min == max`, whole degrees drop the trailing `.0`, the `show_swing` / `show_led` / `show_sound` choice is honored, and the font falls back cleanly to your theme font.
+- **Light-theme legibility** - the gesture hints and numbered tick scale stay readable on light themes, with a card-colored knockout halo so the labels never wash out over the arc.
+- **Frosted glass appearance** - a new `appearance` option (`glass-dark` / `glass-light`) turns the card into a translucent panel that frosts your dashboard wallpaper behind it.
+- **Glass tint and opacity** - `glass_color` tints the panel and `glass_opacity` sets how solid it looks (`0` clear to `1` solid).
+- **Editor "Reset styling" button** - one click clears every styling override (appearance, glass, accent, font, mode colors) back to theme defaults.
+- **Dial polish** - lighter setpoint numerals, a refined current-temp marker, and an accent-tinted needle for a cleaner face.
 
 No breaking changes, safe to update via HACS.
 
@@ -114,8 +113,6 @@ glass_opacity: 0.6
 ```
 
 ![Aurora glass](assets/glass-aurora.png)
-![Teal glass](assets/glass-teal.png)
-![Grey glass](assets/glass-grey.png)
 ![Purple glass](assets/glass-purple.png)
 
 ## Requirements
