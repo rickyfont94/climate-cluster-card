@@ -26,7 +26,7 @@
   const NS = "http://www.w3.org/2000/svg";
 
   // ---- console version banner ---------------------------------------------
-  const VERSION = "1.1.0";
+  const VERSION = "1.2.0";
   console.info(
     "%c CLIMATE-CLUSTER-CARD %c v" + VERSION + " ",
     "color:#0b0f16;background:#4fc3f7;font-weight:700;border-radius:4px 0 0 4px;padding:2px 6px",
@@ -35,6 +35,15 @@
 
   // Default UI accent (HA "Frosted Glass" cyan). Overridable per-card via `accent`.
   const DEFAULT_ACCENT = "#4fc3f7";
+
+  // Per-variant frosted-glass base: the rgb tint + alpha each glass appearance uses
+  // by default. The `glass_color` / `glass_opacity` config keys override these; the
+  // editor seeds the swatch/slider from here and prunes a value back out when it still
+  // equals the per-variant default, so an unchanged glass keeps a byte-lean YAML.
+  const GLASS_BASE = {
+    "glass-dark": { rgb: [20, 24, 46], alpha: 0.66 },
+    "glass-light": { rgb: [244, 247, 253], alpha: 0.60 },
+  };
 
   // Card font stack. We do NOT ship or fetch any font, so this must not depend on a
   // missing face: 'Rajdhani' is honored only if the user already has it installed,
@@ -125,10 +134,17 @@
       "editor.opt.anim_dynamic": "Dynamic (scale with speed)",
       "editor.opt.anim_constant": "Constant",
       "editor.opt.anim_off": "Off",
+      "editor.opt.appearance_theme": "Theme (follows Home Assistant)",
+      "editor.opt.appearance_glass_dark": "Frosted glass (dark)",
+      "editor.opt.appearance_glass_light": "Frosted glass (light)",
       "editor.warn_range": "Minimum temperature must be below maximum temperature. The dial uses a flat range until this is fixed.",
       editorLabels: {
         entity: "Climate entity",
         name: "Name",
+        appearance: "Background",
+        reset_styling: "Reset styling to defaults",
+        glass_color: "Glass tint",
+        glass_opacity: "Glass opacity",
         accent: "Accent color",
         font: "Font family",
         font_url: "Font stylesheet URL",
@@ -157,6 +173,10 @@
       },
       editorHelpers: {
         name: "Card title. Defaults to the entity's friendly name.",
+        appearance: "Theme follows your active Home Assistant theme (works on light and dark). Frosted glass is a translucent panel, in a dark indigo or light finish, that holds its look on any theme.",
+        reset_styling: "Clears the appearance, glass, accent, font and per-mode color settings back to their defaults. Your entity, range, modes and other options are kept.",
+        glass_color: "Tints the frosted glass panel. Applies only to the frosted glass backgrounds.",
+        glass_opacity: "How solid the frosted glass is (0 clear to 1 solid). Applies only to the frosted glass backgrounds.",
         accent: "UI accent for the popup, lit chips, fan ring and caret. Defaults to #4fc3f7.",
         font: "Leave empty to use Rajdhani if installed, then your Home Assistant theme font. A value here is prepended to that stack.",
         font_url: "Optional stylesheet URL (e.g. a Google Fonts link) that loads the font named above. No font is fetched by default.",
@@ -224,10 +244,17 @@
       "editor.opt.anim_dynamic": "Dinamica (escala con la velocidad)",
       "editor.opt.anim_constant": "Constante",
       "editor.opt.anim_off": "Apagada",
+      "editor.opt.appearance_theme": "Tema (sigue a Home Assistant)",
+      "editor.opt.appearance_glass_dark": "Vidrio esmerilado (oscuro)",
+      "editor.opt.appearance_glass_light": "Vidrio esmerilado (claro)",
       "editor.warn_range": "La temperatura minima debe ser menor que la maxima. El dial usa un rango plano hasta que se corrija.",
       editorLabels: {
         entity: "Entidad de clima",
         name: "Nombre",
+        appearance: "Fondo",
+        reset_styling: "Restablecer estilo a los valores por defecto",
+        glass_color: "Tinte del vidrio",
+        glass_opacity: "Opacidad del vidrio",
         accent: "Color de acento",
         font: "Tipo de letra",
         font_url: "URL de la hoja de estilos de la fuente",
@@ -256,6 +283,10 @@
       },
       editorHelpers: {
         name: "Titulo de la tarjeta. Por defecto usa el nombre descriptivo de la entidad.",
+        appearance: "Tema sigue el tema activo de Home Assistant (funciona en claro y oscuro). Vidrio esmerilado es un panel translucido, en acabado indigo oscuro o claro, que mantiene su aspecto en cualquier tema.",
+        reset_styling: "Borra los ajustes de apariencia, vidrio, acento, fuente y colores por modo a sus valores por defecto. Se conservan la entidad, el rango, los modos y las demas opciones.",
+        glass_color: "Tinta el panel de vidrio esmerilado. Solo aplica a los fondos de vidrio esmerilado.",
+        glass_opacity: "Que tan solido es el vidrio esmerilado (0 transparente a 1 solido). Solo aplica a los fondos de vidrio esmerilado.",
         accent: "Acento de la interfaz para el menu, los chips encendidos, el anillo del ventilador y la flecha. Por defecto #4fc3f7.",
         font: "Dejar vacio para usar Rajdhani si esta instalada, y luego la fuente del tema de Home Assistant. Un valor aqui se antepone a esa lista.",
         font_url: "URL opcional de una hoja de estilos (por ejemplo un enlace de Google Fonts) que carga la fuente indicada arriba. No se descarga ninguna fuente por defecto.",
@@ -576,8 +607,27 @@
       this._font = (typeof this._config.font === "string" && this._config.font.trim()) ? this._config.font.trim() : null;
       this._fontUrl = (typeof this._config.font_url === "string" && this._config.font_url.trim()) ? this._config.font_url.trim() : null;
 
+      // Appearance: "theme" (default) follows the active Home Assistant theme so the
+      // dial reads on light AND dark themes; "glass-dark" / "glass-light" force a
+      // translucent frosted-glass panel (deep indigo or pale) on ANY theme. Legacy
+      // "glass" maps to the dark variant; anything unknown falls back to "theme".
+      const _ap = this._config.appearance;
+      this._appearance = (_ap === "glass" || _ap === "glass-dark") ? "glass-dark"
+        : _ap === "glass-light" ? "glass-light" : "theme";
+
+      // Glass tint + translucency overrides (glass appearances only; the per-variant
+      // CSS vars are the fallback when these are unset). glass_color is parsed to an
+      // "r,g,b" triple for rgba(var(--ct-glass-rgb), ...); glass_opacity must be a
+      // number in 0..1 (anything else, including "" or out-of-range, falls back to the
+      // per-variant default). Both stay null when unset (theme mode ignores them).
+      const _gc = colorToRgb(this._config.glass_color);
+      this._glassColorRgb = _gc ? _gc.join(",") : null;
+      const _go = this._config.glass_opacity;
+      this._glassOpacity = (typeof _go === "number" && isFinite(_go) && _go >= 0 && _go <= 1) ? _go : null;
+
       if (this._built) this._applyMaxHeight();
       if (this._built) this._applyFont();
+      if (this._built) this._applyAppearance();
       if (this._built) this._render();
     }
 
@@ -592,6 +642,27 @@
       } else {
         card.removeAttribute("data-capped");
         card.style.removeProperty("--ct-max-h");
+      }
+    }
+
+    // Toggle the frosted-glass appearance via [data-appearance="glass"] on the
+    // <ha-card>. Placed on ha-card (not .ct-card) so glass mode can also hide the
+    // themed card chrome (a light theme would otherwise show a white ring around the
+    // indigo slab). "theme" removes the attribute and the dial follows the theme.
+    _applyAppearance() {
+      if (!this.shadowRoot) return;
+      const haCard = this.shadowRoot.querySelector("ha-card");
+      if (!haCard) return;
+      if (this._appearance === "glass-dark" || this._appearance === "glass-light")
+        haCard.setAttribute("data-appearance", this._appearance);
+      else haCard.removeAttribute("data-appearance");
+
+      // Drive the glass tint/translucency custom props on the inner .ct-card. Unset
+      // values are removed so the per-variant CSS fallback applies unchanged.
+      const card = haCard.querySelector(".ct-card");
+      if (card) {
+        if (this._glassColorRgb) card.style.setProperty("--ct-glass-rgb", this._glassColorRgb); else card.style.removeProperty("--ct-glass-rgb");
+        if (this._glassOpacity != null) card.style.setProperty("--ct-glass-alpha", String(this._glassOpacity)); else card.style.removeProperty("--ct-glass-alpha");
       }
     }
 
@@ -929,6 +1000,9 @@
       const haCard = document.createElement("ha-card");
       const card = document.createElement("div");
       card.className = "ct-card";
+      // Glass appearance lives on the ha-card so its themed chrome is hidden too.
+      if (this._appearance === "glass-dark" || this._appearance === "glass-light")
+        haCard.setAttribute("data-appearance", this._appearance);
       haCard.appendChild(card);
       root.appendChild(haCard);
 
@@ -1059,7 +1133,9 @@
       svg.appendChild(this._refs.warmFill);
 
       // ---- current-temp marker (white inset triangle, no glow) ----
-      this._refs.curMarker = el("path", { class: "nope", fill: "#dfe8ef", opacity: ".9", d: "" });
+      // Thin dark outline so the white marker stays visible over the light end of
+      // the cold/cyan arc (it vanished against the pale arc without it).
+      this._refs.curMarker = el("path", { class: "nope", fill: "#dfe8ef", opacity: ".9", stroke: "rgba(15,22,33,.55)", "stroke-width": "1", "stroke-linejoin": "round", d: "" });
       svg.appendChild(this._refs.curMarker);
 
       // ---- TEMP HANDLE (fat rounded warm needle; tip authored at +Y = inward) ----
@@ -1071,6 +1147,12 @@
         '<path d="M 0 12 Q 3.2 6 3.6 0 Q 1.8 -3 0 -2.5 Q -1.8 -3 -3.6 0 Q -3.2 6 0 12 Z" ' +
         'fill="rgba(255,225,170,.45)" stroke="none"/>';
       this._refs.tempNeedle = tempNeedle;
+      // refs to the needle's two inner <path>s so _render can tint them to the
+      // active mode color (issue #21); each carries an explicit fill attr, so a
+      // fill on the parent <g> alone would never reach them.
+      const tnPaths = tempNeedle.querySelectorAll("path");
+      this._refs.tempNeedleBody = tnPaths[0]; // body: fill + stroke
+      this._refs.tempNeedleHi = tnPaths[1];   // inner highlight: translucent fill
       svg.appendChild(tempNeedle);
 
       // ---- LOW-setpoint needle (cold/cyan), heat_cool dual mode ONLY (issue #14).
@@ -1130,7 +1212,7 @@
         x: CX, y: 196, "text-anchor": "middle", class: "ct-now nope",
         "font-size": "15", "letter-spacing": "2.5",
       });
-      this._refs.nowCap.style.fontWeight = "600";
+      this._refs.nowCap.style.fontWeight = "400";
       const nowPrefix = el("tspan", { fill: "#8c99a7" }, "NOW ");
       nowPrefix.style.fill = "var(--secondary-text-color, #8c99a7)";
       this._refs.nowLabel = nowPrefix; // localized in _applyStaticStrings (issue #19)
@@ -1144,7 +1226,7 @@
         x: CX, y: 266, "text-anchor": "middle", "dominant-baseline": "central", class: "ct-big nope",
         fill: "rgba(234,235,238,.98)", "font-size": "104", "letter-spacing": "2",
       }, "--");
-      this._refs.bigNum.style.fontWeight = "300";
+      this._refs.bigNum.style.fontWeight = "400";
       svg.appendChild(this._refs.bigNum);
 
       // caret near the big number; shown only when hvac_action=cooling/heating.
@@ -1359,6 +1441,7 @@
       // The .ct-compact CSS and the connected/disconnected _ro guards stay as harmless
       // no-ops (this._ro is never created).
       this._compact = false;
+      this._applyAppearance(); // apply any glass tint / opacity set before this build
     }
 
     // Re-observe after a reconnect (the shadow DOM persists, so .ct-card is reused).
@@ -1396,7 +1479,7 @@
         const len = major ? 13 : 6;
         const a = polar(CX, CY, rTickOut - len, ang), b = polar(CX, CY, rTickOut, ang);
         tk += `<line x1="${a[0].toFixed(1)}" y1="${a[1].toFixed(1)}" x2="${b[0].toFixed(1)}" y2="${b[1].toFixed(1)}" ` +
-          `stroke="${major ? "rgba(234,235,238,.62)" : "rgba(234,235,238,.24)"}" stroke-width="${major ? 2.6 : 1.5}"/>`;
+          `class="${major ? "ct-tk-major" : "ct-tk-minor"}" stroke-width="${major ? 2.6 : 1.5}"/>`;
       }
       // numbered LABELS every labelStride (decoupled from `minor` so they always land)
       const firstLabel = Math.ceil(lo / labelStride - 1e-6) * labelStride;
@@ -2766,6 +2849,21 @@
         if (target != null) this._paintTempArc(target);
         else { this._refs.bigNum.textContent = "--"; this._refs.bigNum.setAttribute("font-size", "104"); }
       }
+      // ---- needle tint: the single-target needle follows the active mode color
+      // (issue #21). In heat_cool the warm needle is the HIGH handle paired with
+      // the cyan LOW twin, so restore its authored warm there and never touch the
+      // LOW needle.
+      if (this._refs.tempNeedleBody) {
+        if (isHc) {
+          this._refs.tempNeedleBody.setAttribute("fill", "#F2933A");
+          this._refs.tempNeedleBody.setAttribute("stroke", "#FFB55E");
+          this._refs.tempNeedleHi.setAttribute("fill", "rgba(255,225,170,.45)");
+        } else {
+          this._refs.tempNeedleBody.setAttribute("fill", accent);
+          this._refs.tempNeedleBody.setAttribute("stroke", `color-mix(in srgb, ${accent} 62%, #ffffff)`);
+          this._refs.tempNeedleHi.setAttribute("fill", `color-mix(in srgb, ${accent} 50%, transparent)`);
+        }
+      }
       this._refs.tempNeedle.style.opacity = off ? "0.45" : "1";
       this._refs.tempNeedleLo.style.opacity = off ? "0.45" : "1";
       this._refs.coldFill.style.opacity = off ? "0.30" : "1";
@@ -2957,10 +3055,16 @@ ha-card{ position:relative; display:block; overflow:visible; }
 .ct-fanname{ fill:var(--secondary-text-color, rgba(234,235,238,.7)); }
 .ct-swingcap{ fill:var(--secondary-text-color, rgba(234,235,238,.7)); }
 .ct-ticks text{ fill:var(--secondary-text-color, rgba(234,235,238,.88)); }
+/* Tick HASH MARKS follow the theme too (they were a hardcoded near-white that
+   vanished on a light theme); major/minor hierarchy kept via the mix amount. */
+.ct-ticks .ct-tk-major{ stroke:color-mix(in srgb, var(--secondary-text-color, rgb(234,235,238)) 60%, transparent); }
+.ct-ticks .ct-tk-minor{ stroke:color-mix(in srgb, var(--secondary-text-color, rgb(234,235,238)) 26%, transparent); }
 .ct-card{
   position:relative; width:100%; margin:0 auto; overflow:visible;
   --ct-accent:${DEFAULT_ACCENT};
   --ct-font:${FONT_STACK};
+  /* card-colored halo behind the gesture hint glyphs so they read over the fan-arc. */
+  --ct-hint-knockout: var(--ha-card-background, var(--card-background-color, #16181d));
   /* pan-y (NOT none): a vertical swipe over the card still scrolls the dashboard;
      only the .ct-hit grab bands below opt out so a ring drag owns the gesture. */
   touch-action:pan-y;
@@ -2998,8 +3102,14 @@ ha-card{ position:relative; display:block; overflow:visible; }
    pointerdown. Opacity-only transition so it survives prefers-reduced-motion and
    never clobbers a presentation transform. */
 .ct-pressdisc{ fill:var(--ct-accent); transition:opacity .14s ease; }
-/* Gesture hint labels (issue #15) never intercept a tap (also class .nope). */
-.ct-hints text{ pointer-events:none; }
+/* Gesture hint labels (issue #15) never intercept a tap (also class .nope). Their
+   fill follows the theme so the faint FAN / MODE / AUTO labels stay legible on a
+   light theme (they were a hardcoded near-white that washed out on white); the
+   color-mix keeps them faint on both themes. The card-colored knockout stroke
+   (paint-order:stroke draws it BEHIND the fill) carves a halo around each glyph so
+   the labels still read where they overlap the bright cyan fan-arc; the halo hue
+   tracks the panel via --ct-hint-knockout (retinted per glass variant below). */
+.ct-hints text{ pointer-events:none; fill:color-mix(in srgb, var(--secondary-text-color, rgb(234,235,238)) 55%, transparent); paint-order:stroke; stroke:var(--ct-hint-knockout, var(--ha-card-background, var(--card-background-color, #16181d))); stroke-width:3px; stroke-linejoin:round; }
 
 /* Frosted-glass slab: dark translucent fill, 1px hairline outline, 14px radius. Its OWN
    backdrop-blur div BEHIND the svg, full-card inset; backdrop-filter kept for glass. */
@@ -3014,6 +3124,65 @@ ha-card{ position:relative; display:block; overflow:visible; }
     inset 0 -10px 28px rgba(0,0,0,.42),
     0 18px 50px rgba(0,0,0,.50);
   pointer-events:none;
+}
+
+/* ----------------------------------------------------------------------------
+   GLASS appearance (config: appearance: glass-dark | glass-light). Forces a
+   translucent frosted-glass panel on ANY Home Assistant theme. The attribute sits
+   on <ha-card> so glass mode can (a) hide the themed card chrome -- a light theme
+   would otherwise paint a ring around the slab; (b) override the theme
+   text/divider/background CUSTOM PROPERTIES locally on .ct-card so every neutral
+   text + the popup retints in one place (light text on the dark glass, dark text on
+   the light glass); and (c) repaint .ct-frost as a full-bleed slab. The surface is
+   kept SLIGHTLY TRANSLUCENT (alpha < 1) and the backdrop blur frosts the wallpaper
+   behind, so the dashboard shows through. Accent / per-mode / arc-gradient colors
+   are untouched. Default appearance ("theme") sets NO attribute (byte-unchanged).
+   ---------------------------------------------------------------------------- */
+ha-card[data-appearance^="glass"]{ background:transparent; border:none; box-shadow:none; }
+ha-card[data-appearance^="glass"] .ct-frost{
+  inset:0;
+  background:
+    radial-gradient(125% 110% at 50% -10%, var(--ct-glass-sheen, transparent), transparent 72%),
+    rgba(var(--ct-glass-rgb, 20,24,46), var(--ct-glass-alpha, .66));
+  backdrop-filter:blur(16px) saturate(1.25);
+  -webkit-backdrop-filter:blur(16px) saturate(1.25);
+}
+/* In glass mode the hint-halo matches the (opaque) panel hue rather than the themed
+   card background, so the knockout still reads against the frosted slab. */
+ha-card[data-appearance^="glass"] .ct-card{ --ct-hint-knockout: rgb(var(--ct-glass-rgb)); }
+
+/* DARK frosted glass: deep-indigo translucent panel, light neutral text. */
+ha-card[data-appearance="glass-dark"] .ct-card{
+  --primary-text-color:rgba(236,239,247,.98);
+  --secondary-text-color:rgba(202,212,234,.80);
+  --divider-color:rgba(150,170,255,.22);
+  --ha-card-background:rgba(20,24,46,.72);
+  --card-background-color:rgba(20,24,46,.72);
+  --ct-glass-rgb:20,24,46; --ct-glass-alpha:.66; --ct-glass-sheen:rgba(150,165,235,.18);
+}
+ha-card[data-appearance="glass-dark"] .ct-frost{
+  border:1px solid rgba(150,170,255,.24);
+  box-shadow:
+    inset 0 2px 14px rgba(170,185,255,.14),
+    inset 0 -16px 38px rgba(0,0,0,.34),
+    0 18px 52px rgba(0,0,0,.42);
+}
+
+/* LIGHT frosted glass: pale translucent panel, dark neutral text. */
+ha-card[data-appearance="glass-light"] .ct-card{
+  --primary-text-color:rgba(28,33,48,.96);
+  --secondary-text-color:rgba(58,66,86,.82);
+  --divider-color:rgba(40,52,90,.20);
+  --ha-card-background:rgba(244,247,253,.60);
+  --card-background-color:rgba(244,247,253,.60);
+  --ct-glass-rgb:244,247,253; --ct-glass-alpha:.60; --ct-glass-sheen:rgba(255,255,255,.55);
+}
+ha-card[data-appearance="glass-light"] .ct-frost{
+  border:1px solid rgba(255,255,255,.55);
+  box-shadow:
+    inset 0 2px 14px rgba(255,255,255,.60),
+    inset 0 -16px 34px rgba(60,70,110,.14),
+    0 18px 50px rgba(40,50,90,.22);
 }
 
 @keyframes ctfanspin{ to{ transform:rotate(360deg); } }
@@ -3176,6 +3345,13 @@ ha-card{ position:relative; display:block; overflow:visible; }
         { name: "name", selector: { text: {} } },
 
         { type: "expandable", name: "", title: this._t("editor.section.appearance"), icon: "mdi:palette", schema: [
+          { name: "appearance", selector: { select: { mode: "dropdown", options: [
+            { value: "theme", label: this._t("editor.opt.appearance_theme") },
+            { value: "glass-dark", label: this._t("editor.opt.appearance_glass_dark") },
+            { value: "glass-light", label: this._t("editor.opt.appearance_glass_light") },
+          ] } } },
+          { name: "glass_color", selector: { color_rgb: {} } },
+          { name: "glass_opacity", selector: { number: { min: 0, max: 1, step: 0.05, mode: "slider" } } },
           { name: "accent", selector: { color_rgb: {} } },
           { name: "font", selector: { text: {} } },
           { name: "font_url", selector: { text: {} } },
@@ -3257,9 +3433,29 @@ ha-card{ position:relative; display:block; overflow:visible; }
         style.textContent = "ha-form{display:block;padding:8px 4px;}" +
           ".ct-editor-warn{display:block;margin:4px 4px 10px;padding:10px 12px;border-radius:8px;" +
           "background:rgba(255,80,80,.12);border:1px solid rgba(255,120,120,.5);color:#ffb3b3;" +
-          "font-size:13px;line-height:1.35;}";
+          "font-size:13px;line-height:1.35;}" +
+          ".ct-reset-row{margin:10px 4px 4px;padding-top:8px;border-top:1px solid var(--divider-color, rgba(127,127,127,.2));}" +
+          ".ct-reset-btn{display:inline-flex;align-items:center;padding:8px 16px;border-radius:10px;cursor:pointer;" +
+          "font:inherit;font-size:14px;background:var(--secondary-background-color, rgba(120,130,145,.14));" +
+          "color:var(--primary-text-color);border:1px solid var(--divider-color, rgba(127,127,127,.35));}" +
+          ".ct-reset-btn:hover{border-color:var(--primary-color, #03a9f4);}" +
+          ".ct-reset-caption{margin-top:6px;color:var(--secondary-text-color);font-size:12px;line-height:1.35;}";
         root.appendChild(style);
         root.appendChild(this._form);
+        // "Reset styling to defaults": a real BUTTON (ha-form has no button field, and a
+        // boolean renders as a misleading on/off toggle). Click clears the styling
+        // overrides on the live config; label + caption are localized in the update below.
+        this._resetRow = document.createElement("div");
+        this._resetRow.className = "ct-reset-row";
+        this._resetBtn = document.createElement("button");
+        this._resetBtn.type = "button";
+        this._resetBtn.className = "ct-reset-btn";
+        this._resetBtn.addEventListener("click", () => this._resetStyling());
+        this._resetCaption = document.createElement("div");
+        this._resetCaption.className = "ct-reset-caption";
+        this._resetRow.appendChild(this._resetBtn);
+        this._resetRow.appendChild(this._resetCaption);
+        root.appendChild(this._resetRow);
         // Inline range-validation banner (issue #18): shown when min >= max so the
         // editor explains the flat dial instead of leaving a confusing blank card.
         this._warn = document.createElement("div");
@@ -3290,6 +3486,35 @@ ha-card{ position:relative; display:block; overflow:visible; }
           this._warn.style.display = "none";
         }
       }
+      // Localize the reset button + caption, and only offer it when there is actually
+      // styling to clear (otherwise it would be a dead no-op control at defaults).
+      if (this._resetBtn) {
+        const L = editorMap(this._hass, "editorLabels");
+        const H = editorMap(this._hass, "editorHelpers");
+        this._resetBtn.textContent = L.reset_styling || "Reset styling to defaults";
+        this._resetCaption.textContent = H.reset_styling || "";
+        const styled = ["appearance", "glass_color", "glass_opacity", "accent", "font", "font_url", "mode_colors"]
+          .some((k) => this._config[k] != null);
+        this._resetRow.style.display = styled ? "" : "none";
+      }
+    }
+
+    // The reset BUTTON action: clear every styling override on the live (already lean)
+    // config, emit config-changed, and re-render the form so swatches/sliders fall back
+    // to their defaults. Non-styling options (entity, range, modes, actions) are kept.
+    _resetStyling() {
+      if (!this._config) return;
+      const cfg = Object.assign({}, this._config);
+      let changed = false;
+      for (const k of ["appearance", "glass_color", "glass_opacity", "accent", "font", "font_url", "mode_colors"]) {
+        if (k in cfg) { delete cfg[k]; changed = true; }
+      }
+      if (!changed) return;
+      this._config = cfg;
+      this.dispatchEvent(new CustomEvent("config-changed", {
+        detail: { config: cfg }, bubbles: true, composed: true,
+      }));
+      this._update();
     }
 
     // Build the ha-form `data` from the real config, seeding display-only defaults:
@@ -3333,6 +3558,18 @@ ha-card{ position:relative; display:block; overflow:visible; }
       for (const k of TRISTATE_KEYS) {
         if (data[k] === undefined || data[k] === null) data[k] = "auto";
       }
+      // Appearance: unset means "theme", so the select reads Theme instead of blank;
+      // a legacy "glass" value maps to the dark variant so the select shows it.
+      if (data.appearance === undefined || data.appearance === null) data.appearance = "theme";
+      else if (data.appearance === "glass") data.appearance = "glass-dark";
+
+      // Glass tint/opacity: seed the per-variant default so the color swatch shows the
+      // real tint (not black) and the slider shows the real translucency (not 0). Theme
+      // mode reads the dark base; it is ignored at render and pruned back out on save.
+      const gb = GLASS_BASE[data.appearance === "glass-light" ? "glass-light" : "glass-dark"];
+      if (data.glass_color === undefined || data.glass_color === null) data.glass_color = gb.rgb.slice();
+      else data.glass_color = colorToRgb(data.glass_color) || gb.rgb.slice();
+      if (data.glass_opacity === undefined || data.glass_opacity === null) data.glass_opacity = gb.alpha;
       return data;
     }
 
@@ -3364,9 +3601,17 @@ ha-card{ position:relative; display:block; overflow:visible; }
       for (const k of TRISTATE_KEYS) {
         if (cfg[k] === "auto") delete cfg[k];
       }
+      // Appearance: "theme" is the default -> only persist an explicit "glass".
+      if (cfg.appearance === "theme") delete cfg.appearance;
       // Modes: a selection equal to the entity's full hvac_modes is the default ->
       // drop it so an unchanged all-checked list is not persisted (only save subsets).
       if (Array.isArray(cfg.modes) && arrSetEq(cfg.modes, this._hvacModes(cfg))) delete cfg.modes;
+      // Glass tint/opacity: drop when still at the per-variant default so an unchanged
+      // glass keeps a lean YAML (theme mode, where appearance is already deleted above,
+      // compares against the dark base and prunes the seeded values out).
+      const gbase = GLASS_BASE[cfg.appearance === "glass-light" ? "glass-light" : "glass-dark"];
+      if (rgbEq(cfg.glass_color, gbase.rgb)) delete cfg.glass_color;
+      if (typeof cfg.glass_opacity === "number" && Math.abs(cfg.glass_opacity - gbase.alpha) < 1e-6) delete cfg.glass_opacity;
 
       for (const k of Object.keys(cfg)) {
         const v = cfg[k];
