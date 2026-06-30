@@ -242,6 +242,18 @@ The card prefers the **Rajdhani** font for its numerals when it is installed loc
 
 Midea is a trademark of its respective owner. This project is independent and unaffiliated.
 
+## Translations
+
+The card follows your Home Assistant language. HVAC mode names and fan mode names are localized through Home Assistant itself, so they always match the rest of your dashboard. The card's own labels (NOW, SWING, LED, SOUND, AUTO), tooltips, screen-reader text and editor labels ship with English and Spanish, and numbers (temperatures, the tick scale) are formatted with your locale's decimal separator and grouping.
+
+To add a language, edit the `LOCALE` map near the top of `climate-cluster-card.js`:
+
+1. Add a new two-letter key (for example `de`) alongside `en` and `es`.
+2. Mirror the keys under `en`, including the nested `editorLabels` and `editorHelpers` maps.
+3. Any key you leave out falls back to English, so a partial translation is fine.
+
+The active language is read from `hass.language` (then `hass.locale.language`); a region subtag is stripped, so `es-419` resolves to `es`. Do not translate mode or fan mode names here; those come from Home Assistant. Keep values free of em dashes. A pull request with a new language is welcome.
+
 ## Contributing
 
 Issues and pull requests are welcome, see [CONTRIBUTING.md](CONTRIBUTING.md) or open an issue.

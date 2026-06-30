@@ -72,6 +72,249 @@
     off: "OFF",
   };
 
+  // ---- i18n (issue #19) ----------------------------------------------------
+  // The card's OWN literal strings (labels, captions, aria-labels, live-region
+  // announcements, editor labels/helpers/options) live here. HVAC mode names and
+  // fan_mode names are NOT in this map: they are localized through Home Assistant
+  // (see modeName / _fanModeName) so they always match the rest of the dashboard
+  // and any custom mode/fan value keeps working.
+  //
+  // To add a language: add a 2-letter key (e.g. "de") mirroring "en"'s keys,
+  // including the nested editorLabels / editorHelpers maps. Any missing key
+  // falls back to English, so a partial translation is fine. The active language
+  // is read from hass.language (then hass.locale.language); a region subtag is
+  // stripped (es-419 -> es). Keep values free of em dashes (use a hyphen).
+  const LOCALE = {
+    en: {
+      now: "NOW",
+      swing: "SWING",
+      led: "LED",
+      sound: "SOUND",
+      auto: "AUTO",
+      automatic: "Automatic",
+      percent: "percent",
+      fan: "Fan",
+      mode: "Mode",
+      to: "to",
+      on: "on",
+      off: "off",
+      celsius: "Celsius",
+      fahrenheit: "Fahrenheit",
+      missing: "MISSING",
+      climate_control: "climate control",
+      set_fan_auto: "Set fan to automatic",
+      change_mode: "Change mode",
+      target_temperature: "Target temperature",
+      fan_speed: "Fan speed",
+      select_mode: "Select mode",
+      hint_mode: "MODE",
+      hint_fan: "FAN",
+      hint_auto: "AUTO",
+      "editor.section.appearance": "Appearance",
+      "editor.section.modes": "Modes",
+      "editor.section.fan": "Fan",
+      "editor.section.features": "Features",
+      "editor.section.layout": "Layout",
+      "editor.section.actions": "Actions",
+      "editor.section.mode_colors": "Per-mode colors",
+      "editor.opt.auto": "Auto",
+      "editor.opt.show": "Show",
+      "editor.opt.hide": "Hide",
+      "editor.opt.unit_fahrenheit": "Fahrenheit",
+      "editor.opt.unit_celsius": "Celsius",
+      "editor.opt.anim_dynamic": "Dynamic (scale with speed)",
+      "editor.opt.anim_constant": "Constant",
+      "editor.opt.anim_off": "Off",
+      "editor.warn_range": "Minimum temperature must be below maximum temperature. The dial uses a flat range until this is fixed.",
+      editorLabels: {
+        entity: "Climate entity",
+        name: "Name",
+        accent: "Accent color",
+        font: "Font family",
+        font_url: "Font stylesheet URL",
+        temperature_unit: "Temperature unit",
+        temp_step: "Step",
+        min_temp: "Minimum temperature",
+        max_temp: "Maximum temperature",
+        show_scale: "Show scale",
+        show_current: "Show current temperature",
+        modes: "Modes",
+        fan_entity: "Fan speed entity (number.*)",
+        show_fan: "Show fan ring",
+        fan_animation: "Fan animation",
+        fan_animation_speed: "Fan animation speed",
+        swing_entity: "Swing entity (switch.*)",
+        show_swing: "Show swing",
+        led_entity: "LED / display entity (switch.*)",
+        show_led: "Show LED",
+        sound_entity: "Sound / beep entity (switch.*)",
+        show_sound: "Show sound",
+        show_hints: "Show gesture hints",
+        max_height: "Max height",
+        tap_action: "Tap action",
+        hold_action: "Hold action",
+        double_tap_action: "Double tap action",
+      },
+      editorHelpers: {
+        name: "Card title. Defaults to the entity's friendly name.",
+        accent: "UI accent for the popup, lit chips, fan ring and caret. Defaults to #4fc3f7.",
+        font: "Leave empty to use Rajdhani if installed, then your Home Assistant theme font. A value here is prepended to that stack.",
+        font_url: "Optional stylesheet URL (e.g. a Google Fonts link) that loads the font named above. No font is fetched by default.",
+        temperature_unit: "Auto follows your Home Assistant unit system.",
+        temp_step: "Setpoint granularity. Defaults to the entity's target_temp_step.",
+        min_temp: "Leave empty to use the entity's minimum.",
+        max_temp: "Leave empty to use the entity's maximum.",
+        show_scale: "The numbered tick scale around the dial.",
+        show_current: "The NOW reading and current-temperature marker.",
+        modes: "Which HVAC modes appear in the popup. Defaults to the entity's modes.",
+        fan_entity: "A number.* percent entity for a draggable fan ring. Auto-discovered for Midea; falls back to named fan_modes.",
+        show_fan: "Force the fan ring on or off. Auto shows it when a fan source resolves.",
+        fan_animation: "The spinning clover animation.",
+        fan_animation_speed: "Dynamic scales the spin with fan speed; constant is a fixed spin.",
+        swing_entity: "Override the swing switch. Leave empty to auto-discover (Midea) or use climate swing_modes.",
+        show_swing: "Force the swing chip on or off. Auto shows it when a swing source resolves; a forced chip with no source renders disabled.",
+        led_entity: "Override the display/LED switch. Leave empty to auto-discover (Midea).",
+        show_led: "Force the LED chip on or off. Auto shows it when the entity resolves; a forced chip with no source renders disabled.",
+        sound_entity: "Override the beep/prompt-tone switch. Leave empty to auto-discover (Midea).",
+        show_sound: "Force the sound chip on or off. Auto shows it when the entity resolves; a forced chip with no source renders disabled.",
+        show_hints: "Faint MODE / FAN / AUTO labels showing the dial is interactive.",
+        max_height: "CSS length cap, e.g. 34vh or 360px. Width follows the dial aspect.",
+        tap_action: "Leave unset to keep the default: tap opens the mode menu.",
+        hold_action: "Defaults to opening the more-info dialog (history, attributes, presets).",
+        double_tap_action: "Off by default.",
+      },
+    },
+    es: {
+      now: "AHORA",
+      swing: "OSCILAR",
+      led: "LED",
+      sound: "SONIDO",
+      auto: "AUTO",
+      automatic: "Automatico",
+      percent: "por ciento",
+      fan: "Ventilador",
+      mode: "Modo",
+      to: "a",
+      on: "encendido",
+      off: "apagado",
+      celsius: "Celsius",
+      fahrenheit: "Fahrenheit",
+      missing: "NO DISPONIBLE",
+      climate_control: "control de clima",
+      set_fan_auto: "Poner el ventilador en automatico",
+      change_mode: "Cambiar modo",
+      target_temperature: "Temperatura objetivo",
+      fan_speed: "Velocidad del ventilador",
+      select_mode: "Seleccionar modo",
+      hint_mode: "MODO",
+      hint_fan: "VENT.",
+      hint_auto: "AUTO",
+      "editor.section.appearance": "Apariencia",
+      "editor.section.modes": "Modos",
+      "editor.section.fan": "Ventilador",
+      "editor.section.features": "Funciones",
+      "editor.section.layout": "Diseno",
+      "editor.section.actions": "Acciones",
+      "editor.section.mode_colors": "Colores por modo",
+      "editor.opt.auto": "Auto",
+      "editor.opt.show": "Mostrar",
+      "editor.opt.hide": "Ocultar",
+      "editor.opt.unit_fahrenheit": "Fahrenheit",
+      "editor.opt.unit_celsius": "Celsius",
+      "editor.opt.anim_dynamic": "Dinamica (escala con la velocidad)",
+      "editor.opt.anim_constant": "Constante",
+      "editor.opt.anim_off": "Apagada",
+      "editor.warn_range": "La temperatura minima debe ser menor que la maxima. El dial usa un rango plano hasta que se corrija.",
+      editorLabels: {
+        entity: "Entidad de clima",
+        name: "Nombre",
+        accent: "Color de acento",
+        font: "Tipo de letra",
+        font_url: "URL de la hoja de estilos de la fuente",
+        temperature_unit: "Unidad de temperatura",
+        temp_step: "Incremento",
+        min_temp: "Temperatura minima",
+        max_temp: "Temperatura maxima",
+        show_scale: "Mostrar escala",
+        show_current: "Mostrar temperatura actual",
+        modes: "Modos",
+        fan_entity: "Entidad de velocidad del ventilador (number.*)",
+        show_fan: "Mostrar anillo del ventilador",
+        fan_animation: "Animacion del ventilador",
+        fan_animation_speed: "Velocidad de la animacion del ventilador",
+        swing_entity: "Entidad de oscilacion (switch.*)",
+        show_swing: "Mostrar oscilacion",
+        led_entity: "Entidad de LED / pantalla (switch.*)",
+        show_led: "Mostrar LED",
+        sound_entity: "Entidad de sonido / pitido (switch.*)",
+        show_sound: "Mostrar sonido",
+        show_hints: "Mostrar pistas de gestos",
+        max_height: "Altura maxima",
+        tap_action: "Accion al tocar",
+        hold_action: "Accion al mantener",
+        double_tap_action: "Accion al tocar dos veces",
+      },
+      editorHelpers: {
+        name: "Titulo de la tarjeta. Por defecto usa el nombre descriptivo de la entidad.",
+        accent: "Acento de la interfaz para el menu, los chips encendidos, el anillo del ventilador y la flecha. Por defecto #4fc3f7.",
+        font: "Dejar vacio para usar Rajdhani si esta instalada, y luego la fuente del tema de Home Assistant. Un valor aqui se antepone a esa lista.",
+        font_url: "URL opcional de una hoja de estilos (por ejemplo un enlace de Google Fonts) que carga la fuente indicada arriba. No se descarga ninguna fuente por defecto.",
+        temperature_unit: "Auto sigue el sistema de unidades de Home Assistant.",
+        temp_step: "Granularidad del punto de ajuste. Por defecto usa el target_temp_step de la entidad.",
+        min_temp: "Dejar vacio para usar el minimo de la entidad.",
+        max_temp: "Dejar vacio para usar el maximo de la entidad.",
+        show_scale: "La escala numerada de marcas alrededor del dial.",
+        show_current: "La lectura AHORA y el marcador de temperatura actual.",
+        modes: "Que modos HVAC aparecen en el menu. Por defecto los modos de la entidad.",
+        fan_entity: "Una entidad number.* de porcentaje para un anillo de ventilador arrastrable. Se autodetecta en Midea; si no, usa los fan_modes con nombre.",
+        show_fan: "Forzar el anillo del ventilador encendido o apagado. Auto lo muestra cuando se resuelve una fuente de ventilador.",
+        fan_animation: "La animacion giratoria del trebol.",
+        fan_animation_speed: "Dynamic escala el giro con la velocidad del ventilador; constant es un giro fijo.",
+        swing_entity: "Anula el interruptor de oscilacion. Dejar vacio para autodetectar (Midea) o usar los swing_modes del clima.",
+        show_swing: "Forzar el chip de oscilacion encendido o apagado. Auto lo muestra cuando se resuelve una fuente; un chip forzado sin fuente se muestra deshabilitado.",
+        led_entity: "Anula el interruptor de pantalla/LED. Dejar vacio para autodetectar (Midea).",
+        show_led: "Forzar el chip de LED encendido o apagado. Auto lo muestra cuando la entidad se resuelve; un chip forzado sin fuente se muestra deshabilitado.",
+        sound_entity: "Anula el interruptor de pitido/tono. Dejar vacio para autodetectar (Midea).",
+        show_sound: "Forzar el chip de sonido encendido o apagado. Auto lo muestra cuando la entidad se resuelve; un chip forzado sin fuente se muestra deshabilitado.",
+        show_hints: "Etiquetas tenues MODO / VENT. / AUTO que muestran que el dial es interactivo.",
+        max_height: "Limite de longitud CSS, por ejemplo 34vh o 360px. El ancho sigue la proporcion del dial.",
+        tap_action: "Dejar sin definir para mantener el valor por defecto: tocar abre el menu de modos.",
+        hold_action: "Por defecto abre el dialogo de mas informacion (historial, atributos, preajustes).",
+        double_tap_action: "Apagado por defecto.",
+      },
+    },
+  };
+
+  // Active 2-letter language from hass (region subtag stripped), else English.
+  function langOf(hass) {
+    let l = (hass && (hass.language || (hass.locale && hass.locale.language))) || "en";
+    l = String(l).toLowerCase();
+    const dash = l.indexOf("-");
+    return dash > 0 ? l.slice(0, dash) : l;
+  }
+  // Resolve a flat card string: active language, then English, then the raw key.
+  function tr(hass, key) {
+    const table = LOCALE[langOf(hass)] || LOCALE.en;
+    if (table[key] != null) return table[key];
+    if (LOCALE.en[key] != null) return LOCALE.en[key];
+    return key;
+  }
+  // HVAC mode display name THROUGH Home Assistant (so it matches the dashboard and
+  // any custom mode works). Falls back to the built-in dictionary, else null so the
+  // editor label resolver can keep falling through for non-mode field names.
+  function modeName(hass, mode) {
+    if (hass && typeof hass.localize === "function") {
+      const v = hass.localize("component.climate.entity_component._.state." + mode);
+      if (v) return v;
+    }
+    return MODE_LABEL[mode] || null;
+  }
+  // Merge English + active-language nested editor map (English keys are the base so
+  // an untranslated label still resolves).
+  function editorMap(hass, which) {
+    return Object.assign({}, LOCALE.en[which], (LOCALE[langOf(hass)] || {})[which]);
+  }
+
   // ---- popup TOGGLES ROW chips (SWING / LED / SOUND) -----------------------
   // Inline glyphs only (no icon deps). stroke="currentColor" so the lit/dim color
   // is driven by the chip's CSS `color` (.ct-toggle.on = accent, else grey).
@@ -861,6 +1104,7 @@
       this._refs.nowCap.style.fontWeight = "600";
       const nowPrefix = el("tspan", { fill: "#8c99a7" }, "NOW ");
       nowPrefix.style.fill = "var(--secondary-text-color, #8c99a7)";
+      this._refs.nowLabel = nowPrefix; // localized in _applyStaticStrings (issue #19)
       this._refs.nowCap.appendChild(nowPrefix);
       this._refs.nowVal = el("tspan", { fill: "rgba(234,235,238,.92)" }, "--°");
       this._refs.nowCap.appendChild(this._refs.nowVal);
@@ -1136,7 +1380,7 @@
         const ang = START_ANG + SPAN * ((t - lo) / span);
         const np = polar(CX, CY, rNum, ang);
         tk += `<text x="${np[0].toFixed(1)}" y="${np[1].toFixed(1)}" text-anchor="middle" dominant-baseline="central" ` +
-          `font-size="14.5" letter-spacing="0.5" font-weight="600" fill="rgba(234,235,238,.88)">${this._fmt(t)}</text>`;
+          `font-size="14.5" letter-spacing="0.5" font-weight="600" fill="rgba(234,235,238,.88)">${this._fmtDisplay(t)}</text>`;
       }
       this._refs.ticks.innerHTML = tk;
       this._lo = lo; this._hi = hi; this._tickStep = step;
@@ -1594,7 +1838,80 @@
     _announce(msg) {
       if (this._refs && this._refs.live && msg != null) this._refs.live.textContent = String(msg);
     }
-    _unitWord() { return this._unit() === "C" ? "Celsius" : "Fahrenheit"; }
+    _unitWord() { return this._t(this._unit() === "C" ? "celsius" : "fahrenheit"); }
+
+    // ---- i18n helpers (issue #19) ----
+    // Flat card string in the active language (English fallback).
+    _t(key) { return tr(this._hass, key); }
+    // HVAC mode display name via Home Assistant; uppercased fallback for the SVG
+    // center label (no CSS text-transform there). Returns a non-empty string.
+    _modeName(mode) { return modeName(this._hass, mode) || String(mode).toUpperCase(); }
+    // fan_mode display name via Home Assistant (matches the dashboard); uppercased
+    // raw fallback so custom fan_modes and older HA still render. DISPLAY ONLY:
+    // service calls always send the raw fan_mode value, never this string.
+    _fanModeName(name) {
+      if (this._hass && typeof this._hass.formatEntityAttributeValue === "function") {
+        try {
+          const st = this._st(this._config.entity);
+          if (st) {
+            const v = this._hass.formatEntityAttributeValue(st, "fan_mode", name);
+            if (v) return String(v).toUpperCase();
+          }
+        } catch (e) {}
+      }
+      return String(name).toUpperCase();
+    }
+    // BCP47 tag for number formatting from hass language/locale.
+    _localeTag() {
+      return (this._hass && (this._hass.language || (this._hass.locale && this._hass.locale.language))) || "en";
+    }
+    // Locale used for number formatting, honoring hass.locale.number_format. "none"
+    // -> null (plain, no separators); the named formats map to a representative tag;
+    // language/system/default/unset -> the active language tag.
+    _numberLocale() {
+      const nf = this._hass && this._hass.locale && this._hass.locale.number_format;
+      switch (nf) {
+        case "comma_decimal": return "en-US";
+        case "decimal_comma": return "de-DE";
+        case "space_comma": return "fr-FR";
+        case "none": return null;
+        default: return this._localeTag();
+      }
+    }
+    // Human-visible setpoint string: step-rounded then locale-formatted (decimal
+    // separator / grouping per the user's locale). Trailing zeros are dropped to
+    // match _fmt (72 not 72.0, 21.5 kept). Used for ALL visible text + aria-valuetext;
+    // _fmt stays the dotted-decimal source for the numeric aria-value* attributes.
+    _fmtDisplay(v) {
+      if (v == null) return "";
+      const st = this._step();
+      const maxDec = st < 1 ? 1 : 0;
+      const r = Math.round(v / st) * st;
+      const tag = this._numberLocale();
+      if (!tag) return this._fmt(v);
+      try {
+        return r.toLocaleString(tag, { minimumFractionDigits: 0, maximumFractionDigits: maxDec });
+      } catch (e) {
+        return this._fmt(v);
+      }
+    }
+    // (Re)apply the card's static localized strings (svg captions + aria-labels).
+    // Cheap; called from _render only when the language changes (_i18nLang guard).
+    _applyStaticStrings() {
+      const r = this._refs;
+      if (!r) return;
+      if (r.nowLabel) r.nowLabel.textContent = this._t("now") + " ";
+      if (r.swingCap) r.swingCap.textContent = this._t("swing");
+      if (r.fanIconHit) r.fanIconHit.setAttribute("aria-label", this._t("set_fan_auto"));
+      if (r.swingChip) r.swingChip.setAttribute("aria-label", this._t("swing"));
+      if (r.centerHit) r.centerHit.setAttribute("aria-label", this._t("change_mode"));
+      if (r.drag) r.drag.setAttribute("aria-label", this._t("target_temperature"));
+      if (r.fanGrab) r.fanGrab.setAttribute("aria-label", this._t("fan_speed"));
+      if (r.pop) r.pop.setAttribute("aria-label", this._t("select_mode"));
+      if (r.hintMode) r.hintMode.textContent = this._t("hint_mode");
+      if (r.hintFan) r.hintFan.textContent = this._t("hint_fan");
+      if (r.hintAuto) r.hintAuto.textContent = this._t("hint_auto");
+    }
 
     // ---- TEMPERATURE service calls (signature preserved; value unit-converted) ----
     _callTemp(t) {
@@ -1610,7 +1927,7 @@
       this._optimisticTarget = t;
       this._optimisticUntil = Date.now() + OPT_HOLD_MS;
       this._paintTempArc(t);
-      this._announce(this._fmt(t) + "° " + this._unitWord());
+      this._announce(this._fmtDisplay(t) + "° " + this._unitWord());
       this._callTemp(t);
     }
 
@@ -1625,7 +1942,7 @@
       this._optimisticHigh = hi;
       this._optimisticHcUntil = Date.now() + OPT_HOLD_MS;
       this._paintHeatCool(lo, hi);
-      this._announce(this._fmt(lo) + " to " + this._fmt(hi) + "° " + this._unitWord());
+      this._announce(this._fmtDisplay(lo) + " " + this._t("to") + " " + this._fmtDisplay(hi) + "° " + this._unitWord());
       this._svc("climate", "set_temperature",
         { entity_id: this._config.entity,
           target_temp_low: this._toHa(lo),
@@ -1666,8 +1983,8 @@
       this._optimisticFanName = null;
       this._optimisticFanUntil = Date.now() + OPT_HOLD_MS;
       this._paintFanPct(this._optimisticFanPct);
-      this._announce("Fan " + (r.max === 100
-        ? Math.round(this._optimisticFanPct) + " percent"
+      this._announce(this._t("fan") + " " + (r.max === 100
+        ? Math.round(this._optimisticFanPct) + " " + this._t("percent")
         : this._fmtFan(this._optimisticFanPct, r.step)));
       this._callFanPct(this._optimisticFanPct);
     }
@@ -1678,7 +1995,7 @@
       this._optimisticFanPct = null;
       this._optimisticFanUntil = Date.now() + OPT_HOLD_MS;
       this._paintFanNamed(this._fanNamedModes(), name);
-      this._announce("Fan " + String(name).toUpperCase());
+      this._announce(this._t("fan") + " " + this._fanModeName(name));
       this._svcSetFanMode(name);
     }
     // Set the climate fan_mode to "auto" + paint optimistically.
@@ -1688,7 +2005,7 @@
       this._optimisticFanPct = null;
       this._optimisticFanName = null;
       this._paintFanAuto();
-      this._announce("Fan automatic");
+      this._announce(this._t("fan") + " " + this._t("automatic"));
       // No optimistic value to revert here (AUTO drops optimism above); on
       // failure just repaint live state so the ring snaps back to reality.
       this._svc("climate", "set_fan_mode",
@@ -1958,7 +2275,7 @@
         this._optToggle = this._optToggle || {};
         this._optToggle.swing = { val: !this._swingIsOn(), until: Date.now() + OPT_HOLD_MS };
         this._paintPop();
-        this._announce("Swing " + (this._optToggle.swing.val ? "on" : "off"));
+        this._announce(this._t("swing") + " " + this._t(this._optToggle.swing.val ? "on" : "off"));
         this._swingToggle();
         return;
       }
@@ -1969,7 +2286,7 @@
       this._optToggle = this._optToggle || {};
       this._optToggle[kind] = { val: !on, until: Date.now() + OPT_HOLD_MS };
       this._paintPop();
-      this._announce((kind === "led" ? "LED" : "Sound") + " " + (!on ? "on" : "off"));
+      this._announce(this._t(kind) + " " + this._t(!on ? "on" : "off"));
       this._svc("switch", on ? "turn_off" : "turn_on", { entity_id: ref },
         () => this._revertToggle(kind));
     }
@@ -2003,8 +2320,8 @@
         || ["off", "cool", "heat", "heat_cool", "dry", "fan_only", "auto"];
       modes.forEach((m) => {
         const b = document.createElement("button");
-        b.dataset.mode = m;
-        b.textContent = MODE_LABEL[m] || String(m).toUpperCase();
+        b.dataset.mode = m; // raw hvac_mode value (service payload), never localized
+        b.textContent = this._modeName(m); // CSS uppercases; HA localizes the name
         sheet.appendChild(b);
       });
       // TOGGLES ROW (SWING / LED / SOUND), below the modes with a separator. Built
@@ -2019,7 +2336,7 @@
         b.dataset.toggle = t.kind;
         b.innerHTML =
           '<svg class="ct-tg-ic" viewBox="-12 -12 24 24" aria-hidden="true">' + t.svg + "</svg>" +
-          '<span class="ct-tg-lb">' + t.label + "</span>";
+          '<span class="ct-tg-lb">' + this._t(t.kind) + "</span>"; // refreshed in _paintPop
         row.appendChild(b);
         this._refs.toggles[t.kind] = b;
       });
@@ -2052,7 +2369,7 @@
           this._svc("climate", "set_hvac_mode", { entity_id: ent, hvac_mode: mode }, () => this._render());
         }
       }
-      this._announce("Mode " + (MODE_LABEL[mode] || String(mode).toUpperCase()));
+      this._announce(this._t("mode") + " " + this._modeName(mode));
       this._closePop();
     }
     _paintPop() {
@@ -2064,12 +2381,15 @@
         const active = b.dataset.mode === cur;
         b.classList.toggle("active", active);
         b.setAttribute("aria-pressed", active ? "true" : "false"); // a11y (issue #5)
+        b.textContent = this._modeName(b.dataset.mode); // keep localized on a language switch (issue #19)
       });
       // TOGGLES ROW: hide an unresolved chip; else lit ".on" = feature on.
       if (this._refs.toggles) {
         TOGGLE_DEFS.forEach((t) => {
           const b = this._refs.toggles[t.kind];
           if (!b) return;
+          const lb = b.querySelector(".ct-tg-lb");
+          if (lb) lb.textContent = this._t(t.kind); // localized chip label (issue #19)
           if (!this._featureResolved(t.kind)) { b.style.display = "none"; return; }
           b.style.display = "";
           // Forced-visible with no backing source -> inert, dimmed, not lit.
@@ -2159,17 +2479,19 @@
       const seat = polar(CX, CY, R_TEMP, ang);
       this._refs.tempNeedle.setAttribute("transform",
         `translate(${seat[0].toFixed(1)},${seat[1].toFixed(1)}) rotate(${ang.toFixed(1)})`);
-      const txt = this._fmt(t);
-      this._refs.bigNum.textContent = txt;
+      const disp = this._fmtDisplay(t); // visible, locale-formatted (issue #19)
+      this._refs.bigNum.textContent = disp;
       // shrink for "XX.5" / 3-digit so the decimal fits the center.
-      this._refs.bigNum.setAttribute("font-size", txt.length > 2 ? "84" : "104");
-      // a11y: keep the temp slider's reported value in sync (issue #5).
+      this._refs.bigNum.setAttribute("font-size", disp.length > 2 ? "84" : "104");
+      // a11y: keep the temp slider's reported value in sync (issue #5). The numeric
+      // aria-value* stay on _fmt (dotted decimal) so they remain machine-parseable;
+      // only the human aria-valuetext uses the locale-formatted string (issue #19).
       if (this._refs.drag) {
         const r = this._range();
         this._refs.drag.setAttribute("aria-valuemin", this._fmt(r.lo));
         this._refs.drag.setAttribute("aria-valuemax", this._fmt(r.hi));
         this._refs.drag.setAttribute("aria-valuenow", this._fmt(t));
-        this._refs.drag.setAttribute("aria-valuetext", txt + "° " + this._unitWord());
+        this._refs.drag.setAttribute("aria-valuetext", disp + "° " + this._unitWord());
       }
     }
 
@@ -2196,7 +2518,7 @@
       const seatHi = polar(CX, CY, R_TEMP, aHi);
       this._refs.tempNeedle.setAttribute("transform",
         `translate(${seatHi[0].toFixed(1)},${seatHi[1].toFixed(1)}) rotate(${aHi.toFixed(1)})`);
-      const loTxt = this._fmt(lo), hiTxt = this._fmt(hi);
+      const loTxt = this._fmtDisplay(lo), hiTxt = this._fmtDisplay(hi); // visible (issue #19)
       const plain = loTxt + " - " + hiTxt;
       // two-tone readout: low value cyan, high value warm, separator grey.
       this._refs.bigNum.innerHTML =
@@ -2205,13 +2527,14 @@
         '<tspan fill="#F2933A">' + hiTxt + '</tspan>';
       this._refs.bigNum.setAttribute("font-size", plain.length > 8 ? "42" : "54");
       // a11y: the single temp slider reports the HIGH setpoint, with a paired
-      // valuetext for both ends; keyboard nudges the HIGH handle (issue #5).
+      // valuetext for both ends; keyboard nudges the HIGH handle (issue #5). Numeric
+      // aria-value* stay on _fmt (dotted) so they remain machine-parseable (issue #19).
       if (this._refs.drag) {
         const r = this._range();
         this._refs.drag.setAttribute("aria-valuemin", this._fmt(r.lo));
         this._refs.drag.setAttribute("aria-valuemax", this._fmt(r.hi));
-        this._refs.drag.setAttribute("aria-valuenow", hiTxt);
-        this._refs.drag.setAttribute("aria-valuetext", loTxt + " to " + hiTxt + "° " + this._unitWord());
+        this._refs.drag.setAttribute("aria-valuenow", this._fmt(hi));
+        this._refs.drag.setAttribute("aria-valuetext", loTxt + " " + this._t("to") + " " + hiTxt + "° " + this._unitWord());
       }
     }
 
@@ -2229,7 +2552,7 @@
       const pctEq = ((p - r.min) / ((r.max - r.min) || 1)) * 100;
       this._refs.fanPct.textContent = (r.max === 100) ? Math.round(pctEq) + "%" : this._fmtFan(p, r.step);
       const nm = this._nearestFanMode(p);
-      this._refs.fanName.textContent = nm ? String(nm).toUpperCase() : "";
+      this._refs.fanName.textContent = nm ? this._fanModeName(nm) : ""; // localized via HA (issue #19)
       this._applyFanSpin(pctEq, false);
       // a11y: report the fan slider against its REAL numeric range (issue #5/#8).
       if (this._refs.fanGrab) {
@@ -2237,7 +2560,7 @@
         this._refs.fanGrab.setAttribute("aria-valuemax", String(r.max));
         this._refs.fanGrab.setAttribute("aria-valuenow", this._fmtFan(p, r.step));
         this._refs.fanGrab.setAttribute("aria-valuetext",
-          (r.max === 100) ? Math.round(pctEq) + " percent" : this._fmtFan(p, r.step));
+          (r.max === 100) ? Math.round(pctEq) + " " + this._t("percent") : this._fmtFan(p, r.step));
       }
     }
 
@@ -2255,7 +2578,7 @@
       const seat = polar(CX, CY, R_FAN + FAN_HANDLE_OFFSET, ang);
       this._refs.fanHandle.setAttribute("transform",
         `translate(${seat[0].toFixed(1)},${seat[1].toFixed(1)}) rotate(${ang.toFixed(1)})`);
-      this._refs.fanPct.textContent = String(names[i]).toUpperCase();
+      this._refs.fanPct.textContent = this._fanModeName(names[i]); // localized via HA (issue #19)
       this._refs.fanName.textContent = "";
       const pctEq = n <= 1 ? 100 : (i / (n - 1)) * 100;
       this._applyFanSpin(pctEq, false);
@@ -2264,7 +2587,7 @@
         this._refs.fanGrab.setAttribute("aria-valuemin", "1");
         this._refs.fanGrab.setAttribute("aria-valuemax", String(n));
         this._refs.fanGrab.setAttribute("aria-valuenow", String(i + 1));
-        this._refs.fanGrab.setAttribute("aria-valuetext", String(names[i]).toUpperCase());
+        this._refs.fanGrab.setAttribute("aria-valuetext", this._fanModeName(names[i]));
       }
     }
 
@@ -2275,13 +2598,13 @@
       const seat = polar(CX, CY, R_FAN + FAN_HANDLE_OFFSET, END_ANG);
       this._refs.fanHandle.setAttribute("transform",
         `translate(${seat[0].toFixed(1)},${seat[1].toFixed(1)}) rotate(${END_ANG.toFixed(1)})`);
-      this._refs.fanPct.textContent = "AUTO";
+      this._refs.fanPct.textContent = this._t("auto");
       this._refs.fanName.textContent = "";
       this._applyFanSpin(100, true);
       // a11y: AUTO is a state, not a ring position (issue #5).
       if (this._refs.fanGrab) {
         this._refs.fanGrab.removeAttribute("aria-valuenow");
-        this._refs.fanGrab.setAttribute("aria-valuetext", "Automatic");
+        this._refs.fanGrab.setAttribute("aria-valuetext", this._t("automatic"));
       }
     }
 
@@ -2321,11 +2644,15 @@
       if (!this._built || !this._hass || !this._config) return;
       const card = this.shadowRoot.querySelector(".ct-card");
       if (!card) return;
+      // i18n (issue #19): (re)apply static localized strings once per language change,
+      // so a runtime language switch updates the captions/aria-labels too.
+      const lang = langOf(this._hass);
+      if (this._i18nLang !== lang) { this._i18nLang = lang; this._applyStaticStrings(); }
       const s = this._st(this._config.entity);
 
       if (this._refs.title) this._refs.title.textContent = this._acName();
       // a11y: name the control group so it isn't read as one unlabeled graphic (issue #5).
-      if (this._refs.svg) this._refs.svg.setAttribute("aria-label", this._acName() + " climate control");
+      if (this._refs.svg) this._refs.svg.setAttribute("aria-label", this._acName() + " " + this._t("climate_control"));
 
       // scale: rebuild when range/unit/step changed; honor show_scale.
       {
@@ -2349,7 +2676,7 @@
         card.style.setProperty("--accent", this._modeColor("off"));
         this._refs.bigNum.textContent = "--";
         this._refs.bigNum.setAttribute("font-size", "104");
-        this._refs.labelTop.textContent = s ? s.state.toUpperCase() : "MISSING";
+        this._refs.labelTop.textContent = s ? s.state.toUpperCase() : this._t("missing");
         this._refs.labelTop.style.fill = "var(--secondary-text-color, #6b7a88)";
         this._refs.nowCap.style.display = "none";
         this._refs.caret.style.display = "none";
@@ -2435,10 +2762,10 @@
       }
 
       // ---- center labels ----
-      this._refs.labelTop.textContent = MODE_LABEL[mode] || mode.toUpperCase();
+      this._refs.labelTop.textContent = this._modeName(mode).toUpperCase();
       this._refs.labelTop.style.fill = off ? "var(--disabled-text-color, #5e6b78)" : "var(--primary-text-color, rgba(234,235,238,.8))";
       if (cur != null && showCurrent) {
-        this._refs.nowVal.textContent = this._fmt(cur) + "°";
+        this._refs.nowVal.textContent = this._fmtDisplay(cur) + "°";
         this._refs.nowVal.style.fill = off ? "var(--secondary-text-color, #8c99a7)" : accent;
         this._refs.nowCap.style.display = "";
         this._refs.nowCap.style.opacity = off ? "0.5" : "1";
@@ -2764,76 +3091,12 @@ ha-card{ position:relative; display:block; overflow:visible; }
   // The mode keys exposed by the per-mode color sub-section (matches MODE_COLORS).
   const MODE_KEYS = ["cool", "heat", "heat_cool", "dry", "fan_only", "auto", "off"];
 
-  // Tri-state visibility selector for the fan / swing / LED / sound features.
-  const AUTO_TF = [
-    { value: "auto", label: "Auto" },
-    { value: true, label: "Show" },
-    { value: false, label: "Hide" },
-  ];
-  // Fields using the AUTO_TF tri-state select. Seeded to "auto" for display when
-  // unset and pruned back out on save (the card treats unset / "auto" as auto).
+  // Fields using the tri-state visibility select (fan / swing / LED / sound).
+  // Seeded to "auto" for display when unset and pruned back out on save (the card
+  // treats unset / "auto" as auto). The localized option list is built per-call in
+  // _schema; the field labels/helpers live in LOCALE.<lang>.editorLabels/Helpers
+  // (resolved via editorMap), with English as the fallback (issue #19).
   const TRISTATE_KEYS = ["show_fan", "show_swing", "show_led", "show_sound"];
-
-  // Friendly field labels (computeLabel). Falls back to MODE_LABEL then prettified name.
-  const EDITOR_LABELS = {
-    entity: "Climate entity",
-    name: "Name",
-    accent: "Accent color",
-    font: "Font family",
-    font_url: "Font stylesheet URL",
-    temperature_unit: "Temperature unit",
-    temp_step: "Step",
-    min_temp: "Minimum temperature",
-    max_temp: "Maximum temperature",
-    show_scale: "Show scale",
-    show_current: "Show current temperature",
-    modes: "Modes",
-    fan_entity: "Fan speed entity (number.*)",
-    show_fan: "Show fan ring",
-    fan_animation: "Fan animation",
-    fan_animation_speed: "Fan animation speed",
-    swing_entity: "Swing entity (switch.*)",
-    show_swing: "Show swing",
-    led_entity: "LED / display entity (switch.*)",
-    show_led: "Show LED",
-    sound_entity: "Sound / beep entity (switch.*)",
-    show_sound: "Show sound",
-    show_hints: "Show gesture hints",
-    max_height: "Max height",
-    tap_action: "Tap action",
-    hold_action: "Hold action",
-    double_tap_action: "Double tap action",
-  };
-
-  // Per-field helper text (computeHelper).
-  const EDITOR_HELPERS = {
-    name: "Card title. Defaults to the entity's friendly name.",
-    accent: "UI accent for the popup, lit chips, fan ring and caret. Defaults to #4fc3f7.",
-    font: "Leave empty to use Rajdhani if installed, then your Home Assistant theme font. A value here is prepended to that stack.",
-    font_url: "Optional stylesheet URL (e.g. a Google Fonts link) that loads the font named above. No font is fetched by default.",
-    temperature_unit: "Auto follows your Home Assistant unit system.",
-    temp_step: "Setpoint granularity. Defaults to the entity's target_temp_step.",
-    min_temp: "Leave empty to use the entity's minimum.",
-    max_temp: "Leave empty to use the entity's maximum.",
-    show_scale: "The numbered tick scale around the dial.",
-    show_current: "The NOW reading and current-temperature marker.",
-    modes: "Which HVAC modes appear in the popup. Defaults to the entity's modes.",
-    fan_entity: "A number.* percent entity for a draggable fan ring. Auto-discovered for Midea; falls back to named fan_modes.",
-    show_fan: "Force the fan ring on or off. Auto shows it when a fan source resolves.",
-    fan_animation: "The spinning clover animation.",
-    fan_animation_speed: "Dynamic scales the spin with fan speed; constant is a fixed spin.",
-    swing_entity: "Override the swing switch. Leave empty to auto-discover (Midea) or use climate swing_modes.",
-    show_swing: "Force the swing chip on or off. Auto shows it when a swing source resolves; a forced chip with no source renders disabled.",
-    led_entity: "Override the display/LED switch. Leave empty to auto-discover (Midea).",
-    show_led: "Force the LED chip on or off. Auto shows it when the entity resolves; a forced chip with no source renders disabled.",
-    sound_entity: "Override the beep/prompt-tone switch. Leave empty to auto-discover (Midea).",
-    show_sound: "Force the sound chip on or off. Auto shows it when the entity resolves; a forced chip with no source renders disabled.",
-    show_hints: "Faint MODE / FAN / AUTO labels showing the dial is interactive.",
-    max_height: "CSS length cap, e.g. 34vh or 360px. Width follows the dial aspect.",
-    tap_action: "Leave unset to keep the default: tap opens the mode menu.",
-    hold_action: "Defaults to opening the more-info dialog (history, attributes, presets).",
-    double_tap_action: "Off by default.",
-  };
 
   // snake_case / dotted name -> Title Case (label fallback).
   function prettifyName(name) {
@@ -2851,6 +3114,9 @@ ha-card{ position:relative; display:block; overflow:visible; }
       this._update();
     }
 
+    // Flat card string in the active language (English fallback) - issue #19.
+    _t(key) { return tr(this._hass, key); }
+
     // The SELECTED entity's hvac_modes (or a sensible fallback when none is set).
     // Single source for both the Modes multi-select options and the display seed.
     _hvacModes(config) {
@@ -2864,21 +3130,30 @@ ha-card{ position:relative; display:block; overflow:visible; }
     // options track the SELECTED entity's live `hvac_modes`.
     _schema(hass, config) {
       const hvac = this._hvacModes(config);
-      const modeOptions = hvac.map((m) => ({ value: m, label: MODE_LABEL[m] || String(m).toUpperCase() }));
+      // Mode option labels localized THROUGH Home Assistant (issue #19); VALUE keys
+      // stay the raw hvac_mode strings so prune/compare logic is unaffected.
+      const modeOptions = hvac.map((m) => ({ value: m, label: modeName(this._hass, m) || String(m).toUpperCase() }));
+      // Localized tri-state visibility options. VALUES (string "auto", boolean
+      // true/false) are byte-identical to before so _valueChanged prune is unchanged.
+      const autoTF = [
+        { value: "auto", label: this._t("editor.opt.auto") },
+        { value: true, label: this._t("editor.opt.show") },
+        { value: false, label: this._t("editor.opt.hide") },
+      ];
 
       return [
         { name: "entity", required: true, selector: { entity: { domain: "climate" } } },
         { name: "name", selector: { text: {} } },
 
-        { type: "expandable", name: "", title: "Appearance", icon: "mdi:palette", schema: [
+        { type: "expandable", name: "", title: this._t("editor.section.appearance"), icon: "mdi:palette", schema: [
           { name: "accent", selector: { color_rgb: {} } },
           { name: "font", selector: { text: {} } },
           { name: "font_url", selector: { text: {} } },
           { type: "grid", schema: [
             { name: "temperature_unit", selector: { select: { mode: "dropdown", options: [
-              { value: "auto", label: "Auto" },
-              { value: "F", label: "Fahrenheit" },
-              { value: "C", label: "Celsius" },
+              { value: "auto", label: this._t("editor.opt.auto") },
+              { value: "F", label: this._t("editor.opt.unit_fahrenheit") },
+              { value: "C", label: this._t("editor.opt.unit_celsius") },
             ] } } },
             { name: "temp_step", selector: { number: { min: 0.1, max: 5, step: 0.1, mode: "box" } } },
             { name: "min_temp", selector: { number: { min: -20, max: 120, step: 0.5, mode: "box" } } },
@@ -2889,44 +3164,44 @@ ha-card{ position:relative; display:block; overflow:visible; }
             { name: "show_current", selector: { boolean: {} } },
             { name: "show_hints", selector: { boolean: {} } },
           ] },
-          { type: "expandable", name: "mode_colors", title: "Per-mode colors", icon: "mdi:format-color-fill",
+          { type: "expandable", name: "mode_colors", title: this._t("editor.section.mode_colors"), icon: "mdi:format-color-fill",
             schema: MODE_KEYS.map((m) => ({ name: m, selector: { color_rgb: {} } })) },
         ] },
 
-        { type: "expandable", name: "", title: "Modes", icon: "mdi:thermostat", schema: [
+        { type: "expandable", name: "", title: this._t("editor.section.modes"), icon: "mdi:thermostat", schema: [
           { name: "modes", selector: { select: { multiple: true, mode: "list", options: modeOptions } } },
         ] },
 
-        { type: "expandable", name: "", title: "Fan", icon: "mdi:fan", schema: [
+        { type: "expandable", name: "", title: this._t("editor.section.fan"), icon: "mdi:fan", schema: [
           { name: "fan_entity", selector: { entity: { domain: "number" } } },
           { type: "grid", schema: [
-            { name: "show_fan", selector: { select: { mode: "dropdown", options: AUTO_TF } } },
+            { name: "show_fan", selector: { select: { mode: "dropdown", options: autoTF } } },
             { name: "fan_animation", selector: { boolean: {} } },
           ] },
           { name: "fan_animation_speed", selector: { select: { mode: "dropdown", options: [
-            { value: "dynamic", label: "Dynamic (scale with speed)" },
-            { value: "constant", label: "Constant" },
-            { value: "off", label: "Off" },
+            { value: "dynamic", label: this._t("editor.opt.anim_dynamic") },
+            { value: "constant", label: this._t("editor.opt.anim_constant") },
+            { value: "off", label: this._t("editor.opt.anim_off") },
           ] } } },
         ] },
 
-        { type: "expandable", name: "", title: "Features", icon: "mdi:tune", schema: [
+        { type: "expandable", name: "", title: this._t("editor.section.features"), icon: "mdi:tune", schema: [
           { name: "swing_entity", selector: { entity: { domain: "switch" } } },
-          { name: "show_swing", selector: { select: { mode: "dropdown", options: AUTO_TF } } },
+          { name: "show_swing", selector: { select: { mode: "dropdown", options: autoTF } } },
           { name: "led_entity", selector: { entity: { domain: "switch" } } },
-          { name: "show_led", selector: { select: { mode: "dropdown", options: AUTO_TF } } },
+          { name: "show_led", selector: { select: { mode: "dropdown", options: autoTF } } },
           { name: "sound_entity", selector: { entity: { domain: "switch" } } },
-          { name: "show_sound", selector: { select: { mode: "dropdown", options: AUTO_TF } } },
+          { name: "show_sound", selector: { select: { mode: "dropdown", options: autoTF } } },
         ] },
 
-        { type: "expandable", name: "", title: "Layout", icon: "mdi:arrange-bring-forward", schema: [
+        { type: "expandable", name: "", title: this._t("editor.section.layout"), icon: "mdi:arrange-bring-forward", schema: [
           { name: "max_height", selector: { text: {} } },
         ] },
 
         // Center-disc actions (issue #15). ui_action renders HA's standard action
         // picker; on an older frontend that key may not render, but the CARD still
         // honors any tap_action / hold_action / double_tap_action set in YAML.
-        { type: "expandable", name: "", title: "Actions", icon: "mdi:gesture-tap", schema: [
+        { type: "expandable", name: "", title: this._t("editor.section.actions"), icon: "mdi:gesture-tap", schema: [
           { name: "tap_action", selector: { ui_action: { default_action: "none" } } },
           { name: "hold_action", selector: { ui_action: { default_action: "more-info" } } },
           { name: "double_tap_action", selector: { ui_action: { default_action: "none" } } },
@@ -2939,9 +3214,14 @@ ha-card{ position:relative; display:block; overflow:visible; }
       if (!this._form) {
         this._form = document.createElement("ha-form");
         this._form.addEventListener("value-changed", (e) => this._valueChanged(e));
-        this._form.computeLabel = (s) =>
-          EDITOR_LABELS[s.name] || MODE_LABEL[s.name] || s.title || prettifyName(s.name);
-        this._form.computeHelper = (s) => EDITOR_HELPERS[s.name] || "";
+        // Labels/helpers localized via editorMap (active language merged over
+        // English); falls back to a localized mode name (per-mode color swatches),
+        // then the field title, then a prettified key (issue #19).
+        this._form.computeLabel = (s) => {
+          const L = editorMap(this._hass, "editorLabels");
+          return L[s.name] || modeName(this._hass, s.name) || s.title || prettifyName(s.name);
+        };
+        this._form.computeHelper = (s) => editorMap(this._hass, "editorHelpers")[s.name] || "";
         const root = this.shadowRoot || this.attachShadow({ mode: "open" });
         const style = document.createElement("style");
         style.textContent = "ha-form{display:block;padding:8px 4px;}" +
@@ -2973,7 +3253,7 @@ ha-card{ position:relative; display:block; overflow:visible; }
       if (this._warn) {
         const mn = num(this._config.min_temp), mx = num(this._config.max_temp);
         if (this._config.min_temp != null && this._config.max_temp != null && mn != null && mx != null && mn >= mx) {
-          this._warn.textContent = "Minimum temperature must be below maximum temperature. The dial uses a flat range until this is fixed.";
+          this._warn.textContent = this._t("editor.warn_range");
           this._warn.style.display = "";
         } else {
           this._warn.textContent = "";
