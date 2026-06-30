@@ -126,7 +126,8 @@
       "editor.opt.anim_constant": "Constant",
       "editor.opt.anim_off": "Off",
       "editor.opt.appearance_theme": "Theme (follows Home Assistant)",
-      "editor.opt.appearance_glass": "Frosted glass",
+      "editor.opt.appearance_glass_dark": "Frosted glass (dark)",
+      "editor.opt.appearance_glass_light": "Frosted glass (light)",
       "editor.warn_range": "Minimum temperature must be below maximum temperature. The dial uses a flat range until this is fixed.",
       editorLabels: {
         entity: "Climate entity",
@@ -160,7 +161,7 @@
       },
       editorHelpers: {
         name: "Card title. Defaults to the entity's friendly name.",
-        appearance: "Theme follows your active Home Assistant theme (works on light and dark). Frosted glass forces a premium deep-indigo glass look on any theme.",
+        appearance: "Theme follows your active Home Assistant theme (works on light and dark). Frosted glass is a translucent panel, in a dark indigo or light finish, that holds its look on any theme.",
         accent: "UI accent for the popup, lit chips, fan ring and caret. Defaults to #4fc3f7.",
         font: "Leave empty to use Rajdhani if installed, then your Home Assistant theme font. A value here is prepended to that stack.",
         font_url: "Optional stylesheet URL (e.g. a Google Fonts link) that loads the font named above. No font is fetched by default.",
@@ -229,7 +230,8 @@
       "editor.opt.anim_constant": "Constante",
       "editor.opt.anim_off": "Apagada",
       "editor.opt.appearance_theme": "Tema (sigue a Home Assistant)",
-      "editor.opt.appearance_glass": "Vidrio esmerilado",
+      "editor.opt.appearance_glass_dark": "Vidrio esmerilado (oscuro)",
+      "editor.opt.appearance_glass_light": "Vidrio esmerilado (claro)",
       "editor.warn_range": "La temperatura minima debe ser menor que la maxima. El dial usa un rango plano hasta que se corrija.",
       editorLabels: {
         entity: "Entidad de clima",
@@ -263,7 +265,7 @@
       },
       editorHelpers: {
         name: "Titulo de la tarjeta. Por defecto usa el nombre descriptivo de la entidad.",
-        appearance: "Tema sigue el tema activo de Home Assistant (funciona en claro y oscuro). Vidrio esmerilado fuerza un aspecto premium de vidrio indigo en cualquier tema.",
+        appearance: "Tema sigue el tema activo de Home Assistant (funciona en claro y oscuro). Vidrio esmerilado es un panel translucido, en acabado indigo oscuro o claro, que mantiene su aspecto en cualquier tema.",
         accent: "Acento de la interfaz para el menu, los chips encendidos, el anillo del ventilador y la flecha. Por defecto #4fc3f7.",
         font: "Dejar vacio para usar Rajdhani si esta instalada, y luego la fuente del tema de Home Assistant. Un valor aqui se antepone a esa lista.",
         font_url: "URL opcional de una hoja de estilos (por ejemplo un enlace de Google Fonts) que carga la fuente indicada arriba. No se descarga ninguna fuente por defecto.",
@@ -585,9 +587,12 @@
       this._fontUrl = (typeof this._config.font_url === "string" && this._config.font_url.trim()) ? this._config.font_url.trim() : null;
 
       // Appearance: "theme" (default) follows the active Home Assistant theme so the
-      // dial reads on light AND dark themes; "glass" forces the premium deep-indigo
-      // frosted-glass look on ANY theme. Anything else falls back to "theme".
-      this._appearance = this._config.appearance === "glass" ? "glass" : "theme";
+      // dial reads on light AND dark themes; "glass-dark" / "glass-light" force a
+      // translucent frosted-glass panel (deep indigo or pale) on ANY theme. Legacy
+      // "glass" maps to the dark variant; anything unknown falls back to "theme".
+      const _ap = this._config.appearance;
+      this._appearance = (_ap === "glass" || _ap === "glass-dark") ? "glass-dark"
+        : _ap === "glass-light" ? "glass-light" : "theme";
 
       if (this._built) this._applyMaxHeight();
       if (this._built) this._applyFont();
@@ -617,7 +622,8 @@
       if (!this.shadowRoot) return;
       const haCard = this.shadowRoot.querySelector("ha-card");
       if (!haCard) return;
-      if (this._appearance === "glass") haCard.setAttribute("data-appearance", "glass");
+      if (this._appearance === "glass-dark" || this._appearance === "glass-light")
+        haCard.setAttribute("data-appearance", this._appearance);
       else haCard.removeAttribute("data-appearance");
     }
 
@@ -956,7 +962,8 @@
       const card = document.createElement("div");
       card.className = "ct-card";
       // Glass appearance lives on the ha-card so its themed chrome is hidden too.
-      if (this._appearance === "glass") haCard.setAttribute("data-appearance", "glass");
+      if (this._appearance === "glass-dark" || this._appearance === "glass-light")
+        haCard.setAttribute("data-appearance", this._appearance);
       haCard.appendChild(card);
       root.appendChild(haCard);
 
@@ -3052,34 +3059,60 @@ ha-card{ position:relative; display:block; overflow:visible; }
 }
 
 /* ----------------------------------------------------------------------------
-   GLASS appearance (config: appearance: glass). Forces the premium deep-indigo
-   frosted-glass look on ANY Home Assistant theme. Implementation: the attribute
-   sits on <ha-card>, so glass mode can (a) hide the themed card chrome -- a light
-   theme would otherwise paint a white ring around the indigo slab; (b) override the
-   theme text/divider/background CUSTOM PROPERTIES locally on .ct-card, which
-   retints every neutral text + the popup in one place so they stay light over the
-   dark glass even on a light theme; and (c) repaint .ct-frost as a full-bleed
-   indigo glass slab. Accent / per-mode / arc-gradient colors are untouched. The
-   default appearance ("theme") sets NO attribute, so themed mode is byte-unchanged.
+   GLASS appearance (config: appearance: glass-dark | glass-light). Forces a
+   translucent frosted-glass panel on ANY Home Assistant theme. The attribute sits
+   on <ha-card> so glass mode can (a) hide the themed card chrome -- a light theme
+   would otherwise paint a ring around the slab; (b) override the theme
+   text/divider/background CUSTOM PROPERTIES locally on .ct-card so every neutral
+   text + the popup retints in one place (light text on the dark glass, dark text on
+   the light glass); and (c) repaint .ct-frost as a full-bleed slab. The surface is
+   kept SLIGHTLY TRANSLUCENT (alpha < 1) and the backdrop blur frosts the wallpaper
+   behind, so the dashboard shows through. Accent / per-mode / arc-gradient colors
+   are untouched. Default appearance ("theme") sets NO attribute (byte-unchanged).
    ---------------------------------------------------------------------------- */
-ha-card[data-appearance="glass"]{ background:transparent; border:none; box-shadow:none; }
-ha-card[data-appearance="glass"] .ct-card{
+ha-card[data-appearance^="glass"]{ background:transparent; border:none; box-shadow:none; }
+ha-card[data-appearance^="glass"] .ct-frost{
+  inset:0;
+  backdrop-filter:blur(16px) saturate(1.25);
+  -webkit-backdrop-filter:blur(16px) saturate(1.25);
+}
+
+/* DARK frosted glass: deep-indigo translucent panel, light neutral text. */
+ha-card[data-appearance="glass-dark"] .ct-card{
   --primary-text-color:rgba(236,239,247,.98);
   --secondary-text-color:rgba(202,212,234,.80);
-  --divider-color:rgba(150,170,255,.20);
-  --ha-card-background:rgba(20,24,46,.92);
-  --card-background-color:rgba(20,24,46,.92);
+  --divider-color:rgba(150,170,255,.22);
+  --ha-card-background:rgba(20,24,46,.72);
+  --card-background-color:rgba(20,24,46,.72);
 }
-ha-card[data-appearance="glass"] .ct-frost{
-  inset:0;
+ha-card[data-appearance="glass-dark"] .ct-frost{
   background:
-    radial-gradient(125% 110% at 50% -10%, rgba(78,90,176,.55), rgba(40,46,104,.28) 46%, transparent 72%),
-    linear-gradient(180deg, rgba(33,38,82,.94), rgba(11,14,38,.97));
-  border:1px solid rgba(150,170,255,.22);
+    radial-gradient(125% 110% at 50% -10%, rgba(86,98,190,.42), rgba(40,46,104,.20) 46%, transparent 72%),
+    linear-gradient(180deg, rgba(33,38,82,.60), rgba(11,14,38,.70));
+  border:1px solid rgba(150,170,255,.24);
   box-shadow:
-    inset 0 2px 14px rgba(150,170,255,.12),
-    inset 0 -16px 38px rgba(0,0,0,.52),
-    0 18px 52px rgba(0,0,0,.55);
+    inset 0 2px 14px rgba(170,185,255,.14),
+    inset 0 -16px 38px rgba(0,0,0,.34),
+    0 18px 52px rgba(0,0,0,.42);
+}
+
+/* LIGHT frosted glass: pale translucent panel, dark neutral text. */
+ha-card[data-appearance="glass-light"] .ct-card{
+  --primary-text-color:rgba(28,33,48,.96);
+  --secondary-text-color:rgba(58,66,86,.82);
+  --divider-color:rgba(40,52,90,.20);
+  --ha-card-background:rgba(244,247,253,.60);
+  --card-background-color:rgba(244,247,253,.60);
+}
+ha-card[data-appearance="glass-light"] .ct-frost{
+  background:
+    radial-gradient(125% 110% at 50% -10%, rgba(255,255,255,.55), rgba(228,234,248,.30) 46%, transparent 72%),
+    linear-gradient(180deg, rgba(246,248,253,.58), rgba(222,229,244,.64));
+  border:1px solid rgba(255,255,255,.55);
+  box-shadow:
+    inset 0 2px 14px rgba(255,255,255,.60),
+    inset 0 -16px 34px rgba(60,70,110,.14),
+    0 18px 50px rgba(40,50,90,.22);
 }
 
 @keyframes ctfanspin{ to{ transform:rotate(360deg); } }
@@ -3244,7 +3277,8 @@ ha-card[data-appearance="glass"] .ct-frost{
         { type: "expandable", name: "", title: this._t("editor.section.appearance"), icon: "mdi:palette", schema: [
           { name: "appearance", selector: { select: { mode: "dropdown", options: [
             { value: "theme", label: this._t("editor.opt.appearance_theme") },
-            { value: "glass", label: this._t("editor.opt.appearance_glass") },
+            { value: "glass-dark", label: this._t("editor.opt.appearance_glass_dark") },
+            { value: "glass-light", label: this._t("editor.opt.appearance_glass_light") },
           ] } } },
           { name: "accent", selector: { color_rgb: {} } },
           { name: "font", selector: { text: {} } },
@@ -3403,8 +3437,10 @@ ha-card[data-appearance="glass"] .ct-frost{
       for (const k of TRISTATE_KEYS) {
         if (data[k] === undefined || data[k] === null) data[k] = "auto";
       }
-      // Appearance: unset means "theme", so the select reads Theme instead of blank.
+      // Appearance: unset means "theme", so the select reads Theme instead of blank;
+      // a legacy "glass" value maps to the dark variant so the select shows it.
       if (data.appearance === undefined || data.appearance === null) data.appearance = "theme";
+      else if (data.appearance === "glass") data.appearance = "glass-dark";
       return data;
     }
 
