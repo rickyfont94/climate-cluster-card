@@ -1129,7 +1129,9 @@
       svg.appendChild(this._refs.warmFill);
 
       // ---- current-temp marker (white inset triangle, no glow) ----
-      this._refs.curMarker = el("path", { class: "nope", fill: "#dfe8ef", opacity: ".9", d: "" });
+      // Thin dark outline so the white marker stays visible over the light end of
+      // the cold/cyan arc (it vanished against the pale arc without it).
+      this._refs.curMarker = el("path", { class: "nope", fill: "#dfe8ef", opacity: ".9", stroke: "rgba(15,22,33,.55)", "stroke-width": "1", "stroke-linejoin": "round", d: "" });
       svg.appendChild(this._refs.curMarker);
 
       // ---- TEMP HANDLE (fat rounded warm needle; tip authored at +Y = inward) ----
@@ -1141,6 +1143,12 @@
         '<path d="M 0 12 Q 3.2 6 3.6 0 Q 1.8 -3 0 -2.5 Q -1.8 -3 -3.6 0 Q -3.2 6 0 12 Z" ' +
         'fill="rgba(255,225,170,.45)" stroke="none"/>';
       this._refs.tempNeedle = tempNeedle;
+      // refs to the needle's two inner <path>s so _render can tint them to the
+      // active mode color (issue #21); each carries an explicit fill attr, so a
+      // fill on the parent <g> alone would never reach them.
+      const tnPaths = tempNeedle.querySelectorAll("path");
+      this._refs.tempNeedleBody = tnPaths[0]; // body: fill + stroke
+      this._refs.tempNeedleHi = tnPaths[1];   // inner highlight: translucent fill
       svg.appendChild(tempNeedle);
 
       // ---- LOW-setpoint needle (cold/cyan), heat_cool dual mode ONLY (issue #14).
@@ -1200,7 +1208,7 @@
         x: CX, y: 196, "text-anchor": "middle", class: "ct-now nope",
         "font-size": "15", "letter-spacing": "2.5",
       });
-      this._refs.nowCap.style.fontWeight = "600";
+      this._refs.nowCap.style.fontWeight = "400";
       const nowPrefix = el("tspan", { fill: "#8c99a7" }, "NOW ");
       nowPrefix.style.fill = "var(--secondary-text-color, #8c99a7)";
       this._refs.nowLabel = nowPrefix; // localized in _applyStaticStrings (issue #19)
@@ -1214,7 +1222,7 @@
         x: CX, y: 266, "text-anchor": "middle", "dominant-baseline": "central", class: "ct-big nope",
         fill: "rgba(234,235,238,.98)", "font-size": "104", "letter-spacing": "2",
       }, "--");
-      this._refs.bigNum.style.fontWeight = "300";
+      this._refs.bigNum.style.fontWeight = "400";
       svg.appendChild(this._refs.bigNum);
 
       // caret near the big number; shown only when hvac_action=cooling/heating.
@@ -2837,6 +2845,21 @@
         if (target != null) this._paintTempArc(target);
         else { this._refs.bigNum.textContent = "--"; this._refs.bigNum.setAttribute("font-size", "104"); }
       }
+      // ---- needle tint: the single-target needle follows the active mode color
+      // (issue #21). In heat_cool the warm needle is the HIGH handle paired with
+      // the cyan LOW twin, so restore its authored warm there and never touch the
+      // LOW needle.
+      if (this._refs.tempNeedleBody) {
+        if (isHc) {
+          this._refs.tempNeedleBody.setAttribute("fill", "#F2933A");
+          this._refs.tempNeedleBody.setAttribute("stroke", "#FFB55E");
+          this._refs.tempNeedleHi.setAttribute("fill", "rgba(255,225,170,.45)");
+        } else {
+          this._refs.tempNeedleBody.setAttribute("fill", accent);
+          this._refs.tempNeedleBody.setAttribute("stroke", `color-mix(in srgb, ${accent} 62%, #ffffff)`);
+          this._refs.tempNeedleHi.setAttribute("fill", `color-mix(in srgb, ${accent} 50%, transparent)`);
+        }
+      }
       this._refs.tempNeedle.style.opacity = off ? "0.45" : "1";
       this._refs.tempNeedleLo.style.opacity = off ? "0.45" : "1";
       this._refs.coldFill.style.opacity = off ? "0.30" : "1";
@@ -3036,6 +3059,8 @@ ha-card{ position:relative; display:block; overflow:visible; }
   position:relative; width:100%; margin:0 auto; overflow:visible;
   --ct-accent:${DEFAULT_ACCENT};
   --ct-font:${FONT_STACK};
+  /* card-colored halo behind the gesture hint glyphs so they read over the fan-arc. */
+  --ct-hint-knockout: var(--ha-card-background, var(--card-background-color, #16181d));
   /* pan-y (NOT none): a vertical swipe over the card still scrolls the dashboard;
      only the .ct-hit grab bands below opt out so a ring drag owns the gesture. */
   touch-action:pan-y;
@@ -3076,8 +3101,11 @@ ha-card{ position:relative; display:block; overflow:visible; }
 /* Gesture hint labels (issue #15) never intercept a tap (also class .nope). Their
    fill follows the theme so the faint FAN / MODE / AUTO labels stay legible on a
    light theme (they were a hardcoded near-white that washed out on white); the
-   color-mix keeps them faint on both themes. */
-.ct-hints text{ pointer-events:none; fill:color-mix(in srgb, var(--secondary-text-color, rgb(234,235,238)) 55%, transparent); }
+   color-mix keeps them faint on both themes. The card-colored knockout stroke
+   (paint-order:stroke draws it BEHIND the fill) carves a halo around each glyph so
+   the labels still read where they overlap the bright cyan fan-arc; the halo hue
+   tracks the panel via --ct-hint-knockout (retinted per glass variant below). */
+.ct-hints text{ pointer-events:none; fill:color-mix(in srgb, var(--secondary-text-color, rgb(234,235,238)) 55%, transparent); paint-order:stroke; stroke:var(--ct-hint-knockout, var(--ha-card-background, var(--card-background-color, #16181d))); stroke-width:3px; stroke-linejoin:round; }
 
 /* Frosted-glass slab: dark translucent fill, 1px hairline outline, 14px radius. Its OWN
    backdrop-blur div BEHIND the svg, full-card inset; backdrop-filter kept for glass. */
@@ -3115,6 +3143,9 @@ ha-card[data-appearance^="glass"] .ct-frost{
   backdrop-filter:blur(16px) saturate(1.25);
   -webkit-backdrop-filter:blur(16px) saturate(1.25);
 }
+/* In glass mode the hint-halo matches the (opaque) panel hue rather than the themed
+   card background, so the knockout still reads against the frosted slab. */
+ha-card[data-appearance^="glass"] .ct-card{ --ct-hint-knockout: rgb(var(--ct-glass-rgb)); }
 
 /* DARK frosted glass: deep-indigo translucent panel, light neutral text. */
 ha-card[data-appearance="glass-dark"] .ct-card{
