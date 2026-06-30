@@ -26,7 +26,7 @@
   const NS = "http://www.w3.org/2000/svg";
 
   // ---- console version banner ---------------------------------------------
-  const VERSION = "1.0.8";
+  const VERSION = "1.0.9";
   console.info(
     "%c CLIMATE-CLUSTER-CARD %c v" + VERSION + " ",
     "color:#0b0f16;background:#4fc3f7;font-weight:700;border-radius:4px 0 0 4px;padding:2px 6px",
@@ -512,8 +512,12 @@
       const d = this._unitDefaults(this._unit());
       // Config temp_step is authored in the display unit; the entity's
       // target_temp_step is in HA's unit, so convert it (issue #11).
-      if (cfg.temp_step != null && num(cfg.temp_step) != null) return num(cfg.temp_step);
-      if (num(attr.target_temp_step) != null) return this._toDisplayStep(num(attr.target_temp_step));
+      // Reject non-positive steps from hand-written YAML / attrs so the snap math
+      // in _eventToTemp/_tempKeyDown can never divide by zero (issue #18).
+      const cs = num(cfg.temp_step);
+      if (cfg.temp_step != null && cs != null && cs > 0) return cs;
+      const as = num(attr.target_temp_step);
+      if (as != null && as > 0) return this._toDisplayStep(as);
       return d.step;
     }
 
@@ -924,7 +928,7 @@
       if (!this._refs.ticks) return;
       const { lo, hi } = this._range();
       const step = this._step();
-      const span = (hi - lo) || 1;
+      const span = this._tempSpan(lo, hi); // guard degenerate/inverted ranges (issue #18)
       let minor = step;
       if (span / minor > 40) minor = span / 40; // cap minor-tick count ~40
       const labelStride = 5;                     // numbered every 5 degrees (F and C)
@@ -1170,7 +1174,7 @@
         this._hcPendingHigh = hi;
         const f = this._eventToFrac(e);
         const r = this._range();
-        const span = (r.hi - r.lo) || 1;
+        const span = this._tempSpan(r.lo, r.hi); // guard degenerate/inverted ranges (issue #18)
         const fLo = clamp((lo - r.lo) / span, 0, 1);
         const fHi = clamp((hi - r.lo) / span, 0, 1);
         const ff = (f != null) ? f : 0;
@@ -1773,9 +1777,19 @@
     // ============================================================================
     // PAINT HELPERS  (pure visual; optimistic-safe)
     // ============================================================================
+    // Positive span between two temps. A degenerate (max == min) or inverted
+    // (min > max) range yields a zero/negative denominator, which turns every
+    // arc angle into NaN and blanks the whole gauge (issue #18). Substitute one
+    // step (falling back to 1) so the dial renders a flat range instead.
+    _tempSpan(lo, hi) {
+      const span = hi - lo;
+      if (span > 0) return span;
+      const step = this._step();
+      return (step > 0) ? step : 1;
+    }
     _tempToAng(t) {
       const { lo, hi } = this._range();
-      return START_ANG + SPAN * clamp((t - lo) / (hi - lo), 0, 1);
+      return START_ANG + SPAN * clamp((t - lo) / this._tempSpan(lo, hi), 0, 1);
     }
     _fanValToAng(v) {
       const r = this._fanNumRange() || { min: FAN_MIN, max: FAN_MAX };
@@ -2517,9 +2531,19 @@
         this._form.computeHelper = (s) => EDITOR_HELPERS[s.name] || "";
         const root = this.shadowRoot || this.attachShadow({ mode: "open" });
         const style = document.createElement("style");
-        style.textContent = "ha-form{display:block;padding:8px 4px;}";
+        style.textContent = "ha-form{display:block;padding:8px 4px;}" +
+          ".ct-editor-warn{display:block;margin:4px 4px 10px;padding:10px 12px;border-radius:8px;" +
+          "background:rgba(255,80,80,.12);border:1px solid rgba(255,120,120,.5);color:#ffb3b3;" +
+          "font-size:13px;line-height:1.35;}";
         root.appendChild(style);
         root.appendChild(this._form);
+        // Inline range-validation banner (issue #18): shown when min >= max so the
+        // editor explains the flat dial instead of leaving a confusing blank card.
+        this._warn = document.createElement("div");
+        this._warn.className = "ct-editor-warn";
+        this._warn.setAttribute("role", "alert");
+        this._warn.style.display = "none";
+        root.insertBefore(this._warn, this._form);
       }
       this._form.hass = this._hass;
       // Feed the form a DISPLAY copy with the swatch/toggle defaults seeded so the
@@ -2529,6 +2553,20 @@
       this._form.data = this._computeFormData(this._config);
       // Re-derive each time so the Modes options live-populate from the picked entity.
       this._form.schema = this._schema(this._hass, this._config);
+      // Range sanity check against the RAW config (both authored in the display
+      // unit, so the comparison is unit-agnostic). Only warn when BOTH bounds are
+      // explicitly set and min >= max; an unset/half-set range uses entity
+      // defaults and is fine (issue #18).
+      if (this._warn) {
+        const mn = num(this._config.min_temp), mx = num(this._config.max_temp);
+        if (this._config.min_temp != null && this._config.max_temp != null && mn != null && mx != null && mn >= mx) {
+          this._warn.textContent = "Minimum temperature must be below maximum temperature. The dial uses a flat range until this is fixed.";
+          this._warn.style.display = "";
+        } else {
+          this._warn.textContent = "";
+          this._warn.style.display = "none";
+        }
+      }
     }
 
     // Build the ha-form `data` from the real config, seeding display-only defaults:

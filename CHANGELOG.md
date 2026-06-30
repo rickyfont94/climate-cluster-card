@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.9] - 2026-06-29
+
+### Fixed
+- The gauge no longer disappears when an entity's minimum and maximum temperature are equal (or inverted). The arc geometry now guards the range span so a degenerate range renders a flat dial instead of producing NaN SVG paths.
+
+### Added
+- The GUI editor now shows an inline warning when the configured minimum temperature is not below the maximum, instead of leaving the card blank.
+
 ## [1.0.7] - 2026-06-29
 
 ### Fixed
