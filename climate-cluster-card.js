@@ -2979,11 +2979,15 @@ ha-card{ position:relative; display:block; overflow:visible; }
 .ct-card.ct-compact .ct-fanname,
 .ct-card.ct-compact .ct-swingcap{ display:none !important; }
 
-/* pan-y like the card (NOT none) so a vertical swipe over empty svg space still
-   scrolls. overflow:hidden: clipping the svg to its own 600x392 box is the hard
-   backstop so the arcs / round caps / temp needle / fan chevron can never bleed
-   past the card edge. */
-.ct-svg{ display:block; width:100%; height:auto; position:relative; z-index:2; touch-action:pan-y; overflow:hidden; }
+/* touch-action:none on the dial (NOT pan-y): pan-y let iOS WebKit START a scroll on
+   the first vertical jitter of a touch, and once iOS begins a scroll a later
+   preventDefault is ignored -- so a ring drag scrolled the page and a center tap got
+   pointercancel'd (the "blue focus square but no popup" bug). none stops iOS from ever
+   stealing a dial touch for a scroll; the dashboard is scrolled from outside the dial.
+   touch-action on the root svg IS honored by WebKit (only INNER svg nodes ignore it),
+   so this one rule governs every grab band + the center disc. overflow:hidden clips the
+   svg to its own 600x392 box so the arcs / caps / needle / fan chevron never bleed. */
+.ct-svg{ display:block; width:100%; height:auto; position:relative; z-index:2; touch-action:none; overflow:hidden; }
 .ct-svg text{ font-family:var(--ct-font); }
 .nope{ pointer-events:none; }
 /* The interactive grab bands/buttons own the touch: touch-action:none keeps the
