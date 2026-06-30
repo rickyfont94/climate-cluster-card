@@ -30,14 +30,21 @@ All dependencies and tool versions are pinned. Never use `:latest`.
 
 ## Releases
 
-Releases are cut by the maintainer. A new version is published by tagging the commit:
+Releases are cut by the maintainer. Before tagging, update **every** place that names a version, in the same release:
+
+1. `VERSION` constant in `climate-cluster-card.js` (so the console banner matches the release).
+2. `CHANGELOG.md` - add a `## [X.Y.Z] - YYYY-MM-DD` section and the matching link reference at the bottom of the file.
+3. `README.md` - update the "What's new in vX.Y.Z" heading, its Contents anchor (`#whats-new-in-vXYZ`), and the bullet list so they describe the new release.
+4. Any other version reference (issue templates, docs, screenshots).
+
+Then tag the commit and push:
 
 ```
 git tag vX.Y.Z
 git push origin vX.Y.Z
 ```
 
-The release workflow (`release.yml`) publishes from the tag. When cutting a release, update the `VERSION` constant in `climate-cluster-card.js` before tagging so the console banner matches the release. Please do not open pull requests that only bump the version.
+The release workflow (`release.yml`) publishes from the tag. Note that HACS renders the README from the **release tag**, not `main`, so README and screenshot fixes only reach HACS users in a new tagged release. Please do not open pull requests that only bump the version.
 
 ## Questions and bugs
 
