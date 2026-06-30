@@ -26,7 +26,7 @@
   const NS = "http://www.w3.org/2000/svg";
 
   // ---- console version banner ---------------------------------------------
-  const VERSION = "1.0.9";
+  const VERSION = "1.0.10";
   console.info(
     "%c CLIMATE-CLUSTER-CARD %c v" + VERSION + " ",
     "color:#0b0f16;background:#4fc3f7;font-weight:700;border-radius:4px 0 0 4px;padding:2px 6px",
@@ -931,7 +931,14 @@
       const span = this._tempSpan(lo, hi); // guard degenerate/inverted ranges (issue #18)
       let minor = step;
       if (span / minor > 40) minor = span / 40; // cap minor-tick count ~40
-      const labelStride = 5;                     // numbered every 5 degrees (F and C)
+      // numbered every 5 degrees on normal ranges; widen on wide ranges so labels never smear
+      let labelStride = 5;
+      const TARGET_LABELS = 8;                   // cap of numbers drawn around the arc
+      if (span / labelStride > TARGET_LABELS) {
+        const niceStrides = [10, 15, 20, 25, 50, 100];
+        labelStride = niceStrides[niceStrides.length - 1];
+        for (const ns of niceStrides) { if (span / ns <= TARGET_LABELS) { labelStride = ns; break; } }
+      }
       const rTickOut = R_TEMP - 10;              // just inside the thick temp ring
       const rNum = R_TEMP - 40;                  // number ring inside the ticks
       let tk = "";
@@ -2223,7 +2230,10 @@
     _fmt(v) {
       const st = this._step();
       const dec = st < 1 ? 1 : 0;
-      return (Math.round(v / st) * st).toFixed(dec);
+      let s = (Math.round(v / st) * st).toFixed(dec);
+      // drop a trailing ".0" so whole degrees read "72" not "72.0"; keep real fractions (C 21.5)
+      if (s.indexOf(".") >= 0) s = s.replace(/0+$/, "").replace(/\.$/, "");
+      return s;
     }
 
     // ============================================================================
