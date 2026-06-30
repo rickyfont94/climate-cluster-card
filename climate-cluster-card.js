@@ -26,7 +26,7 @@
   const NS = "http://www.w3.org/2000/svg";
 
   // ---- console version banner ---------------------------------------------
-  const VERSION = "1.0.6";
+  const VERSION = "1.1.0";
   console.info(
     "%c CLIMATE-CLUSTER-CARD %c v" + VERSION + " ",
     "color:#0b0f16;background:#4fc3f7;font-weight:700;border-radius:4px 0 0 4px;padding:2px 6px",
@@ -35,6 +35,12 @@
 
   // Default UI accent (HA "Frosted Glass" cyan). Overridable per-card via `accent`.
   const DEFAULT_ACCENT = "#4fc3f7";
+
+  // Card font stack. We do NOT ship or fetch any font, so this must not depend on a
+  // missing face: 'Rajdhani' is honored only if the user already has it installed,
+  // then we fall through to the Home Assistant theme font, then system UI fonts.
+  // Overridable per-card via the `font` / `font_url` config keys (see _applyFont).
+  const FONT_STACK = "'Rajdhani', var(--ha-card-header-font-family, var(--ha-font-family-body, var(--mdc-typography-font-family, 'Roboto'))), 'Segoe UI', system-ui, -apple-system, sans-serif";
 
   // Mode -> per-mode accent color (arc / glyph / center label fallbacks).
   const MODE_COLORS = {
@@ -65,6 +71,249 @@
     idle: "IDLE",
     off: "OFF",
   };
+
+  // ---- i18n (issue #19) ----------------------------------------------------
+  // The card's OWN literal strings (labels, captions, aria-labels, live-region
+  // announcements, editor labels/helpers/options) live here. HVAC mode names and
+  // fan_mode names are NOT in this map: they are localized through Home Assistant
+  // (see modeName / _fanModeName) so they always match the rest of the dashboard
+  // and any custom mode/fan value keeps working.
+  //
+  // To add a language: add a 2-letter key (e.g. "de") mirroring "en"'s keys,
+  // including the nested editorLabels / editorHelpers maps. Any missing key
+  // falls back to English, so a partial translation is fine. The active language
+  // is read from hass.language (then hass.locale.language); a region subtag is
+  // stripped (es-419 -> es). Keep values free of em dashes (use a hyphen).
+  const LOCALE = {
+    en: {
+      now: "NOW",
+      swing: "SWING",
+      led: "LED",
+      sound: "SOUND",
+      auto: "AUTO",
+      automatic: "Automatic",
+      percent: "percent",
+      fan: "Fan",
+      mode: "Mode",
+      to: "to",
+      on: "on",
+      off: "off",
+      celsius: "Celsius",
+      fahrenheit: "Fahrenheit",
+      missing: "MISSING",
+      climate_control: "climate control",
+      set_fan_auto: "Set fan to automatic",
+      change_mode: "Change mode",
+      target_temperature: "Target temperature",
+      fan_speed: "Fan speed",
+      select_mode: "Select mode",
+      hint_mode: "MODE",
+      hint_fan: "FAN",
+      hint_auto: "AUTO",
+      "editor.section.appearance": "Appearance",
+      "editor.section.modes": "Modes",
+      "editor.section.fan": "Fan",
+      "editor.section.features": "Features",
+      "editor.section.layout": "Layout",
+      "editor.section.actions": "Actions",
+      "editor.section.mode_colors": "Per-mode colors",
+      "editor.opt.auto": "Auto",
+      "editor.opt.show": "Show",
+      "editor.opt.hide": "Hide",
+      "editor.opt.unit_fahrenheit": "Fahrenheit",
+      "editor.opt.unit_celsius": "Celsius",
+      "editor.opt.anim_dynamic": "Dynamic (scale with speed)",
+      "editor.opt.anim_constant": "Constant",
+      "editor.opt.anim_off": "Off",
+      "editor.warn_range": "Minimum temperature must be below maximum temperature. The dial uses a flat range until this is fixed.",
+      editorLabels: {
+        entity: "Climate entity",
+        name: "Name",
+        accent: "Accent color",
+        font: "Font family",
+        font_url: "Font stylesheet URL",
+        temperature_unit: "Temperature unit",
+        temp_step: "Step",
+        min_temp: "Minimum temperature",
+        max_temp: "Maximum temperature",
+        show_scale: "Show scale",
+        show_current: "Show current temperature",
+        modes: "Modes",
+        fan_entity: "Fan speed entity (number.*)",
+        show_fan: "Show fan ring",
+        fan_animation: "Fan animation",
+        fan_animation_speed: "Fan animation speed",
+        swing_entity: "Swing entity (switch.*)",
+        show_swing: "Show swing",
+        led_entity: "LED / display entity (switch.*)",
+        show_led: "Show LED",
+        sound_entity: "Sound / beep entity (switch.*)",
+        show_sound: "Show sound",
+        show_hints: "Show gesture hints",
+        max_height: "Max height",
+        tap_action: "Tap action",
+        hold_action: "Hold action",
+        double_tap_action: "Double tap action",
+      },
+      editorHelpers: {
+        name: "Card title. Defaults to the entity's friendly name.",
+        accent: "UI accent for the popup, lit chips, fan ring and caret. Defaults to #4fc3f7.",
+        font: "Leave empty to use Rajdhani if installed, then your Home Assistant theme font. A value here is prepended to that stack.",
+        font_url: "Optional stylesheet URL (e.g. a Google Fonts link) that loads the font named above. No font is fetched by default.",
+        temperature_unit: "Auto follows your Home Assistant unit system.",
+        temp_step: "Setpoint granularity. Defaults to the entity's target_temp_step.",
+        min_temp: "Leave empty to use the entity's minimum.",
+        max_temp: "Leave empty to use the entity's maximum.",
+        show_scale: "The numbered tick scale around the dial.",
+        show_current: "The NOW reading and current-temperature marker.",
+        modes: "Which HVAC modes appear in the popup. Defaults to the entity's modes.",
+        fan_entity: "A number.* percent entity for a draggable fan ring. Auto-discovered for Midea; falls back to named fan_modes.",
+        show_fan: "Force the fan ring on or off. Auto shows it when a fan source resolves.",
+        fan_animation: "The spinning clover animation.",
+        fan_animation_speed: "Dynamic scales the spin with fan speed; constant is a fixed spin.",
+        swing_entity: "Override the swing switch. Leave empty to auto-discover (Midea) or use climate swing_modes.",
+        show_swing: "Force the swing chip on or off. Auto shows it when a swing source resolves; a forced chip with no source renders disabled.",
+        led_entity: "Override the display/LED switch. Leave empty to auto-discover (Midea).",
+        show_led: "Force the LED chip on or off. Auto shows it when the entity resolves; a forced chip with no source renders disabled.",
+        sound_entity: "Override the beep/prompt-tone switch. Leave empty to auto-discover (Midea).",
+        show_sound: "Force the sound chip on or off. Auto shows it when the entity resolves; a forced chip with no source renders disabled.",
+        show_hints: "Faint MODE / FAN / AUTO labels showing the dial is interactive.",
+        max_height: "CSS length cap, e.g. 34vh or 360px. Width follows the dial aspect.",
+        tap_action: "Leave unset to keep the default: tap opens the mode menu.",
+        hold_action: "Defaults to opening the more-info dialog (history, attributes, presets).",
+        double_tap_action: "Off by default.",
+      },
+    },
+    es: {
+      now: "AHORA",
+      swing: "OSCILAR",
+      led: "LED",
+      sound: "SONIDO",
+      auto: "AUTO",
+      automatic: "Automatico",
+      percent: "por ciento",
+      fan: "Ventilador",
+      mode: "Modo",
+      to: "a",
+      on: "encendido",
+      off: "apagado",
+      celsius: "Celsius",
+      fahrenheit: "Fahrenheit",
+      missing: "NO DISPONIBLE",
+      climate_control: "control de clima",
+      set_fan_auto: "Poner el ventilador en automatico",
+      change_mode: "Cambiar modo",
+      target_temperature: "Temperatura objetivo",
+      fan_speed: "Velocidad del ventilador",
+      select_mode: "Seleccionar modo",
+      hint_mode: "MODO",
+      hint_fan: "VENT.",
+      hint_auto: "AUTO",
+      "editor.section.appearance": "Apariencia",
+      "editor.section.modes": "Modos",
+      "editor.section.fan": "Ventilador",
+      "editor.section.features": "Funciones",
+      "editor.section.layout": "Diseno",
+      "editor.section.actions": "Acciones",
+      "editor.section.mode_colors": "Colores por modo",
+      "editor.opt.auto": "Auto",
+      "editor.opt.show": "Mostrar",
+      "editor.opt.hide": "Ocultar",
+      "editor.opt.unit_fahrenheit": "Fahrenheit",
+      "editor.opt.unit_celsius": "Celsius",
+      "editor.opt.anim_dynamic": "Dinamica (escala con la velocidad)",
+      "editor.opt.anim_constant": "Constante",
+      "editor.opt.anim_off": "Apagada",
+      "editor.warn_range": "La temperatura minima debe ser menor que la maxima. El dial usa un rango plano hasta que se corrija.",
+      editorLabels: {
+        entity: "Entidad de clima",
+        name: "Nombre",
+        accent: "Color de acento",
+        font: "Tipo de letra",
+        font_url: "URL de la hoja de estilos de la fuente",
+        temperature_unit: "Unidad de temperatura",
+        temp_step: "Incremento",
+        min_temp: "Temperatura minima",
+        max_temp: "Temperatura maxima",
+        show_scale: "Mostrar escala",
+        show_current: "Mostrar temperatura actual",
+        modes: "Modos",
+        fan_entity: "Entidad de velocidad del ventilador (number.*)",
+        show_fan: "Mostrar anillo del ventilador",
+        fan_animation: "Animacion del ventilador",
+        fan_animation_speed: "Velocidad de la animacion del ventilador",
+        swing_entity: "Entidad de oscilacion (switch.*)",
+        show_swing: "Mostrar oscilacion",
+        led_entity: "Entidad de LED / pantalla (switch.*)",
+        show_led: "Mostrar LED",
+        sound_entity: "Entidad de sonido / pitido (switch.*)",
+        show_sound: "Mostrar sonido",
+        show_hints: "Mostrar pistas de gestos",
+        max_height: "Altura maxima",
+        tap_action: "Accion al tocar",
+        hold_action: "Accion al mantener",
+        double_tap_action: "Accion al tocar dos veces",
+      },
+      editorHelpers: {
+        name: "Titulo de la tarjeta. Por defecto usa el nombre descriptivo de la entidad.",
+        accent: "Acento de la interfaz para el menu, los chips encendidos, el anillo del ventilador y la flecha. Por defecto #4fc3f7.",
+        font: "Dejar vacio para usar Rajdhani si esta instalada, y luego la fuente del tema de Home Assistant. Un valor aqui se antepone a esa lista.",
+        font_url: "URL opcional de una hoja de estilos (por ejemplo un enlace de Google Fonts) que carga la fuente indicada arriba. No se descarga ninguna fuente por defecto.",
+        temperature_unit: "Auto sigue el sistema de unidades de Home Assistant.",
+        temp_step: "Granularidad del punto de ajuste. Por defecto usa el target_temp_step de la entidad.",
+        min_temp: "Dejar vacio para usar el minimo de la entidad.",
+        max_temp: "Dejar vacio para usar el maximo de la entidad.",
+        show_scale: "La escala numerada de marcas alrededor del dial.",
+        show_current: "La lectura AHORA y el marcador de temperatura actual.",
+        modes: "Que modos HVAC aparecen en el menu. Por defecto los modos de la entidad.",
+        fan_entity: "Una entidad number.* de porcentaje para un anillo de ventilador arrastrable. Se autodetecta en Midea; si no, usa los fan_modes con nombre.",
+        show_fan: "Forzar el anillo del ventilador encendido o apagado. Auto lo muestra cuando se resuelve una fuente de ventilador.",
+        fan_animation: "La animacion giratoria del trebol.",
+        fan_animation_speed: "Dynamic escala el giro con la velocidad del ventilador; constant es un giro fijo.",
+        swing_entity: "Anula el interruptor de oscilacion. Dejar vacio para autodetectar (Midea) o usar los swing_modes del clima.",
+        show_swing: "Forzar el chip de oscilacion encendido o apagado. Auto lo muestra cuando se resuelve una fuente; un chip forzado sin fuente se muestra deshabilitado.",
+        led_entity: "Anula el interruptor de pantalla/LED. Dejar vacio para autodetectar (Midea).",
+        show_led: "Forzar el chip de LED encendido o apagado. Auto lo muestra cuando la entidad se resuelve; un chip forzado sin fuente se muestra deshabilitado.",
+        sound_entity: "Anula el interruptor de pitido/tono. Dejar vacio para autodetectar (Midea).",
+        show_sound: "Forzar el chip de sonido encendido o apagado. Auto lo muestra cuando la entidad se resuelve; un chip forzado sin fuente se muestra deshabilitado.",
+        show_hints: "Etiquetas tenues MODO / VENT. / AUTO que muestran que el dial es interactivo.",
+        max_height: "Limite de longitud CSS, por ejemplo 34vh o 360px. El ancho sigue la proporcion del dial.",
+        tap_action: "Dejar sin definir para mantener el valor por defecto: tocar abre el menu de modos.",
+        hold_action: "Por defecto abre el dialogo de mas informacion (historial, atributos, preajustes).",
+        double_tap_action: "Apagado por defecto.",
+      },
+    },
+  };
+
+  // Active 2-letter language from hass (region subtag stripped), else English.
+  function langOf(hass) {
+    let l = (hass && (hass.language || (hass.locale && hass.locale.language))) || "en";
+    l = String(l).toLowerCase();
+    const dash = l.indexOf("-");
+    return dash > 0 ? l.slice(0, dash) : l;
+  }
+  // Resolve a flat card string: active language, then English, then the raw key.
+  function tr(hass, key) {
+    const table = LOCALE[langOf(hass)] || LOCALE.en;
+    if (table[key] != null) return table[key];
+    if (LOCALE.en[key] != null) return LOCALE.en[key];
+    return key;
+  }
+  // HVAC mode display name THROUGH Home Assistant (so it matches the dashboard and
+  // any custom mode works). Falls back to the built-in dictionary, else null so the
+  // editor label resolver can keep falling through for non-mode field names.
+  function modeName(hass, mode) {
+    if (hass && typeof hass.localize === "function") {
+      const v = hass.localize("component.climate.entity_component._.state." + mode);
+      if (v) return v;
+    }
+    return MODE_LABEL[mode] || null;
+  }
+  // Merge English + active-language nested editor map (English keys are the base so
+  // an untranslated label still resolves).
+  function editorMap(hass, which) {
+    return Object.assign({}, LOCALE.en[which], (LOCALE[langOf(hass)] || {})[which]);
+  }
 
   // ---- popup TOGGLES ROW chips (SWING / LED / SOUND) -----------------------
   // Inline glyphs only (no icon deps). stroke="currentColor" so the lit/dim color
@@ -113,13 +362,35 @@
   // pointer moves past this. A pure tap never crosses it, so it can't nudge a
   // setpoint, and a vertical swipe that starts here can still scroll (issue #4).
   const DRAG_THRESH_PX = 8;
+  // A finger tap jitters more than a mouse click, so the center tap/hold uses a larger
+  // cancel slop on touch. Below this a tap still fires (opens the mode popup); above it
+  // the gesture is treated as a swipe. Too small here = the "white square but no popup"
+  // bug where a touch tap is misread as a drag and discarded.
+  const CENTER_TAP_SLOP = 16;
 
-  // ---- FAN (percent control) ----------------------------------------------
-  // The fan ring drives a number.*_fan_speed entity (min 1, max 100), snapping to
-  // {1, 5,10,...,100}. AUTO is the named climate fan_mode, not a ring position.
+  // ---- center-disc tap / hold / double-tap action timing ------------------
+  // HOLD_MS: a pointer held still on the center disc past this fires hold_action.
+  // DBL_TAP_MS: the window a second center tap must land in to count as a double
+  // tap. The deferred single-tap is ONLY armed when double_tap_action is set, so
+  // the default (no double action) keeps tap firing immediately (no latency).
+  const HOLD_MS = 500;
+  const DBL_TAP_MS = 250;
+
+  // ---- FAN (numeric control) ----------------------------------------------
+  // The fan ring drives a number.*_fan_speed entity. Its real range is read from
+  // the number entity's own min/max/step attributes (HA `number` entities expose
+  // them); these consts are only the fallback when those attributes are missing.
+  // AUTO is the named climate fan_mode, not a ring position. When there is no
+  // usable numeric source the ring degrades to the climate entity's fan_modes.
   const FAN_MIN = 1;
   const FAN_MAX = 100;
   const FAN_STEP = 5;
+
+  // Card CSS-px width below which the per-degree tick scale and the tiny captions
+  // (fan name, SWING caption) are dropped so the dial stays legible when the
+  // Sections grid hands the card a narrow cell. Measure-tuned: rendered tick px is
+  // ~14.5 * W/600, so W < 380 puts ticks under ~9px and the small captions blur.
+  const COMPACT_W = 380;
 
   // Optimistic-paint safety timeout (ms). We hold the optimistic value until the
   // entity reports the value we asked for (then clear immediately, see
@@ -127,13 +398,6 @@
   // This is only the fallback for a device that never confirms; a rejected
   // service call reverts sooner via its .catch() (issue #9).
   const OPT_HOLD_MS = 5000;
-
-  // fraction 0..1 along the arc -> snapped percent in {1, 5,10,...,100}.
-  function fanSnapPct(frac) {
-    const raw = FAN_MIN + clamp(frac, 0, 1) * (FAN_MAX - FAN_MIN); // 1..100 continuous
-    if (raw <= (FAN_MIN + FAN_STEP) / 2) return FAN_MIN;           // floor snaps to 1
-    return clamp(Math.round(raw / FAN_STEP) * FAN_STEP, FAN_STEP, FAN_MAX);
-  }
 
   // ---- small helpers ------------------------------------------------------
   function el(tag, attrs, text) {
@@ -146,6 +410,20 @@
   function num(v) { const n = parseFloat(v); return isNaN(n) ? null : n; }
   const cToF = (c) => c * 9 / 5 + 32;
   const fToC = (f) => (f - 32) * 5 / 9;
+
+  // Vanilla HA-style event dispatcher (no custom-card-helpers dependency). composed
+  // is true so the event crosses this card's shadow boundaries up to home-assistant
+  // (mandatory for hass-more-info to actually open the dialog).
+  function fireEvent(node, type, detail, opts) {
+    const ev = new Event(type, {
+      bubbles: opts && opts.bubbles !== undefined ? opts.bubbles : true,
+      cancelable: !!(opts && opts.cancelable),
+      composed: opts && opts.composed !== undefined ? opts.composed : true,
+    });
+    ev.detail = detail == null ? {} : detail;
+    node.dispatchEvent(ev);
+    return ev;
+  }
 
   // Accept either [r,g,b] (editor color_rgb selector) or a plain color string.
   function toColor(v) {
@@ -190,7 +468,7 @@
   const MODE_COLORS_RGB = {};                              // per-mode defaults as [r,g,b]
   for (const k in MODE_COLORS) MODE_COLORS_RGB[k] = colorToRgb(MODE_COLORS[k]);
   // Booleans the CARD treats as on unless explicitly false (seed ON in the editor).
-  const DEFAULT_ON_KEYS = ["show_scale", "show_current", "fan_animation"];
+  const DEFAULT_ON_KEYS = ["show_scale", "show_current", "fan_animation", "show_hints"];
 
   // Polar helper (CW from top): x = cx + r*sin(deg), y = cy - r*cos(deg).
   function polar(cx, cy, r, angDeg) {
@@ -254,6 +532,15 @@
       this._popOpen = false;
       this._popBuilt = false;
       this._refs = {};
+      // center-disc tap / hold / double-tap gesture state (issue #15).
+      this._centerStart = null;
+      this._centerMoved = false;
+      this._centerHeld = false;
+      this._centerHoldTimer = null;
+      this._centerTapTimer = null;
+      this._onCenterMove = null;
+      this._onCenterUp = null;
+      this._lastCenterUp = 0;
     }
 
     // ---- PUBLIC CONTRACT --------------------------------------------------
@@ -282,7 +569,15 @@
       // height is capped and width follows the viewBox aspect ratio (centered).
       const mh = this._config.max_height;
       this._maxHeight = (typeof mh === "string" && mh.trim()) ? mh.trim() : null;
+
+      // Optional font override. `font` prepends a family to the default stack (so a
+      // failed/blocked web font still degrades to the theme/system fonts); `font_url`
+      // loads a stylesheet (e.g. a Google Fonts URL) that declares its own @font-face.
+      this._font = (typeof this._config.font === "string" && this._config.font.trim()) ? this._config.font.trim() : null;
+      this._fontUrl = (typeof this._config.font_url === "string" && this._config.font_url.trim()) ? this._config.font_url.trim() : null;
+
       if (this._built) this._applyMaxHeight();
+      if (this._built) this._applyFont();
       if (this._built) this._render();
     }
 
@@ -300,6 +595,34 @@
       }
     }
 
+    // Apply the optional `font` / `font_url` overrides. With neither set the CSS default
+    // --ct-font (FONT_STACK) is used. `font` is prepended so a missing/blocked override
+    // still degrades to the theme/system fonts. `font_url` injects one <link> stylesheet.
+    _applyFont() {
+      if (!this.shadowRoot) return;
+      const card = this.shadowRoot.querySelector(".ct-card");
+      if (card) {
+        if (this._font) {
+          card.style.setProperty("--ct-font", "'" + this._font + "', " + FONT_STACK);
+        } else {
+          card.style.removeProperty("--ct-font");
+        }
+      }
+      // Manage a single stylesheet <link> in the shadow root (create once, update in place).
+      let link = this.shadowRoot.querySelector("link[data-ct-font]");
+      if (this._fontUrl) {
+        if (!link) {
+          link = document.createElement("link");
+          link.setAttribute("data-ct-font", "");
+          link.setAttribute("rel", "stylesheet");
+          this.shadowRoot.appendChild(link);
+        }
+        if (link.getAttribute("href") !== this._fontUrl) link.setAttribute("href", this._fontUrl);
+      } else if (link) {
+        link.remove();
+      }
+    }
+
     set hass(hass) {
       this._hass = hass;
       if (!this._built) this._build();
@@ -307,19 +630,37 @@
     }
 
     getCardSize() {
-      // Wide arc (600x392, ratio 1.53) is shorter than a round puck -> ~5.
-      return 5;
+      // Wide arc (600x392, ratio 1.53). At a full-width column the natural height
+      // is ~300px, so ~6 masonry units (50px each). Kept in step with getGridOptions
+      // rows below so masonry and the Sections grid reserve the same vertical space.
+      return 6;
+    }
+
+    // Sections (grid) layout sizing. Without this HA gives a custom card columns:full
+    // and lets the aspect-locked SVG drive an unbounded height, so the dial renders
+    // huge. columns:12 keeps the default render width above COMPACT_W (full dial shows
+    // by default); rows:6 reserves enough height that the 1.5306-aspect SVG letterboxes
+    // instead of spilling past the cell. min 6x4 lets it shrink into compact mode (ticks
+    // and tiny captions hidden) without ever clipping the arcs.
+    getGridOptions() {
+      return { columns: 12, rows: 6, min_columns: 6, min_rows: 4 };
     }
 
     disconnectedCallback() {
+      if (this._ro) this._ro.disconnect(); // stop the compact-mode observer (re-observed on reconnect)
       this._popOpen = false;
       this._dragging = false;
       this._ringArmed = false;
       this._ringStart = null;
+      this._touchOnRing = false;
       // Capturing touch guards live on the svg; tear them down here.
       if (this._svg) {
         if (this._onSvgTouchStart) this._svg.removeEventListener("touchstart", this._onSvgTouchStart, true);
         if (this._onSvgTouchMove) this._svg.removeEventListener("touchmove", this._onSvgTouchMove, true);
+        if (this._onSvgTouchEnd) {
+          this._svg.removeEventListener("touchend", this._onSvgTouchEnd, true);
+          this._svg.removeEventListener("touchcancel", this._onSvgTouchEnd, true);
+        }
       }
       // Move/up listeners live on window (survive a failed setPointerCapture).
       if (this._onRingMove) window.removeEventListener("pointermove", this._onRingMove);
@@ -346,6 +687,18 @@
       // the function reference (the shadow DOM persists across reconnect and is
       // not rebuilt) so the next _openPop can re-attach it.
       if (this._onDocKeydown) document.removeEventListener("keydown", this._onDocKeydown, true);
+      // center-disc gesture teardown (issue #15): clear timers + window listeners so
+      // a card moved/removed in Lovelace leaks nothing (mirrors the ring/fan-icon path).
+      if (this._centerHoldTimer) { clearTimeout(this._centerHoldTimer); this._centerHoldTimer = null; }
+      if (this._centerTapTimer) { clearTimeout(this._centerTapTimer); this._centerTapTimer = null; }
+      if (this._onCenterMove) window.removeEventListener("pointermove", this._onCenterMove);
+      if (this._onCenterUp) {
+        window.removeEventListener("pointerup", this._onCenterUp);
+        window.removeEventListener("pointercancel", this._onCenterUp);
+      }
+      this._centerStart = null;
+      this._centerMoved = false;
+      this._centerHeld = false;
     }
 
     // ============================================================================
@@ -397,6 +750,57 @@
       const s = this._st(this._config && this._config.entity);
       const fm = (s && s.attributes && s.attributes.fan_modes) || [];
       return fm.filter((m) => String(m).toLowerCase() !== "auto");
+    }
+
+    // The numeric fan source's STATE object, or null when there is no USABLE
+    // numeric source (no entity, or unavailable/unknown/non-numeric). null means
+    // the ring should drive the climate entity's fan_modes instead.
+    _fanNumState() {
+      const id = this._fanNumberId();
+      if (!id) return null;
+      const s = this._st(id);
+      if (!s) return null;
+      const st = String(s.state).toLowerCase();
+      if (st === "unavailable" || st === "unknown") return null;
+      if (num(s.state) == null) return null;   // non-numeric -> not usable
+      return s;
+    }
+    // True when the ring runs in numeric (value) mode, false for named fan_modes.
+    _fanUsesNumber() { return this._fanNumState() != null; }
+    // {min,max,step} read from the number entity's own attributes; sane fallbacks.
+    _fanNumRange() {
+      const s = this._fanNumState();
+      if (!s) return null;
+      const a = s.attributes || {};
+      let min = num(a.min); if (min == null) min = FAN_MIN;
+      let max = num(a.max); if (max == null) max = FAN_MAX;
+      if (max <= min) max = min + 1;             // guard a degenerate range
+      let step = num(a.step); if (step == null || step <= 0) step = 1;
+      return { min, max, step };
+    }
+    // 0..1 fraction along the arc -> value snapped to the entity's {min,max,step}.
+    _snapFanValue(frac) {
+      const r = this._fanNumRange();
+      if (!r) return null;
+      const raw = r.min + clamp(frac, 0, 1) * (r.max - r.min);
+      const snapped = Math.round((raw - r.min) / r.step) * r.step + r.min;
+      return clamp(snapped, r.min, r.max);
+    }
+    // Nearest fan_mode (from the entity's OWN non-auto list) for a numeric value,
+    // case-preserving. Replaces the old hardcoded silent/low/.../full bucketer so
+    // the auto-pull picks a mode the entity actually supports (issue #8).
+    _nearestFanMode(value) {
+      const names = this._fanNamedModes();
+      if (!names.length) return null;
+      const r = this._fanNumRange() || { min: FAN_MIN, max: FAN_MAX };
+      const frac = clamp((value - r.min) / ((r.max - r.min) || 1), 0, 1);
+      const i = clamp(Math.round(frac * (names.length - 1)), 0, names.length - 1);
+      return names[i];
+    }
+    // Value label: integer unless the step has a fractional part.
+    _fmtFan(v, step) {
+      const dec = (step != null && step % 1 !== 0) ? 1 : 0;
+      return dec ? v.toFixed(dec) : String(Math.round(v));
     }
 
     _st(id) {
@@ -465,8 +869,12 @@
       const d = this._unitDefaults(this._unit());
       // Config temp_step is authored in the display unit; the entity's
       // target_temp_step is in HA's unit, so convert it (issue #11).
-      if (cfg.temp_step != null && num(cfg.temp_step) != null) return num(cfg.temp_step);
-      if (num(attr.target_temp_step) != null) return this._toDisplayStep(num(attr.target_temp_step));
+      // Reject non-positive steps from hand-written YAML / attrs so the snap math
+      // in _eventToTemp/_tempKeyDown can never divide by zero (issue #18).
+      const cs = num(cfg.temp_step);
+      if (cfg.temp_step != null && cs != null && cs > 0) return cs;
+      const as = num(attr.target_temp_step);
+      if (as != null && as > 0) return this._toDisplayStep(as);
       return d.step;
     }
 
@@ -513,9 +921,16 @@
       style.textContent = this._css();
       root.appendChild(style);
 
+      // Wrap the dial in a real <ha-card> so it inherits the active theme's
+      // background / border / radius / shadow and becomes the default card-mod
+      // target. The inner .ct-card keeps all the layout + interaction wiring, so
+      // no code that queries .ct-card needs to change. Outside HA, ha-card is an
+      // inert inline element and the dark literal fallbacks below keep the look.
+      const haCard = document.createElement("ha-card");
       const card = document.createElement("div");
       card.className = "ct-card";
-      root.appendChild(card);
+      haCard.appendChild(card);
+      root.appendChild(haCard);
 
       // Frosted-glass slab: its OWN backdrop-blur div BEHIND the svg (z-index:1),
       // a SIBLING of .ct-pop. backdrop-filter lives on THIS div, never on
@@ -552,10 +967,29 @@
       // nothing). A touch that did NOT start on a ring leaves _ringArmed false, so
       // this guard stays out of the way and a card-body swipe still scrolls. These
       // CAPTURING guards also stop the touch reaching an ancestor's JS swipe handler.
-      this._onSvgTouchStart = (e) => { e.stopPropagation(); };
-      this._onSvgTouchMove = (e) => { e.stopPropagation(); if (this._ringArmed && e.cancelable) e.preventDefault(); };
+      this._onSvgTouchStart = (e) => {
+        e.stopPropagation();
+        // Arm the scroll-block on TOUCHSTART, not on pointerdown: iOS WebKit often
+        // fires the first touchmove BEFORE the synthesized pointerdown, so _ringArmed
+        // is still false on that move, the page begins scrolling, and a late
+        // preventDefault is ignored. _touchOnRing is set the instant a touch lands on
+        // a ring grab band (radius inside the dial) so the very first touchmove is
+        // preventDefaulted. It is independent of _ringArmed (which still gates the
+        // pointer-driven commit) and is cleared on touchend/cancel below.
+        this._touchOnRing = false;
+        const t = e.touches && e.touches[0];
+        if (!t || this._popOpen) return;
+        const s = this._st(this._config.entity);
+        if (!s || s.state === "off" || s.state === "unavailable" || s.state === "unknown") return;
+        const rad = this._eventToRadius({ clientX: t.clientX, clientY: t.clientY });
+        if (rad != null && rad >= PICK_INNER && rad <= PICK_OUTER) this._touchOnRing = true;
+      };
+      this._onSvgTouchMove = (e) => { e.stopPropagation(); if ((this._ringArmed || this._touchOnRing) && e.cancelable) e.preventDefault(); };
+      this._onSvgTouchEnd = () => { this._touchOnRing = false; };
       svg.addEventListener("touchstart", this._onSvgTouchStart, { capture: true, passive: false });
       svg.addEventListener("touchmove", this._onSvgTouchMove, { capture: true, passive: false });
+      svg.addEventListener("touchend", this._onSvgTouchEnd, { capture: true, passive: true });
+      svg.addEventListener("touchcancel", this._onSvgTouchEnd, { capture: true, passive: true });
 
       // ---- defs: gradients + tight glow filters ----
       const defs = el("defs");
@@ -672,12 +1106,23 @@
       });
       svg.appendChild(this._refs.modeGlyph);
 
+      // ---- center press-feedback disc (issue #15): faint accent fill behind the
+      // readout, flashed on a center pointerdown so a touch registers visually.
+      // Inert (.nope) so it never intercepts the tap. fill comes from CSS. ----
+      this._refs.pressDisc = el("circle", {
+        class: "ct-pressdisc nope", cx: 300, cy: 255, r: 86, opacity: "0",
+      });
+      svg.appendChild(this._refs.pressDisc);
+
       // ---- CENTER TEXT BLOCK: glyph(apex) > MODE > NOW xx (two-tone) > big number ----
       this._refs.labelTop = el("text", {
         x: CX, y: 178, "text-anchor": "middle", class: "ct-labeltop nope",
         fill: "rgba(234,235,238,.8)", "font-size": "16", "letter-spacing": "4", opacity: ".95",
       }, "COOL");
       this._refs.labelTop.style.fontWeight = "600";
+      // Theme-driven neutral fill (inline style beats the leftover presentation
+      // attr); kept JS-set so the off / unavailable dim states still apply below.
+      this._refs.labelTop.style.fill = "var(--primary-text-color, rgba(234,235,238,.8))";
       svg.appendChild(this._refs.labelTop);
 
       // NOW xx, two-tone: grey "NOW " + bright value.
@@ -686,7 +1131,10 @@
         "font-size": "15", "letter-spacing": "2.5",
       });
       this._refs.nowCap.style.fontWeight = "600";
-      this._refs.nowCap.appendChild(el("tspan", { fill: "#8c99a7" }, "NOW "));
+      const nowPrefix = el("tspan", { fill: "#8c99a7" }, "NOW ");
+      nowPrefix.style.fill = "var(--secondary-text-color, #8c99a7)";
+      this._refs.nowLabel = nowPrefix; // localized in _applyStaticStrings (issue #19)
+      this._refs.nowCap.appendChild(nowPrefix);
       this._refs.nowVal = el("tspan", { fill: "rgba(234,235,238,.92)" }, "--°");
       this._refs.nowCap.appendChild(this._refs.nowVal);
       svg.appendChild(this._refs.nowCap);
@@ -787,18 +1235,47 @@
         this._render(); // optimistic face repaint
       });
 
-      // ---- center disc: tap to open the MODE POPUP ----
-      // a11y (issue #5): a focusable button that opens the mode dialog on Enter/Space.
+      // ---- gesture HINT labels (issue #15): faint MODE / FAN / AUTO micro-labels so
+      // a wall-tablet user sees the dial is interactive. Inert (.nope) so they never
+      // steal a tap; visibility is driven in _render (show_hints + fan availability). ----
+      const hints = el("g", { class: "ct-hints nope" });
+      this._refs.hints = hints;
+      const hintAttrs = {
+        "text-anchor": "middle", "font-size": "10", "letter-spacing": "1.5",
+        "font-weight": "600", fill: "rgba(234,235,238,.4)",
+      };
+      this._refs.hintMode = el("text", Object.assign({ x: 300, y: 371 }, hintAttrs), "MODE");
+      this._refs.hintFan = el("text", Object.assign({ x: 120, y: 360 }, hintAttrs), "FAN");
+      this._refs.hintAuto = el("text", Object.assign({ x: 212, y: 300 }, hintAttrs), "AUTO");
+      hints.appendChild(this._refs.hintMode);
+      hints.appendChild(this._refs.hintFan);
+      hints.appendChild(this._refs.hintAuto);
+      svg.appendChild(hints);
+
+      // ---- center disc: tap / hold / double-tap actions (issues #5 + #15) ----
+      // a11y (issue #5): a focusable button. The pointer scheme (issue #15) routes a
+      // tap to tap_action (default = open the mode popup), a press to hold_action
+      // (default = more-info), and a double tap to double_tap_action (default none),
+      // while respecting DRAG_THRESH_PX so a swipe off the disc is never an action.
       this._refs.centerHit = el("circle", {
         class: "ct-hit", cx: 300, cy: 255, r: 86, fill: "transparent",
         role: "button", tabindex: "0", "aria-label": "Change mode", "aria-haspopup": "dialog",
       });
       svg.appendChild(this._refs.centerHit);
-      this._refs.centerHit.addEventListener("click", (e) => { e.stopPropagation(); this._openPop(); });
+      this._onCenterDown = (e) => this._centerPointerDown(e);
+      this._refs.centerHit.addEventListener("pointerdown", this._onCenterDown);
+      // Swallow the synthetic click that follows a pointer tap (the _lastCenterUp
+      // guard) so the action never double-fires; a pure assistive-tech click (no
+      // preceding pointer flow) still runs the tap action.
+      this._refs.centerHit.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (Date.now() - this._lastCenterUp < 700) return;
+        if (!this._popOpen) this._runTapAction();
+      });
       this._refs.centerHit.addEventListener("keydown", (e) => {
         if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
           e.preventDefault(); e.stopPropagation();
-          if (!this._popOpen) this._openPop();
+          if (!this._popOpen) this._runTapAction();
         }
       });
 
@@ -869,6 +1346,27 @@
 
       this._built = true;
       this._applyMaxHeight(); // apply any max_height set before this build
+      this._applyFont();      // apply any font / font_url set before this build
+
+      // Width-driven compact mode: below COMPACT_W the per-degree tick scale and the
+      // tiny captions are hidden via the ct-compact class (CSS in _css). Guarded so it
+      // no-ops on engines without ResizeObserver. width 0 (hidden/detached) stays
+      // non-compact so there is no compact flash before the first real layout.
+      // Compact-mode relayout removed: hiding the ticks + tiny captions below a width
+      // breakpoint made the dial visibly RE-LAY-OUT when the browser was merely zoomed
+      // (the card's CSS-px width crosses the breakpoint), which reads as broken. The SVG
+      // already scales uniformly via its viewBox, so we keep ONE layout at every size.
+      // The .ct-compact CSS and the connected/disconnected _ro guards stay as harmless
+      // no-ops (this._ro is never created).
+      this._compact = false;
+    }
+
+    // Re-observe after a reconnect (the shadow DOM persists, so .ct-card is reused).
+    connectedCallback() {
+      if (this._built && this._ro) {
+        const c = this.shadowRoot && this.shadowRoot.querySelector(".ct-card");
+        if (c) this._ro.observe(c); // observing an already-observed element is a safe no-op
+      }
     }
 
     // Rebuild the numbered scale. Ticks at `step` (coarsened if dense); labels every
@@ -877,10 +1375,17 @@
       if (!this._refs.ticks) return;
       const { lo, hi } = this._range();
       const step = this._step();
-      const span = (hi - lo) || 1;
+      const span = this._tempSpan(lo, hi); // guard degenerate/inverted ranges (issue #18)
       let minor = step;
       if (span / minor > 40) minor = span / 40; // cap minor-tick count ~40
-      const labelStride = 5;                     // numbered every 5 degrees (F and C)
+      // numbered every 5 degrees on normal ranges; widen on wide ranges so labels never smear
+      let labelStride = 5;
+      const TARGET_LABELS = 8;                   // cap of numbers drawn around the arc
+      if (span / labelStride > TARGET_LABELS) {
+        const niceStrides = [10, 15, 20, 25, 50, 100];
+        labelStride = niceStrides[niceStrides.length - 1];
+        for (const ns of niceStrides) { if (span / ns <= TARGET_LABELS) { labelStride = ns; break; } }
+      }
       const rTickOut = R_TEMP - 10;              // just inside the thick temp ring
       const rNum = R_TEMP - 40;                  // number ring inside the ticks
       let tk = "";
@@ -899,7 +1404,7 @@
         const ang = START_ANG + SPAN * ((t - lo) / span);
         const np = polar(CX, CY, rNum, ang);
         tk += `<text x="${np[0].toFixed(1)}" y="${np[1].toFixed(1)}" text-anchor="middle" dominant-baseline="central" ` +
-          `font-size="14.5" letter-spacing="0.5" font-weight="600" fill="rgba(234,235,238,.88)">${this._fmt(t)}</text>`;
+          `font-size="14.5" letter-spacing="0.5" font-weight="600" fill="rgba(234,235,238,.88)">${this._fmtDisplay(t)}</text>`;
       }
       this._refs.ticks.innerHTML = tk;
       this._lo = lo; this._hi = hi; this._tickStep = step;
@@ -945,10 +1450,10 @@
       const st = this._step();
       return clamp(Math.round((lo + f * (hi - lo)) / st) * st, lo, hi); // snap to step
     }
-    _eventToFanPct(e) {
+    _eventToFanValue(e) {
       const f = this._eventToFrac(e);
       if (f == null) return null;
-      return fanSnapPct(f);
+      return this._snapFanValue(f);
     }
     _eventToFanIndex(e, n) {
       const f = this._eventToFrac(e);
@@ -1063,7 +1568,8 @@
         } else if (this._optimisticFanPct != null) {
           const id = this._fanNumberId();
           const liveP = id ? num((this._st(id) || {}).state) : null;
-          if (liveP != null && Math.abs(liveP - this._optimisticFanPct) < 0.5) {
+          const tol = Math.max(0.5, ((this._fanNumRange() || {}).step || 1) / 2);
+          if (liveP != null && Math.abs(liveP - this._optimisticFanPct) < tol) {
             this._optimisticFanPct = null;
             this._optimisticFanUntil = 0;
           }
@@ -1122,7 +1628,7 @@
         this._hcPendingHigh = hi;
         const f = this._eventToFrac(e);
         const r = this._range();
-        const span = (r.hi - r.lo) || 1;
+        const span = this._tempSpan(r.lo, r.hi); // guard degenerate/inverted ranges (issue #18)
         const fLo = clamp((lo - r.lo) / span, 0, 1);
         const fHi = clamp((hi - r.lo) / span, 0, 1);
         const ff = (f != null) ? f : 0;
@@ -1207,8 +1713,8 @@
         this._optimisticUntil = Date.now() + OPT_HOLD_MS;
         this._paintTempArc(t);
       } else if (this._active === "fan") {
-        if (this._fanNumberId()) {
-          const p = this._eventToFanPct(e);
+        if (this._fanUsesNumber()) {
+          const p = this._eventToFanValue(e);
           if (p == null) return;
           this._fanPendingPct = p;
           this._optimisticFanPct = p;
@@ -1294,25 +1800,26 @@
     // Percent ring: arrows step by FAN_STEP, Page by five steps, Home/End = min/max.
     // Named-mode ring: arrows/Page move one stop, Home/End jump to first/last mode.
     _fanKeyDown(e, s) {
-      const fanNumId = this._fanNumberId();
+      const useNum = this._fanUsesNumber();
       const k = e.key;
       let handled = true;
       const fanOptActive = this._optimisticFanUntil && Date.now() < this._optimisticFanUntil;
 
-      if (fanNumId) {
+      if (useNum) {
+        const r = this._fanNumRange();
         let p;
         if (fanOptActive && this._optimisticFanPct != null) p = this._optimisticFanPct;
-        else { const liveP = num((this._st(fanNumId) || {}).state); p = liveP != null ? liveP : FAN_MIN; }
-        const big = FAN_STEP * 5;
+        else { const liveP = num((this._fanNumState() || {}).state); p = liveP != null ? liveP : r.min; }
+        const big = r.step * 5;
         let np = p;
-        if (k === "ArrowUp" || k === "ArrowRight") np = p + FAN_STEP;
-        else if (k === "ArrowDown" || k === "ArrowLeft") np = p - FAN_STEP;
+        if (k === "ArrowUp" || k === "ArrowRight") np = p + r.step;
+        else if (k === "ArrowDown" || k === "ArrowLeft") np = p - r.step;
         else if (k === "PageUp") np = p + big;
         else if (k === "PageDown") np = p - big;
-        else if (k === "Home") np = FAN_MIN;
-        else if (k === "End") np = FAN_MAX;
+        else if (k === "Home") np = r.min;
+        else if (k === "End") np = r.max;
         else handled = false;
-        if (handled) { e.preventDefault(); this._commitFanPct(clamp(np, FAN_MIN, FAN_MAX)); }
+        if (handled) { e.preventDefault(); this._commitFanPct(clamp(np, r.min, r.max)); }
         return;
       }
 
@@ -1355,7 +1862,80 @@
     _announce(msg) {
       if (this._refs && this._refs.live && msg != null) this._refs.live.textContent = String(msg);
     }
-    _unitWord() { return this._unit() === "C" ? "Celsius" : "Fahrenheit"; }
+    _unitWord() { return this._t(this._unit() === "C" ? "celsius" : "fahrenheit"); }
+
+    // ---- i18n helpers (issue #19) ----
+    // Flat card string in the active language (English fallback).
+    _t(key) { return tr(this._hass, key); }
+    // HVAC mode display name via Home Assistant; uppercased fallback for the SVG
+    // center label (no CSS text-transform there). Returns a non-empty string.
+    _modeName(mode) { return modeName(this._hass, mode) || String(mode).toUpperCase(); }
+    // fan_mode display name via Home Assistant (matches the dashboard); uppercased
+    // raw fallback so custom fan_modes and older HA still render. DISPLAY ONLY:
+    // service calls always send the raw fan_mode value, never this string.
+    _fanModeName(name) {
+      if (this._hass && typeof this._hass.formatEntityAttributeValue === "function") {
+        try {
+          const st = this._st(this._config.entity);
+          if (st) {
+            const v = this._hass.formatEntityAttributeValue(st, "fan_mode", name);
+            if (v) return String(v).toUpperCase();
+          }
+        } catch (e) {}
+      }
+      return String(name).toUpperCase();
+    }
+    // BCP47 tag for number formatting from hass language/locale.
+    _localeTag() {
+      return (this._hass && (this._hass.language || (this._hass.locale && this._hass.locale.language))) || "en";
+    }
+    // Locale used for number formatting, honoring hass.locale.number_format. "none"
+    // -> null (plain, no separators); the named formats map to a representative tag;
+    // language/system/default/unset -> the active language tag.
+    _numberLocale() {
+      const nf = this._hass && this._hass.locale && this._hass.locale.number_format;
+      switch (nf) {
+        case "comma_decimal": return "en-US";
+        case "decimal_comma": return "de-DE";
+        case "space_comma": return "fr-FR";
+        case "none": return null;
+        default: return this._localeTag();
+      }
+    }
+    // Human-visible setpoint string: step-rounded then locale-formatted (decimal
+    // separator / grouping per the user's locale). Trailing zeros are dropped to
+    // match _fmt (72 not 72.0, 21.5 kept). Used for ALL visible text + aria-valuetext;
+    // _fmt stays the dotted-decimal source for the numeric aria-value* attributes.
+    _fmtDisplay(v) {
+      if (v == null) return "";
+      const st = this._step();
+      const maxDec = st < 1 ? 1 : 0;
+      const r = Math.round(v / st) * st;
+      const tag = this._numberLocale();
+      if (!tag) return this._fmt(v);
+      try {
+        return r.toLocaleString(tag, { minimumFractionDigits: 0, maximumFractionDigits: maxDec });
+      } catch (e) {
+        return this._fmt(v);
+      }
+    }
+    // (Re)apply the card's static localized strings (svg captions + aria-labels).
+    // Cheap; called from _render only when the language changes (_i18nLang guard).
+    _applyStaticStrings() {
+      const r = this._refs;
+      if (!r) return;
+      if (r.nowLabel) r.nowLabel.textContent = this._t("now") + " ";
+      if (r.swingCap) r.swingCap.textContent = this._t("swing");
+      if (r.fanIconHit) r.fanIconHit.setAttribute("aria-label", this._t("set_fan_auto"));
+      if (r.swingChip) r.swingChip.setAttribute("aria-label", this._t("swing"));
+      if (r.centerHit) r.centerHit.setAttribute("aria-label", this._t("change_mode"));
+      if (r.drag) r.drag.setAttribute("aria-label", this._t("target_temperature"));
+      if (r.fanGrab) r.fanGrab.setAttribute("aria-label", this._t("fan_speed"));
+      if (r.pop) r.pop.setAttribute("aria-label", this._t("select_mode"));
+      if (r.hintMode) r.hintMode.textContent = this._t("hint_mode");
+      if (r.hintFan) r.hintFan.textContent = this._t("hint_fan");
+      if (r.hintAuto) r.hintAuto.textContent = this._t("hint_auto");
+    }
 
     // ---- TEMPERATURE service calls (signature preserved; value unit-converted) ----
     _callTemp(t) {
@@ -1371,7 +1951,7 @@
       this._optimisticTarget = t;
       this._optimisticUntil = Date.now() + OPT_HOLD_MS;
       this._paintTempArc(t);
-      this._announce(this._fmt(t) + "° " + this._unitWord());
+      this._announce(this._fmtDisplay(t) + "° " + this._unitWord());
       this._callTemp(t);
     }
 
@@ -1386,7 +1966,7 @@
       this._optimisticHigh = hi;
       this._optimisticHcUntil = Date.now() + OPT_HOLD_MS;
       this._paintHeatCool(lo, hi);
-      this._announce(this._fmt(lo) + " to " + this._fmt(hi) + "° " + this._unitWord());
+      this._announce(this._fmtDisplay(lo) + " " + this._t("to") + " " + this._fmtDisplay(hi) + "° " + this._unitWord());
       this._svc("climate", "set_temperature",
         { entity_id: this._config.entity,
           target_temp_low: this._toHa(lo),
@@ -1395,40 +1975,41 @@
     }
 
     // ---- FAN service calls ----
-    _fanNamedForPct(p) {
-      if (p <= 20) return "silent";
-      if (p <= 40) return "low";
-      if (p <= 60) return "medium";
-      if (p <= 80) return "high";
-      return "full";
-    }
-    // Authoritative fan write: set the percent number. Also pull the climate
-    // fan_mode off "auto" to a named bucket so the percent actually applies (Midea).
+    // Authoritative numeric fan write: set the number value, snapped to its real
+    // range. Also pull the climate fan_mode off "auto" to the nearest supported
+    // mode so the value actually applies (Midea). When there is NO number entity,
+    // fall back to the nearest named fan_mode (issue #8).
     _callFanPct(p) {
       if (!this._hass) return;
       const id = this._fanNumberId();
       if (!id) {
-        this._svc("climate", "set_fan_mode",
-          { entity_id: this._config.entity, fan_mode: this._fanNamedForPct(p) },
+        const nm = this._nearestFanMode(p);
+        if (nm) this._svc("climate", "set_fan_mode",
+          { entity_id: this._config.entity, fan_mode: nm },
           () => this._revertFan());
         return;
       }
+      const r = this._fanNumRange() || { min: FAN_MIN, max: FAN_MAX };
       const s = this._st(this._config.entity);
       if (s && String(s.attributes.fan_mode).toLowerCase() === "auto") {
-        this._svc("climate", "set_fan_mode",
-          { entity_id: this._config.entity, fan_mode: this._fanNamedForPct(p) },
+        const nm = this._nearestFanMode(p);
+        if (nm) this._svc("climate", "set_fan_mode",
+          { entity_id: this._config.entity, fan_mode: nm },
           () => this._revertFan());
       }
       this._svc("number", "set_value",
-        { entity_id: id, value: clamp(p, FAN_MIN, FAN_MAX) },
+        { entity_id: id, value: clamp(p, r.min, r.max) },
         () => this._revertFan());
     }
     _commitFanPct(p) {
-      this._optimisticFanPct = clamp(p, FAN_MIN, FAN_MAX);
+      const r = this._fanNumRange() || { min: FAN_MIN, max: FAN_MAX };
+      this._optimisticFanPct = clamp(p, r.min, r.max);
       this._optimisticFanName = null;
       this._optimisticFanUntil = Date.now() + OPT_HOLD_MS;
       this._paintFanPct(this._optimisticFanPct);
-      this._announce("Fan " + Math.round(this._optimisticFanPct) + " percent");
+      this._announce(this._t("fan") + " " + (r.max === 100
+        ? Math.round(this._optimisticFanPct) + " " + this._t("percent")
+        : this._fmtFan(this._optimisticFanPct, r.step)));
       this._callFanPct(this._optimisticFanPct);
     }
     // Named fan_mode commit (discrete-stop ring), optimistic + climate.set_fan_mode.
@@ -1438,7 +2019,7 @@
       this._optimisticFanPct = null;
       this._optimisticFanUntil = Date.now() + OPT_HOLD_MS;
       this._paintFanNamed(this._fanNamedModes(), name);
-      this._announce("Fan " + String(name).toUpperCase());
+      this._announce(this._t("fan") + " " + this._fanModeName(name));
       this._svcSetFanMode(name);
     }
     // Set the climate fan_mode to "auto" + paint optimistically.
@@ -1448,7 +2029,7 @@
       this._optimisticFanPct = null;
       this._optimisticFanName = null;
       this._paintFanAuto();
-      this._announce("Fan automatic");
+      this._announce(this._t("fan") + " " + this._t("automatic"));
       // No optimistic value to revert here (AUTO drops optimism above); on
       // failure just repaint live state so the ring snaps back to reality.
       this._svc("climate", "set_fan_mode",
@@ -1485,12 +2066,160 @@
       const attr = (s && s.attributes) || {};
       const fanModes = attr.fan_modes || [];
       const hasAuto = fanModes.some((m) => String(m).toLowerCase() === "auto");
-      if (this._fanNumberId() || hasAuto) { this._callFanAuto(); return; }
+      if (this._fanUsesNumber() || hasAuto) { this._callFanAuto(); return; }
       const names = this._fanNamedModes();
       if (!names.length) return;
       let i = names.findIndex((m) => String(m).toLowerCase() === String(attr.fan_mode).toLowerCase());
       const next = names[(i + 1 + (i < 0 ? 0 : 0)) % names.length];
       this._commitFanName(i < 0 ? names[0] : next);
+    }
+
+    // ============================================================================
+    // CENTER-DISC TAP / HOLD / DOUBLE-TAP  (issue #15)
+    // A self-contained gesture detector on the center disc, independent of the ring
+    // drag (_ringArmed short-circuits it so the two never overlap). It respects
+    // DRAG_THRESH_PX so a swipe off the disc is neither a tap nor a hold, and only
+    // defers the single tap when a double_tap_action is configured (no tap latency
+    // otherwise). The default tap still opens the mode popup; default hold = more-info.
+    // ============================================================================
+    _centerPointerDown(e) {
+      if (this._popOpen || this._ringArmed) return;
+      if (e.button && e.button !== 0) return;
+      e.stopPropagation();
+      this._centerStart = { x: e.clientX, y: e.clientY };
+      this._centerPointerType = e.pointerType || "mouse";
+      this._centerMoved = false;
+      this._centerHeld = false;
+      this._setPress(true);
+      try { e.target.setPointerCapture(e.pointerId); } catch (err) {}
+      this._onCenterMove = (ev) => this._centerPointerMove(ev);
+      this._onCenterUp = (ev) => this._centerPointerUp(ev);
+      window.addEventListener("pointermove", this._onCenterMove);
+      window.addEventListener("pointerup", this._onCenterUp);
+      window.addEventListener("pointercancel", this._onCenterUp);
+      // Start the hold timer only when a hold action would actually fire.
+      const hold = this._config.hold_action || { action: "more-info" };
+      if (hold.action && hold.action !== "none") {
+        this._centerHoldTimer = setTimeout(() => {
+          this._centerHoldTimer = null;
+          if (this._centerMoved) return;
+          this._centerHeld = true;
+          this._setPress(false);
+          this._runHoldAction();
+        }, HOLD_MS);
+      }
+    }
+    _centerPointerMove(e) {
+      const st = this._centerStart;
+      if (!st) return;
+      const slop = this._centerPointerType === "touch" ? CENTER_TAP_SLOP : DRAG_THRESH_PX;
+      if (Math.hypot(e.clientX - st.x, e.clientY - st.y) > slop) {
+        // a swipe off the disc: never a tap or hold (touch gets a wider slop than mouse).
+        this._centerMoved = true;
+        this._setPress(false);
+        if (this._centerHoldTimer) { clearTimeout(this._centerHoldTimer); this._centerHoldTimer = null; }
+      }
+    }
+    _centerPointerUp(e) {
+      window.removeEventListener("pointermove", this._onCenterMove);
+      window.removeEventListener("pointerup", this._onCenterUp);
+      window.removeEventListener("pointercancel", this._onCenterUp);
+      this._onCenterMove = null;
+      this._onCenterUp = null;
+      if (this._centerHoldTimer) { clearTimeout(this._centerHoldTimer); this._centerHoldTimer = null; }
+      this._setPress(false);
+      this._lastCenterUp = Date.now();
+      const moved = this._centerMoved;
+      const held = this._centerHeld;
+      this._centerStart = null;
+      this._centerMoved = false;
+      this._centerHeld = false;
+      if (e.type === "pointercancel" || moved || held) return;
+      // a clean tap. Defer it only when a double-tap action is configured.
+      if (this._dblConfigured()) {
+        if (this._centerTapTimer) {
+          // second tap inside the window -> double tap.
+          clearTimeout(this._centerTapTimer);
+          this._centerTapTimer = null;
+          this._runDoubleTapAction();
+        } else {
+          this._centerTapTimer = setTimeout(() => {
+            this._centerTapTimer = null;
+            this._runTapAction();
+          }, DBL_TAP_MS);
+        }
+      } else {
+        this._runTapAction();
+      }
+    }
+    _dblConfigured() {
+      const d = this._config.double_tap_action;
+      return !!(d && d.action && d.action !== "none");
+    }
+    _runTapAction() {
+      if (this._config.tap_action) this._handleAction(this._config.tap_action);
+      else this._openPop();
+    }
+    _runHoldAction() {
+      this._handleAction(this._config.hold_action || { action: "more-info" });
+    }
+    _runDoubleTapAction() {
+      if (this._config.double_tap_action) this._handleAction(this._config.double_tap_action);
+    }
+    // Flash the center press-feedback disc (opacity only; no transform, so it plays
+    // nice with prefers-reduced-motion and never clobbers a presentation transform).
+    _setPress(on) {
+      if (this._refs.pressDisc) this._refs.pressDisc.style.opacity = on ? "0.14" : "0";
+    }
+    // Fire the more-info dialog for an entity (composed event crosses the shadow roots).
+    _fireMoreInfo(id) {
+      if (!id) return;
+      fireEvent(this, "hass-more-info", { entityId: id });
+    }
+    // SPA navigation (mirrors HA's navigate handler).
+    _navigate(path) {
+      if (!path) return;
+      history.pushState(null, "", path);
+      fireEvent(window, "location-changed", { replace: false });
+    }
+    // Dispatch a standard HA action config (mirrors custom-card-helpers handleAction).
+    // Supports both the new perform_action/data/target and legacy service shapes.
+    _handleAction(cfg) {
+      if (!cfg || !cfg.action || cfg.action === "none") return;
+      if (cfg.confirmation && cfg.confirmation.text != null) {
+        if (!window.confirm(cfg.confirmation.text)) return;
+      } else if (cfg.confirmation === true) {
+        if (!window.confirm("Are you sure?")) return;
+      }
+      const entity = cfg.entity || this._config.entity;
+      switch (cfg.action) {
+        case "more-info":
+          this._fireMoreInfo(entity);
+          break;
+        case "toggle":
+          if (this._hass) this._hass.callService("homeassistant", "toggle", { entity_id: entity });
+          break;
+        case "navigate":
+          this._navigate(cfg.navigation_path);
+          break;
+        case "url":
+          if (cfg.url_path) window.open(cfg.url_path);
+          break;
+        case "perform-action":
+        case "call-service": {
+          if (!this._hass) break;
+          const svc = cfg.perform_action || cfg.service;
+          if (!svc || svc.indexOf(".") < 0) break;
+          const [d, sv] = svc.split(".");
+          this._hass.callService(d, sv, cfg.data || cfg.service_data || {}, cfg.target);
+          break;
+        }
+        case "fire-dom-event":
+          fireEvent(this, "ll-custom", cfg);
+          break;
+        default:
+          break;
+      }
     }
 
     // ============================================================================
@@ -1541,12 +2270,17 @@
       const onMode = modes.find((x) => String(x).toLowerCase() !== "off") || modes[0] || "vertical";
       this._svcSetSwingMode(this._swingIsOn() ? "off" : onMode);
     }
-    // Resolved (visible) for a feature, honoring show_* === false.
-    _featureResolved(kind) {
-      if (this._featureCfg(kind) === false) return false;
+    // Whether a feature has a backing source the card can auto-detect.
+    _featureAvail(kind) {
       if (kind === "swing") return !!this._swingMode().kind;
       const ref = kind === "led" ? this._ledRef() : this._soundRef();
       return !!(ref && this._st(ref));
+    }
+    // Resolved (visible) for a feature, honoring the tri-state config like show_fan:
+    // true = force shown, false = force hidden, "auto"/unset = show only if available.
+    _featureResolved(kind) {
+      const cfg = this._featureCfg(kind);
+      return cfg === true ? true : cfg === false ? false : this._featureAvail(kind);
     }
     // Raw live on/off for a feature, bypassing any optimistic hold (used by the
     // reconciler to decide when the real state has caught up).
@@ -1567,7 +2301,7 @@
         this._optToggle = this._optToggle || {};
         this._optToggle.swing = { val: !this._swingIsOn(), until: Date.now() + OPT_HOLD_MS };
         this._paintPop();
-        this._announce("Swing " + (this._optToggle.swing.val ? "on" : "off"));
+        this._announce(this._t("swing") + " " + this._t(this._optToggle.swing.val ? "on" : "off"));
         this._swingToggle();
         return;
       }
@@ -1578,7 +2312,7 @@
       this._optToggle = this._optToggle || {};
       this._optToggle[kind] = { val: !on, until: Date.now() + OPT_HOLD_MS };
       this._paintPop();
-      this._announce((kind === "led" ? "LED" : "Sound") + " " + (!on ? "on" : "off"));
+      this._announce(this._t(kind) + " " + this._t(!on ? "on" : "off"));
       this._svc("switch", on ? "turn_off" : "turn_on", { entity_id: ref },
         () => this._revertToggle(kind));
     }
@@ -1612,8 +2346,8 @@
         || ["off", "cool", "heat", "heat_cool", "dry", "fan_only", "auto"];
       modes.forEach((m) => {
         const b = document.createElement("button");
-        b.dataset.mode = m;
-        b.textContent = MODE_LABEL[m] || String(m).toUpperCase();
+        b.dataset.mode = m; // raw hvac_mode value (service payload), never localized
+        b.textContent = this._modeName(m); // CSS uppercases; HA localizes the name
         sheet.appendChild(b);
       });
       // TOGGLES ROW (SWING / LED / SOUND), below the modes with a separator. Built
@@ -1628,7 +2362,7 @@
         b.dataset.toggle = t.kind;
         b.innerHTML =
           '<svg class="ct-tg-ic" viewBox="-12 -12 24 24" aria-hidden="true">' + t.svg + "</svg>" +
-          '<span class="ct-tg-lb">' + t.label + "</span>";
+          '<span class="ct-tg-lb">' + this._t(t.kind) + "</span>"; // refreshed in _paintPop
         row.appendChild(b);
         this._refs.toggles[t.kind] = b;
       });
@@ -1639,7 +2373,7 @@
           if (!b) return;
           e.stopPropagation();
           // Toggle chips flip a feature and KEEP the popup open; mode buttons close it.
-          if (b.dataset.toggle) { this._featureToggle(b.dataset.toggle); return; }
+          if (b.dataset.toggle) { if (this._featureAvail(b.dataset.toggle)) this._featureToggle(b.dataset.toggle); return; }
           this._selectMode(b.dataset.mode);
         };
         sheet.addEventListener("click", this._onPopClick);
@@ -1661,7 +2395,7 @@
           this._svc("climate", "set_hvac_mode", { entity_id: ent, hvac_mode: mode }, () => this._render());
         }
       }
-      this._announce("Mode " + (MODE_LABEL[mode] || String(mode).toUpperCase()));
+      this._announce(this._t("mode") + " " + this._modeName(mode));
       this._closePop();
     }
     _paintPop() {
@@ -1673,15 +2407,22 @@
         const active = b.dataset.mode === cur;
         b.classList.toggle("active", active);
         b.setAttribute("aria-pressed", active ? "true" : "false"); // a11y (issue #5)
+        b.textContent = this._modeName(b.dataset.mode); // keep localized on a language switch (issue #19)
       });
       // TOGGLES ROW: hide an unresolved chip; else lit ".on" = feature on.
       if (this._refs.toggles) {
         TOGGLE_DEFS.forEach((t) => {
           const b = this._refs.toggles[t.kind];
           if (!b) return;
+          const lb = b.querySelector(".ct-tg-lb");
+          if (lb) lb.textContent = this._t(t.kind); // localized chip label (issue #19)
           if (!this._featureResolved(t.kind)) { b.style.display = "none"; return; }
           b.style.display = "";
-          const on = this._featureOn(t.kind);
+          // Forced-visible with no backing source -> inert, dimmed, not lit.
+          const avail = this._featureAvail(t.kind);
+          b.classList.toggle("disabled", !avail);
+          b.setAttribute("aria-disabled", avail ? "false" : "true");
+          const on = avail && this._featureOn(t.kind);
           b.classList.toggle("on", on);
           b.setAttribute("aria-pressed", on ? "true" : "false"); // a11y (issue #5)
         });
@@ -1714,12 +2455,23 @@
     // ============================================================================
     // PAINT HELPERS  (pure visual; optimistic-safe)
     // ============================================================================
+    // Positive span between two temps. A degenerate (max == min) or inverted
+    // (min > max) range yields a zero/negative denominator, which turns every
+    // arc angle into NaN and blanks the whole gauge (issue #18). Substitute one
+    // step (falling back to 1) so the dial renders a flat range instead.
+    _tempSpan(lo, hi) {
+      const span = hi - lo;
+      if (span > 0) return span;
+      const step = this._step();
+      return (step > 0) ? step : 1;
+    }
     _tempToAng(t) {
       const { lo, hi } = this._range();
-      return START_ANG + SPAN * clamp((t - lo) / (hi - lo), 0, 1);
+      return START_ANG + SPAN * clamp((t - lo) / this._tempSpan(lo, hi), 0, 1);
     }
-    _fanPctToAng(p) {
-      return START_ANG + SPAN * clamp((p - FAN_MIN) / (FAN_MAX - FAN_MIN), 0, 1);
+    _fanValToAng(v) {
+      const r = this._fanNumRange() || { min: FAN_MIN, max: FAN_MAX };
+      return START_ANG + SPAN * clamp((v - r.min) / ((r.max - r.min) || 1), 0, 1);
     }
 
     // Centralized fan-clover spin per fan_animation / fan_animation_speed.
@@ -1753,17 +2505,19 @@
       const seat = polar(CX, CY, R_TEMP, ang);
       this._refs.tempNeedle.setAttribute("transform",
         `translate(${seat[0].toFixed(1)},${seat[1].toFixed(1)}) rotate(${ang.toFixed(1)})`);
-      const txt = this._fmt(t);
-      this._refs.bigNum.textContent = txt;
+      const disp = this._fmtDisplay(t); // visible, locale-formatted (issue #19)
+      this._refs.bigNum.textContent = disp;
       // shrink for "XX.5" / 3-digit so the decimal fits the center.
-      this._refs.bigNum.setAttribute("font-size", txt.length > 2 ? "84" : "104");
-      // a11y: keep the temp slider's reported value in sync (issue #5).
+      this._refs.bigNum.setAttribute("font-size", disp.length > 2 ? "84" : "104");
+      // a11y: keep the temp slider's reported value in sync (issue #5). The numeric
+      // aria-value* stay on _fmt (dotted decimal) so they remain machine-parseable;
+      // only the human aria-valuetext uses the locale-formatted string (issue #19).
       if (this._refs.drag) {
         const r = this._range();
         this._refs.drag.setAttribute("aria-valuemin", this._fmt(r.lo));
         this._refs.drag.setAttribute("aria-valuemax", this._fmt(r.hi));
         this._refs.drag.setAttribute("aria-valuenow", this._fmt(t));
-        this._refs.drag.setAttribute("aria-valuetext", txt + "° " + this._unitWord());
+        this._refs.drag.setAttribute("aria-valuetext", disp + "° " + this._unitWord());
       }
     }
 
@@ -1790,7 +2544,7 @@
       const seatHi = polar(CX, CY, R_TEMP, aHi);
       this._refs.tempNeedle.setAttribute("transform",
         `translate(${seatHi[0].toFixed(1)},${seatHi[1].toFixed(1)}) rotate(${aHi.toFixed(1)})`);
-      const loTxt = this._fmt(lo), hiTxt = this._fmt(hi);
+      const loTxt = this._fmtDisplay(lo), hiTxt = this._fmtDisplay(hi); // visible (issue #19)
       const plain = loTxt + " - " + hiTxt;
       // two-tone readout: low value cyan, high value warm, separator grey.
       this._refs.bigNum.innerHTML =
@@ -1799,34 +2553,40 @@
         '<tspan fill="#F2933A">' + hiTxt + '</tspan>';
       this._refs.bigNum.setAttribute("font-size", plain.length > 8 ? "42" : "54");
       // a11y: the single temp slider reports the HIGH setpoint, with a paired
-      // valuetext for both ends; keyboard nudges the HIGH handle (issue #5).
+      // valuetext for both ends; keyboard nudges the HIGH handle (issue #5). Numeric
+      // aria-value* stay on _fmt (dotted) so they remain machine-parseable (issue #19).
       if (this._refs.drag) {
         const r = this._range();
         this._refs.drag.setAttribute("aria-valuemin", this._fmt(r.lo));
         this._refs.drag.setAttribute("aria-valuemax", this._fmt(r.hi));
-        this._refs.drag.setAttribute("aria-valuenow", hiTxt);
-        this._refs.drag.setAttribute("aria-valuetext", loTxt + " to " + hiTxt + "° " + this._unitWord());
+        this._refs.drag.setAttribute("aria-valuenow", this._fmt(hi));
+        this._refs.drag.setAttribute("aria-valuetext", loTxt + " " + this._t("to") + " " + hiTxt + "° " + this._unitWord());
       }
     }
 
     // Paint the fan ring for a percent (number.* entity).
     _paintFanPct(p) {
-      p = clamp(p, FAN_MIN, FAN_MAX);
-      const ang = this._fanPctToAng(p);
+      const r = this._fanNumRange() || { min: FAN_MIN, max: FAN_MAX, step: 1 };
+      p = clamp(p, r.min, r.max);
+      const ang = this._fanValToAng(p);
       this._refs.fanFill.setAttribute("d", arcPath(CX, CY, R_FAN, START_ANG, Math.max(START_ANG + 0.01, ang)));
       this._refs.fanFill.style.opacity = "1";
       const seat = polar(CX, CY, R_FAN + FAN_HANDLE_OFFSET, ang);
       this._refs.fanHandle.setAttribute("transform",
         `translate(${seat[0].toFixed(1)},${seat[1].toFixed(1)}) rotate(${ang.toFixed(1)})`);
-      this._refs.fanPct.textContent = Math.round(p) + "%";
-      this._refs.fanName.textContent = this._fanNamedForPct(p).toUpperCase();
-      this._applyFanSpin(p, false);
-      // a11y: sync the fan slider value (issue #5).
+      // 0..100 equivalent drives the clover spin and the "%" label for a 1..100 source.
+      const pctEq = ((p - r.min) / ((r.max - r.min) || 1)) * 100;
+      this._refs.fanPct.textContent = (r.max === 100) ? Math.round(pctEq) + "%" : this._fmtFan(p, r.step);
+      const nm = this._nearestFanMode(p);
+      this._refs.fanName.textContent = nm ? this._fanModeName(nm) : ""; // localized via HA (issue #19)
+      this._applyFanSpin(pctEq, false);
+      // a11y: report the fan slider against its REAL numeric range (issue #5/#8).
       if (this._refs.fanGrab) {
-        this._refs.fanGrab.setAttribute("aria-valuemin", String(FAN_MIN));
-        this._refs.fanGrab.setAttribute("aria-valuemax", String(FAN_MAX));
-        this._refs.fanGrab.setAttribute("aria-valuenow", String(Math.round(p)));
-        this._refs.fanGrab.setAttribute("aria-valuetext", Math.round(p) + " percent");
+        this._refs.fanGrab.setAttribute("aria-valuemin", String(r.min));
+        this._refs.fanGrab.setAttribute("aria-valuemax", String(r.max));
+        this._refs.fanGrab.setAttribute("aria-valuenow", this._fmtFan(p, r.step));
+        this._refs.fanGrab.setAttribute("aria-valuetext",
+          (r.max === 100) ? Math.round(pctEq) + " " + this._t("percent") : this._fmtFan(p, r.step));
       }
     }
 
@@ -1844,7 +2604,7 @@
       const seat = polar(CX, CY, R_FAN + FAN_HANDLE_OFFSET, ang);
       this._refs.fanHandle.setAttribute("transform",
         `translate(${seat[0].toFixed(1)},${seat[1].toFixed(1)}) rotate(${ang.toFixed(1)})`);
-      this._refs.fanPct.textContent = String(names[i]).toUpperCase();
+      this._refs.fanPct.textContent = this._fanModeName(names[i]); // localized via HA (issue #19)
       this._refs.fanName.textContent = "";
       const pctEq = n <= 1 ? 100 : (i / (n - 1)) * 100;
       this._applyFanSpin(pctEq, false);
@@ -1853,7 +2613,7 @@
         this._refs.fanGrab.setAttribute("aria-valuemin", "1");
         this._refs.fanGrab.setAttribute("aria-valuemax", String(n));
         this._refs.fanGrab.setAttribute("aria-valuenow", String(i + 1));
-        this._refs.fanGrab.setAttribute("aria-valuetext", String(names[i]).toUpperCase());
+        this._refs.fanGrab.setAttribute("aria-valuetext", this._fanModeName(names[i]));
       }
     }
 
@@ -1864,13 +2624,13 @@
       const seat = polar(CX, CY, R_FAN + FAN_HANDLE_OFFSET, END_ANG);
       this._refs.fanHandle.setAttribute("transform",
         `translate(${seat[0].toFixed(1)},${seat[1].toFixed(1)}) rotate(${END_ANG.toFixed(1)})`);
-      this._refs.fanPct.textContent = "AUTO";
+      this._refs.fanPct.textContent = this._t("auto");
       this._refs.fanName.textContent = "";
       this._applyFanSpin(100, true);
       // a11y: AUTO is a state, not a ring position (issue #5).
       if (this._refs.fanGrab) {
         this._refs.fanGrab.removeAttribute("aria-valuenow");
-        this._refs.fanGrab.setAttribute("aria-valuetext", "Automatic");
+        this._refs.fanGrab.setAttribute("aria-valuetext", this._t("automatic"));
       }
     }
 
@@ -1910,11 +2670,15 @@
       if (!this._built || !this._hass || !this._config) return;
       const card = this.shadowRoot.querySelector(".ct-card");
       if (!card) return;
+      // i18n (issue #19): (re)apply static localized strings once per language change,
+      // so a runtime language switch updates the captions/aria-labels too.
+      const lang = langOf(this._hass);
+      if (this._i18nLang !== lang) { this._i18nLang = lang; this._applyStaticStrings(); }
       const s = this._st(this._config.entity);
 
       if (this._refs.title) this._refs.title.textContent = this._acName();
       // a11y: name the control group so it isn't read as one unlabeled graphic (issue #5).
-      if (this._refs.svg) this._refs.svg.setAttribute("aria-label", this._acName() + " climate control");
+      if (this._refs.svg) this._refs.svg.setAttribute("aria-label", this._acName() + " " + this._t("climate_control"));
 
       // scale: rebuild when range/unit/step changed; honor show_scale.
       {
@@ -1922,6 +2686,13 @@
         if (this._lo !== rng.lo || this._hi !== rng.hi || this._tickStep !== stp) this._buildTicks();
         if (this._refs.ticks) this._refs.ticks.style.display = (this._config.show_scale === false) ? "none" : "";
       }
+
+      // Accent follows the theme: a configured accent always wins, else the
+      // theme's --accent-color, else the signature cyan. Resolved to a CONCRETE
+      // color (not a var() string) so every SVG consumer below keeps working, and
+      // recomputed each render so it tracks live light/dark theme switches.
+      const cfgA = toColor(this._config.accent);
+      this._accent = cfgA || getComputedStyle(this).getPropertyValue("--accent-color").trim() || DEFAULT_ACCENT;
 
       // UI accent var (popup / chips inherit it through the DOM).
       card.style.setProperty("--ct-accent", this._accent);
@@ -1931,8 +2702,8 @@
         card.style.setProperty("--accent", this._modeColor("off"));
         this._refs.bigNum.textContent = "--";
         this._refs.bigNum.setAttribute("font-size", "104");
-        this._refs.labelTop.textContent = s ? s.state.toUpperCase() : "MISSING";
-        this._refs.labelTop.setAttribute("fill", "#6b7a88");
+        this._refs.labelTop.textContent = s ? s.state.toUpperCase() : this._t("missing");
+        this._refs.labelTop.style.fill = "var(--secondary-text-color, #6b7a88)";
         this._refs.nowCap.style.display = "none";
         this._refs.caret.style.display = "none";
         this._refs.curMarker.style.display = "none";
@@ -1947,6 +2718,7 @@
         // a11y: nothing is settable while unavailable -> take the fan slider out of
         // the tab order (the temp slider's key handler already no-ops here, issue #5).
         if (this._refs.fanGrab) { this._refs.fanGrab.setAttribute("tabindex", "-1"); this._refs.fanGrab.setAttribute("aria-hidden", "true"); }
+        if (this._refs.hints) this._refs.hints.style.display = "none"; // issue #15
         this._paintModeGlyph(s ? s.state : "off", this._modeColor("off"), true);
         return;
       }
@@ -2016,11 +2788,11 @@
       }
 
       // ---- center labels ----
-      this._refs.labelTop.textContent = MODE_LABEL[mode] || mode.toUpperCase();
-      this._refs.labelTop.setAttribute("fill", off ? "#5e6b78" : "rgba(234,235,238,.8)");
+      this._refs.labelTop.textContent = this._modeName(mode).toUpperCase();
+      this._refs.labelTop.style.fill = off ? "var(--disabled-text-color, #5e6b78)" : "var(--primary-text-color, rgba(234,235,238,.8))";
       if (cur != null && showCurrent) {
-        this._refs.nowVal.textContent = this._fmt(cur) + "°";
-        this._refs.nowVal.setAttribute("fill", off ? "#8c99a7" : accent);
+        this._refs.nowVal.textContent = this._fmtDisplay(cur) + "°";
+        this._refs.nowVal.style.fill = off ? "var(--secondary-text-color, #8c99a7)" : accent;
         this._refs.nowCap.style.display = "";
         this._refs.nowCap.style.opacity = off ? "0.5" : "1";
       } else {
@@ -2050,10 +2822,10 @@
       // ---- mode glyph ----
       this._paintModeGlyph(mode, accent, off);
 
-      // ---- FAN ring + clover (percent number OR named fan_modes) ----
-      const fanNumId = this._fanNumberId();
+      // ---- FAN ring + clover (numeric number OR named fan_modes) ----
+      const useNum = this._fanUsesNumber();
       const namedModes = this._fanNamedModes();
-      const fanAvail = !!(fanNumId || namedModes.length);
+      const fanAvail = !!(useNum || namedModes.length);
       const cfgShowFan = this._config.show_fan;
       const haveFan = cfgShowFan === true ? fanAvail
                     : cfgShowFan === false ? false
@@ -2072,13 +2844,14 @@
         if (this._refs.fanGrab) { this._refs.fanGrab.setAttribute("tabindex", "0"); this._refs.fanGrab.removeAttribute("aria-hidden"); }
         const isAutoNow = String(attr.fan_mode).toLowerCase() === "auto" && !fanOptPct && !fanOptName;
         this._refs.fanIconHit.setAttribute("aria-pressed", isAutoNow ? "true" : "false");
-        if (fanNumId) {
+        if (useNum) {
+          const r = this._fanNumRange();
           const fanIsAuto = String(attr.fan_mode).toLowerCase() === "auto";
           if (fanIsAuto && !fanOptPct) {
             this._paintFanAuto();
           } else {
-            const liveP = num((this._st(fanNumId) || {}).state);
-            const p = fanOptPct ? this._optimisticFanPct : (liveP != null ? liveP : FAN_MIN);
+            const liveP = num((this._fanNumState() || {}).state);
+            const p = fanOptPct ? this._optimisticFanPct : (liveP != null ? liveP : r.min);
             this._paintFanPct(p);
           }
         } else {
@@ -2105,23 +2878,47 @@
 
       // ---- face VERTICAL SWING chip ----
       if (this._featureResolved("swing")) {
-        const on = this._featureOn("swing");
+        // Forced-visible with no backing source -> render an inert, dimmed OFF chip.
+        const avail = this._featureAvail("swing");
+        const on = avail && this._featureOn("swing");
         this._refs.swingChip.style.display = "";
         this._refs.swingCap.style.display = "";
         this._refs.swingIcon.setAttribute("stroke", on ? this._accent : "#8a98a6");
         this._refs.swingChipBg.setAttribute("stroke", on ? this._glow(55) : "rgba(234,235,238,.16)");
         this._refs.swingChipBg.setAttribute("fill", on ? this._glow(14) : "rgba(40,52,66,.45)");
         this._refs.swingChip.style.filter = on ? `drop-shadow(0 0 6px ${this._glow(55)})` : "none";
-        this._refs.swingChip.style.opacity = off ? "0.4" : "1";
-        // a11y: toggle button state for screen readers (issue #5).
-        this._refs.swingChip.setAttribute("aria-pressed", on ? "true" : "false");
         this._refs.swingChip.removeAttribute("aria-hidden");
-        this._refs.swingChip.setAttribute("tabindex", "0");
+        if (!avail) {
+          // a11y: a chip with no source is non-interactive (the pointer/keydown
+          // handlers already no-op); make that honest to AT and dim it.
+          this._refs.swingChip.style.opacity = "0.4";
+          this._refs.swingChip.setAttribute("aria-disabled", "true");
+          this._refs.swingChip.removeAttribute("aria-pressed");
+          this._refs.swingChip.setAttribute("tabindex", "-1");
+        } else {
+          this._refs.swingChip.style.opacity = off ? "0.4" : "1";
+          // a11y: toggle button state for screen readers (issue #5).
+          this._refs.swingChip.setAttribute("aria-pressed", on ? "true" : "false");
+          this._refs.swingChip.removeAttribute("aria-disabled");
+          this._refs.swingChip.setAttribute("tabindex", "0");
+        }
       } else {
         this._refs.swingChip.style.display = "none";
         this._refs.swingCap.style.display = "none";
         this._refs.swingChip.setAttribute("aria-hidden", "true");
         this._refs.swingChip.setAttribute("tabindex", "-1");
+      }
+
+      // ---- gesture HINT labels (issue #15) ----
+      // MODE follows show_hints alone (the center is always interactive); FAN/AUTO
+      // also require a fan source so they never point at an absent control. Dimmed
+      // further when the unit is off, like the rest of the face.
+      if (this._refs.hints) {
+        const showHints = this._config.show_hints !== false;
+        this._refs.hints.style.display = showHints ? "" : "none";
+        this._refs.hints.style.opacity = off ? "0.5" : "1";
+        if (this._refs.hintFan) this._refs.hintFan.style.display = haveFan ? "" : "none";
+        if (this._refs.hintAuto) this._refs.hintAuto.style.display = haveFan ? "" : "none";
       }
 
       if (this._popOpen) this._paintPop();
@@ -2131,7 +2928,10 @@
     _fmt(v) {
       const st = this._step();
       const dec = st < 1 ? 1 : 0;
-      return (Math.round(v / st) * st).toFixed(dec);
+      let s = (Math.round(v / st) * st).toFixed(dec);
+      // drop a trailing ".0" so whole degrees read "72" not "72.0"; keep real fractions (C 21.5)
+      if (s.indexOf(".") >= 0) s = s.replace(/0+$/, "").replace(/\.$/, "");
+      return s;
     }
 
     // ============================================================================
@@ -2139,10 +2939,28 @@
     // ============================================================================
     _css() {
       return `
-:host{ display:block; }
+:host{ display:block; -webkit-tap-highlight-color:transparent; }
+/* The themed shell. ha-card already paints background / border / radius / shadow
+   from the active theme; overflow:visible preserves the dial, temp needle, fan
+   chevron, the :focus-visible ring, and the .ct-frost drop shadow that bleed past
+   the inner .ct-card box. ha-card sets no transform / filter / contain, so it does
+   NOT become the containing block for the fixed .ct-pop. */
+ha-card{ position:relative; display:block; overflow:visible; }
+/* Neutral structural text follows the theme (these are never runtime fill-patched).
+   CSS fill overrides the SVG presentation attribute. labelTop / the NOW caption /
+   nowVal are deliberately NOT listed here - they stay JS-driven so their off /
+   unavailable dim + per-mode accent states still apply. The heat_cool bigNum tspans
+   carry their OWN cyan/orange fill attrs, which beat this inherited .ct-big value. */
+.ct-title{ fill:var(--primary-text-color, rgba(234,235,238,.92)); }
+.ct-big{ fill:var(--primary-text-color, rgba(234,235,238,.98)); }
+.ct-fanpct{ fill:var(--primary-text-color, rgba(234,235,238,.92)); }
+.ct-fanname{ fill:var(--secondary-text-color, rgba(234,235,238,.7)); }
+.ct-swingcap{ fill:var(--secondary-text-color, rgba(234,235,238,.7)); }
+.ct-ticks text{ fill:var(--secondary-text-color, rgba(234,235,238,.88)); }
 .ct-card{
   position:relative; width:100%; margin:0 auto; overflow:visible;
   --ct-accent:${DEFAULT_ACCENT};
+  --ct-font:${FONT_STACK};
   /* pan-y (NOT none): a vertical swipe over the card still scrolls the dashboard;
      only the .ct-hit grab bands below opt out so a ring drag owns the gesture. */
   touch-action:pan-y;
@@ -2152,26 +2970,45 @@
 .ct-card[data-capped]{ width:min(100%, calc(var(--ct-max-h) * 1.5306)); }
 .ct-card[data-capped] .ct-svg{ max-height:var(--ct-max-h); }
 
-/* pan-y like the card (NOT none) so a vertical swipe over empty svg space still
-   scrolls. overflow:hidden: clipping the svg to its own 600x392 box is the hard
-   backstop so the arcs / round caps / temp needle / fan chevron can never bleed
-   past the card edge. */
-.ct-svg{ display:block; width:100%; height:auto; position:relative; z-index:2; touch-action:pan-y; overflow:hidden; }
-.ct-svg text{ font-family:'Rajdhani','DIN Alternate','Oswald','Roboto Condensed','Segoe UI',system-ui,sans-serif; }
+/* Compact mode (narrow grid cell, set by the ResizeObserver below COMPACT_W): drop
+   the per-degree tick scale and the tiny fan-name / SWING captions so they don't blur
+   into illegibility. !important beats the inline display _render writes on these refs;
+   leaving compact restores that last inline display. The focusable role=slider grab
+   bands are untouched (ticks are .nope, non-interactive). */
+.ct-card.ct-compact .ct-ticks,
+.ct-card.ct-compact .ct-fanname,
+.ct-card.ct-compact .ct-swingcap{ display:none !important; }
+
+/* touch-action:none on the dial (NOT pan-y): pan-y let iOS WebKit START a scroll on
+   the first vertical jitter of a touch, and once iOS begins a scroll a later
+   preventDefault is ignored -- so a ring drag scrolled the page and a center tap got
+   pointercancel'd (the "blue focus square but no popup" bug). none stops iOS from ever
+   stealing a dial touch for a scroll; the dashboard is scrolled from outside the dial.
+   touch-action on the root svg IS honored by WebKit (only INNER svg nodes ignore it),
+   so this one rule governs every grab band + the center disc. overflow:hidden clips the
+   svg to its own 600x392 box so the arcs / caps / needle / fan chevron never bleed. */
+.ct-svg{ display:block; width:100%; height:auto; position:relative; z-index:2; touch-action:none; overflow:hidden; }
+.ct-svg text{ font-family:var(--ct-font); }
 .nope{ pointer-events:none; }
 /* The interactive grab bands/buttons own the touch: touch-action:none keeps the
    browser from stealing a ring drag for a scroll. The tap-vs-drag threshold (JS)
    makes sure a pure tap on a band is still discarded, not committed. */
-.ct-hit{ cursor:pointer; touch-action:none; }
+.ct-hit{ cursor:pointer; touch-action:none; -webkit-tap-highlight-color:transparent; -webkit-user-select:none; user-select:none; }
+/* Center press-feedback disc (issue #15): faint accent fill flashed on a center
+   pointerdown. Opacity-only transition so it survives prefers-reduced-motion and
+   never clobbers a presentation transform. */
+.ct-pressdisc{ fill:var(--ct-accent); transition:opacity .14s ease; }
+/* Gesture hint labels (issue #15) never intercept a tap (also class .nope). */
+.ct-hints text{ pointer-events:none; }
 
 /* Frosted-glass slab: dark translucent fill, 1px hairline outline, 14px radius. Its OWN
    backdrop-blur div BEHIND the svg, full-card inset; backdrop-filter kept for glass. */
 .ct-frost{
   position:absolute; z-index:1; inset:6px; border-radius:14px;
-  background:rgba(18,22,30,.62);
+  background:var(--ha-card-background, var(--card-background-color, rgba(18,22,30,.62)));
   backdrop-filter:blur(14px) saturate(1.1);
   -webkit-backdrop-filter:blur(14px) saturate(1.1);
-  border:1px solid rgba(255,255,255,.16);
+  border:1px solid var(--divider-color, rgba(255,255,255,.16));
   box-shadow:
     inset 0 2px 10px rgba(255,255,255,.08),
     inset 0 -10px 28px rgba(0,0,0,.42),
@@ -2192,24 +3029,24 @@
 }
 .ct-pop.open{ opacity:1; visibility:visible; pointer-events:auto; transition:opacity .18s ease; }
 .ct-sheet{
-  background:linear-gradient(180deg, rgba(24,31,40,.92), rgba(12,17,23,.94));
-  border:1px solid rgba(234,235,238,.12); border-radius:22px; padding:22px;
+  background:var(--ha-card-background, var(--card-background-color, linear-gradient(180deg, rgba(24,31,40,.92), rgba(12,17,23,.94))));
+  border:1px solid var(--divider-color, rgba(234,235,238,.12)); border-radius:22px; padding:22px;
   -webkit-backdrop-filter:blur(18px) saturate(120%); backdrop-filter:blur(18px) saturate(120%);
   box-shadow:0 24px 60px rgba(0,0,0,.6), inset 0 1px 1px rgba(255,255,255,.05);
   display:grid; grid-template-columns:repeat(3,1fr); gap:12px;
   transform:scale(.92); transition:transform .18s ease;
-  font-family:'Rajdhani','DIN Alternate','Oswald','Segoe UI',system-ui,sans-serif;
+  font-family:var(--ct-font);
 }
 .ct-pop.open .ct-sheet{ transform:scale(1); }
 .ct-sheet button{
   min-width:120px; padding:18px 14px; cursor:pointer;
-  background:rgba(30,40,52,.55); color:#9aa8b6;
-  border:1px solid rgba(234,235,238,.14); border-radius:12px;
+  background:var(--secondary-background-color, rgba(30,40,52,.55)); color:var(--secondary-text-color, #9aa8b6);
+  border:1px solid var(--divider-color, rgba(234,235,238,.14)); border-radius:12px;
   font:inherit; font-size:15px; letter-spacing:2px; text-transform:uppercase; transition:.15s;
 }
-.ct-sheet button:hover{ border-color:color-mix(in srgb, var(--ct-accent) 45%, transparent); color:#c6d3df; }
+.ct-sheet button:hover{ border-color:color-mix(in srgb, var(--ct-accent) 45%, transparent); color:var(--primary-text-color, #c6d3df); }
 .ct-sheet button.active{
-  background:color-mix(in srgb, var(--ct-accent) 16%, transparent); color:rgba(234,235,238,.98);
+  background:color-mix(in srgb, var(--ct-accent) 16%, transparent); color:var(--primary-text-color, rgba(234,235,238,.98));
   border:1.5px solid var(--ct-accent);
   box-shadow:0 0 14px color-mix(in srgb, var(--ct-accent) 40%, transparent),
     inset 0 0 12px color-mix(in srgb, var(--ct-accent) 14%, transparent);
@@ -2228,11 +3065,11 @@
 .ct-sheet button.ct-toggle{
   min-width:86px; padding:10px 14px;
   display:flex; flex-direction:column; align-items:center; gap:6px;
-  background:rgba(30,40,52,.45); color:#8a98a6;
-  border:1px solid rgba(234,235,238,.14); border-radius:12px;
+  background:var(--secondary-background-color, rgba(30,40,52,.45)); color:var(--secondary-text-color, #8a98a6);
+  border:1px solid var(--divider-color, rgba(234,235,238,.14)); border-radius:12px;
   font-size:12px; letter-spacing:1.5px; line-height:1; transition:.15s;
 }
-.ct-sheet button.ct-toggle:hover{ border-color:color-mix(in srgb, var(--ct-accent) 45%, transparent); color:#c6d3df; }
+.ct-sheet button.ct-toggle:hover{ border-color:color-mix(in srgb, var(--ct-accent) 45%, transparent); color:var(--primary-text-color, #c6d3df); }
 .ct-sheet button.ct-toggle.on{
   color:var(--ct-accent);
   background:color-mix(in srgb, var(--ct-accent) 16%, transparent);
@@ -2240,6 +3077,7 @@
   box-shadow:0 0 14px color-mix(in srgb, var(--ct-accent) 40%, transparent),
     inset 0 0 12px color-mix(in srgb, var(--ct-accent) 14%, transparent);
 }
+.ct-sheet button.ct-toggle.disabled{ opacity:.4; cursor:default; }
 .ct-toggle .ct-tg-ic{ width:24px; height:24px; display:block; }
 .ct-toggle .ct-tg-lb{ display:block; }
 @media (max-width:480px){ .ct-sheet button.ct-toggle{ min-width:72px; padding:9px 8px; } }
@@ -2265,6 +3103,7 @@
 @media (prefers-reduced-motion: reduce){
   .ct-clover g{ animation:none !important; }
   .ct-pop, .ct-pop .ct-sheet{ transition:none !important; }
+  .ct-pressdisc{ transition:none !important; } /* press feedback snaps, no fade (issue #15) */
 }
 `;
     }
@@ -2282,64 +3121,12 @@
   // The mode keys exposed by the per-mode color sub-section (matches MODE_COLORS).
   const MODE_KEYS = ["cool", "heat", "heat_cool", "dry", "fan_only", "auto", "off"];
 
-  // Tri-state visibility selector for the fan / swing / LED / sound features.
-  const AUTO_TF = [
-    { value: "auto", label: "Auto" },
-    { value: true, label: "Show" },
-    { value: false, label: "Hide" },
-  ];
-  // Fields using the AUTO_TF tri-state select. Seeded to "auto" for display when
-  // unset and pruned back out on save (the card treats unset / "auto" as auto).
+  // Fields using the tri-state visibility select (fan / swing / LED / sound).
+  // Seeded to "auto" for display when unset and pruned back out on save (the card
+  // treats unset / "auto" as auto). The localized option list is built per-call in
+  // _schema; the field labels/helpers live in LOCALE.<lang>.editorLabels/Helpers
+  // (resolved via editorMap), with English as the fallback (issue #19).
   const TRISTATE_KEYS = ["show_fan", "show_swing", "show_led", "show_sound"];
-
-  // Friendly field labels (computeLabel). Falls back to MODE_LABEL then prettified name.
-  const EDITOR_LABELS = {
-    entity: "Climate entity",
-    name: "Name",
-    accent: "Accent color",
-    temperature_unit: "Temperature unit",
-    temp_step: "Step",
-    min_temp: "Minimum temperature",
-    max_temp: "Maximum temperature",
-    show_scale: "Show scale",
-    show_current: "Show current temperature",
-    modes: "Modes",
-    fan_entity: "Fan speed entity (number.*)",
-    show_fan: "Show fan ring",
-    fan_animation: "Fan animation",
-    fan_animation_speed: "Fan animation speed",
-    swing_entity: "Swing entity (switch.*)",
-    show_swing: "Show swing",
-    led_entity: "LED / display entity (switch.*)",
-    show_led: "Show LED",
-    sound_entity: "Sound / beep entity (switch.*)",
-    show_sound: "Show sound",
-    max_height: "Max height",
-  };
-
-  // Per-field helper text (computeHelper).
-  const EDITOR_HELPERS = {
-    name: "Card title. Defaults to the entity's friendly name.",
-    accent: "UI accent for the popup, lit chips, fan ring and caret. Defaults to #4fc3f7.",
-    temperature_unit: "Auto follows your Home Assistant unit system.",
-    temp_step: "Setpoint granularity. Defaults to the entity's target_temp_step.",
-    min_temp: "Leave empty to use the entity's minimum.",
-    max_temp: "Leave empty to use the entity's maximum.",
-    show_scale: "The numbered tick scale around the dial.",
-    show_current: "The NOW reading and current-temperature marker.",
-    modes: "Which HVAC modes appear in the popup. Defaults to the entity's modes.",
-    fan_entity: "A number.* percent entity for a draggable fan ring. Auto-discovered for Midea; falls back to named fan_modes.",
-    show_fan: "Force the fan ring on or off. Auto shows it when a fan source resolves.",
-    fan_animation: "The spinning clover animation.",
-    fan_animation_speed: "Dynamic scales the spin with fan speed; constant is a fixed spin.",
-    swing_entity: "Override the swing switch. Leave empty to auto-discover (Midea) or use climate swing_modes.",
-    show_swing: "Auto shows it when a swing source resolves; Hide always hides it.",
-    led_entity: "Override the display/LED switch. Leave empty to auto-discover (Midea).",
-    show_led: "Auto shows it when the entity resolves; Hide always hides it.",
-    sound_entity: "Override the beep/prompt-tone switch. Leave empty to auto-discover (Midea).",
-    show_sound: "Auto shows it when the entity resolves; Hide always hides it.",
-    max_height: "CSS length cap, e.g. 34vh or 360px. Width follows the dial aspect.",
-  };
 
   // snake_case / dotted name -> Title Case (label fallback).
   function prettifyName(name) {
@@ -2357,6 +3144,9 @@
       this._update();
     }
 
+    // Flat card string in the active language (English fallback) - issue #19.
+    _t(key) { return tr(this._hass, key); }
+
     // The SELECTED entity's hvac_modes (or a sensible fallback when none is set).
     // Single source for both the Modes multi-select options and the display seed.
     _hvacModes(config) {
@@ -2370,19 +3160,30 @@
     // options track the SELECTED entity's live `hvac_modes`.
     _schema(hass, config) {
       const hvac = this._hvacModes(config);
-      const modeOptions = hvac.map((m) => ({ value: m, label: MODE_LABEL[m] || String(m).toUpperCase() }));
+      // Mode option labels localized THROUGH Home Assistant (issue #19); VALUE keys
+      // stay the raw hvac_mode strings so prune/compare logic is unaffected.
+      const modeOptions = hvac.map((m) => ({ value: m, label: modeName(this._hass, m) || String(m).toUpperCase() }));
+      // Localized tri-state visibility options. VALUES (string "auto", boolean
+      // true/false) are byte-identical to before so _valueChanged prune is unchanged.
+      const autoTF = [
+        { value: "auto", label: this._t("editor.opt.auto") },
+        { value: true, label: this._t("editor.opt.show") },
+        { value: false, label: this._t("editor.opt.hide") },
+      ];
 
       return [
         { name: "entity", required: true, selector: { entity: { domain: "climate" } } },
         { name: "name", selector: { text: {} } },
 
-        { type: "expandable", name: "", title: "Appearance", icon: "mdi:palette", schema: [
+        { type: "expandable", name: "", title: this._t("editor.section.appearance"), icon: "mdi:palette", schema: [
           { name: "accent", selector: { color_rgb: {} } },
+          { name: "font", selector: { text: {} } },
+          { name: "font_url", selector: { text: {} } },
           { type: "grid", schema: [
             { name: "temperature_unit", selector: { select: { mode: "dropdown", options: [
-              { value: "auto", label: "Auto" },
-              { value: "F", label: "Fahrenheit" },
-              { value: "C", label: "Celsius" },
+              { value: "auto", label: this._t("editor.opt.auto") },
+              { value: "F", label: this._t("editor.opt.unit_fahrenheit") },
+              { value: "C", label: this._t("editor.opt.unit_celsius") },
             ] } } },
             { name: "temp_step", selector: { number: { min: 0.1, max: 5, step: 0.1, mode: "box" } } },
             { name: "min_temp", selector: { number: { min: -20, max: 120, step: 0.5, mode: "box" } } },
@@ -2391,39 +3192,49 @@
           { type: "grid", schema: [
             { name: "show_scale", selector: { boolean: {} } },
             { name: "show_current", selector: { boolean: {} } },
+            { name: "show_hints", selector: { boolean: {} } },
           ] },
-          { type: "expandable", name: "mode_colors", title: "Per-mode colors", icon: "mdi:format-color-fill",
+          { type: "expandable", name: "mode_colors", title: this._t("editor.section.mode_colors"), icon: "mdi:format-color-fill",
             schema: MODE_KEYS.map((m) => ({ name: m, selector: { color_rgb: {} } })) },
         ] },
 
-        { type: "expandable", name: "", title: "Modes", icon: "mdi:thermostat", schema: [
+        { type: "expandable", name: "", title: this._t("editor.section.modes"), icon: "mdi:thermostat", schema: [
           { name: "modes", selector: { select: { multiple: true, mode: "list", options: modeOptions } } },
         ] },
 
-        { type: "expandable", name: "", title: "Fan", icon: "mdi:fan", schema: [
+        { type: "expandable", name: "", title: this._t("editor.section.fan"), icon: "mdi:fan", schema: [
           { name: "fan_entity", selector: { entity: { domain: "number" } } },
           { type: "grid", schema: [
-            { name: "show_fan", selector: { select: { mode: "dropdown", options: AUTO_TF } } },
+            { name: "show_fan", selector: { select: { mode: "dropdown", options: autoTF } } },
             { name: "fan_animation", selector: { boolean: {} } },
           ] },
           { name: "fan_animation_speed", selector: { select: { mode: "dropdown", options: [
-            { value: "dynamic", label: "Dynamic (scale with speed)" },
-            { value: "constant", label: "Constant" },
-            { value: "off", label: "Off" },
+            { value: "dynamic", label: this._t("editor.opt.anim_dynamic") },
+            { value: "constant", label: this._t("editor.opt.anim_constant") },
+            { value: "off", label: this._t("editor.opt.anim_off") },
           ] } } },
         ] },
 
-        { type: "expandable", name: "", title: "Features", icon: "mdi:tune", schema: [
+        { type: "expandable", name: "", title: this._t("editor.section.features"), icon: "mdi:tune", schema: [
           { name: "swing_entity", selector: { entity: { domain: "switch" } } },
-          { name: "show_swing", selector: { select: { mode: "dropdown", options: AUTO_TF } } },
+          { name: "show_swing", selector: { select: { mode: "dropdown", options: autoTF } } },
           { name: "led_entity", selector: { entity: { domain: "switch" } } },
-          { name: "show_led", selector: { select: { mode: "dropdown", options: AUTO_TF } } },
+          { name: "show_led", selector: { select: { mode: "dropdown", options: autoTF } } },
           { name: "sound_entity", selector: { entity: { domain: "switch" } } },
-          { name: "show_sound", selector: { select: { mode: "dropdown", options: AUTO_TF } } },
+          { name: "show_sound", selector: { select: { mode: "dropdown", options: autoTF } } },
         ] },
 
-        { type: "expandable", name: "", title: "Layout", icon: "mdi:arrange-bring-forward", schema: [
+        { type: "expandable", name: "", title: this._t("editor.section.layout"), icon: "mdi:arrange-bring-forward", schema: [
           { name: "max_height", selector: { text: {} } },
+        ] },
+
+        // Center-disc actions (issue #15). ui_action renders HA's standard action
+        // picker; on an older frontend that key may not render, but the CARD still
+        // honors any tap_action / hold_action / double_tap_action set in YAML.
+        { type: "expandable", name: "", title: this._t("editor.section.actions"), icon: "mdi:gesture-tap", schema: [
+          { name: "tap_action", selector: { ui_action: { default_action: "none" } } },
+          { name: "hold_action", selector: { ui_action: { default_action: "more-info" } } },
+          { name: "double_tap_action", selector: { ui_action: { default_action: "none" } } },
         ] },
       ];
     }
@@ -2433,14 +3244,29 @@
       if (!this._form) {
         this._form = document.createElement("ha-form");
         this._form.addEventListener("value-changed", (e) => this._valueChanged(e));
-        this._form.computeLabel = (s) =>
-          EDITOR_LABELS[s.name] || MODE_LABEL[s.name] || s.title || prettifyName(s.name);
-        this._form.computeHelper = (s) => EDITOR_HELPERS[s.name] || "";
+        // Labels/helpers localized via editorMap (active language merged over
+        // English); falls back to a localized mode name (per-mode color swatches),
+        // then the field title, then a prettified key (issue #19).
+        this._form.computeLabel = (s) => {
+          const L = editorMap(this._hass, "editorLabels");
+          return L[s.name] || modeName(this._hass, s.name) || s.title || prettifyName(s.name);
+        };
+        this._form.computeHelper = (s) => editorMap(this._hass, "editorHelpers")[s.name] || "";
         const root = this.shadowRoot || this.attachShadow({ mode: "open" });
         const style = document.createElement("style");
-        style.textContent = "ha-form{display:block;padding:8px 4px;}";
+        style.textContent = "ha-form{display:block;padding:8px 4px;}" +
+          ".ct-editor-warn{display:block;margin:4px 4px 10px;padding:10px 12px;border-radius:8px;" +
+          "background:rgba(255,80,80,.12);border:1px solid rgba(255,120,120,.5);color:#ffb3b3;" +
+          "font-size:13px;line-height:1.35;}";
         root.appendChild(style);
         root.appendChild(this._form);
+        // Inline range-validation banner (issue #18): shown when min >= max so the
+        // editor explains the flat dial instead of leaving a confusing blank card.
+        this._warn = document.createElement("div");
+        this._warn.className = "ct-editor-warn";
+        this._warn.setAttribute("role", "alert");
+        this._warn.style.display = "none";
+        root.insertBefore(this._warn, this._form);
       }
       this._form.hass = this._hass;
       // Feed the form a DISPLAY copy with the swatch/toggle defaults seeded so the
@@ -2450,6 +3276,20 @@
       this._form.data = this._computeFormData(this._config);
       // Re-derive each time so the Modes options live-populate from the picked entity.
       this._form.schema = this._schema(this._hass, this._config);
+      // Range sanity check against the RAW config (both authored in the display
+      // unit, so the comparison is unit-agnostic). Only warn when BOTH bounds are
+      // explicitly set and min >= max; an unset/half-set range uses entity
+      // defaults and is fine (issue #18).
+      if (this._warn) {
+        const mn = num(this._config.min_temp), mx = num(this._config.max_temp);
+        if (this._config.min_temp != null && this._config.max_temp != null && mn != null && mx != null && mn >= mx) {
+          this._warn.textContent = this._t("editor.warn_range");
+          this._warn.style.display = "";
+        } else {
+          this._warn.textContent = "";
+          this._warn.style.display = "none";
+        }
+      }
     }
 
     // Build the ha-form `data` from the real config, seeding display-only defaults:

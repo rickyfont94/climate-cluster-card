@@ -28,6 +28,7 @@ The **dual-ring AC control** card: set temperature on the inner ring and fan spe
 - **Wide-arc instrument dial** - a car-cluster gauge with a numbered tick scale, a glowing setpoint needle, and a current-temp marker.
 - **Two-ring control** - drag the **inner ring** to set the target temperature and the **outer ring** to set the fan speed.
 - **Glass mode popup** - tap the center to open a frosted mode picker (`cool` / `heat` / `heat_cool` / `dry` / `fan_only` / `auto` / `off`) with per-mode glyphs; the center caret follows `hvac_action` (down = cooling, up = heating).
+- **Discoverable gestures + custom actions** - faint MODE / FAN / AUTO hints and press feedback show the dial is interactive; the center supports the standard `tap_action` / `hold_action` / `double_tap_action` (hold opens more-info by default).
 - **On-card feature toggles** - swing, LED display, and beep/sound toggles, auto-wired to Midea sibling entities when present.
 - **Fan animation** - a clover fan that can spin proportional to the fan value, at a constant rate, or off.
 - **Fahrenheit & Celsius** - unit, range, and step auto-detected from Home Assistant (or set them explicitly).
@@ -129,12 +130,15 @@ All options are optional except `entity`. Defaults reproduce sensible behavior, 
 |---|---|---|---|
 | `accent` | color | `#4fc3f7` | Primary UI accent color. |
 | `mode_colors` | map | built-in | Per-mode color overrides (e.g. `cool: "#4fc3f7"`). |
+| `font` | string | unset | Font family prepended to the default stack (Rajdhani-if-installed, then your HA theme font). |
+| `font_url` | string | unset | Optional stylesheet URL (e.g. a Google Fonts link) that loads the `font`. No font is fetched by default. |
 | `temperature_unit` | `auto` \| `F` \| `C` | `auto` | `auto` uses HA's unit system / the entity's `temperature_unit`. |
 | `min_temp` | number | entity `min_temp` | Lower bound of the dial. |
 | `max_temp` | number | entity `max_temp` | Upper bound of the dial. |
 | `temp_step` | number | entity `target_temp_step` | Setpoint step increment. |
 | `show_scale` | bool | `true` | Show the numbered tick scale. |
 | `show_current` | bool | `true` | Show the current ("NOW") reading. |
+| `show_hints` | bool | `true` | Show the faint MODE / FAN / AUTO gesture hint labels. |
 
 #### Modes
 
@@ -158,13 +162,34 @@ All options are optional except `entity`. Defaults reproduce sensible behavior, 
 | `swing_entity` | `switch.*` | Midea sibling | Swing toggle override. |
 | `led_entity` | `switch.*` | Midea sibling | LED-display toggle override. |
 | `sound_entity` | `switch.*` | Midea sibling | Beep/sound toggle override. |
-| `show_swing` / `show_led` / `show_sound` | `auto` \| `true` \| `false` | `auto` | Force show/hide each toggle. |
+| `show_swing` / `show_led` / `show_sound` | `auto` \| `true` \| `false` | `auto` | Force show/hide each toggle. A forced (`true`) chip with no resolvable entity still renders, but as a disabled, dimmed, inert chip. |
 
 #### Layout
 
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `max_height` | CSS length | unset | Caps the card height. |
+
+#### Actions
+
+The center disc supports the standard Home Assistant action config. Each takes an action object (e.g. `action: more-info`, `action: navigate`, `action: call-service`, `action: toggle`, `action: url`, `action: none`).
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `tap_action` | action | open the mode popup | Action on a single center tap. Leave unset to keep the mode menu. |
+| `hold_action` | action | `more-info` | Action on a center press-and-hold. Defaults to the more-info dialog (history, attributes, presets). |
+| `double_tap_action` | action | `none` | Action on a center double tap. Off by default. |
+
+```yaml
+type: custom:climate-cluster-card
+entity: climate.living_room
+hold_action:
+  action: more-info
+double_tap_action:
+  action: toggle
+```
+
+Dragging the rings and tapping the clover are unaffected by these actions; the tap/hold/double-tap detector lives on the center disc and respects the drag threshold, so a swipe is never read as a tap.
 
 **Resolution order (everywhere):** explicit config → auto-discovered Midea sibling → generic climate attribute → hide.
 
@@ -193,18 +218,41 @@ Dragging a percent nudges the climate `fan_mode` off `auto` so the chosen speed 
 
 If the climate entity exposes named `fan_modes` instead of a percent entity, the ring drives those discrete stops rather than a 1-100 % sweep.
 
+**What gestures does the dial support?**
+
+- **Tap the center** - opens the mode popup (or runs your `tap_action`).
+- **Press and hold the center** - opens the more-info dialog by default (or runs your `hold_action`).
+- **Double tap the center** - runs your `double_tap_action` (off by default).
+- **Drag the inner ring** - sets the target temperature.
+- **Drag the outer ring** - sets the fan speed.
+- **Tap the lower-left clover** - returns the fan to `auto`.
+
+Faint MODE / FAN / AUTO labels hint at these on a wall tablet where you cannot hover; turn them off with `show_hints: false`.
+
 ## Known limitations
 
 - **Tuned for `midea_ac_lan`.** The swing / LED / sound toggles and the fan / swing / LED / sound auto-discovery target Midea units. For a generic `climate.*` entity, set `swing_entity` / `led_entity` / `sound_entity` / `fan_entity` explicitly.
 - **Fan ring needs a source.** The fan ring is hidden unless a `number.*_fan_speed` entity or named `fan_modes` exist.
 - **Limited feature surface.** Only the Swing / LED / Sound toggles are surfaced on the card. Expose any other features (boost, eco, sleep, and so on) with your own cards.
-- **Rajdhani font not bundled.** The card references the **Rajdhani** font by name for its numerals but does not bundle it; it degrades gracefully to your UI font when Rajdhani is unavailable.
+- **Rajdhani font not bundled.** The card prefers the **Rajdhani** font for its numerals but does not bundle or fetch it. If you have Rajdhani installed locally it is used; otherwise the card falls back to your Home Assistant theme font, then to the system UI font. Nothing 404s and no network request is made by default. To force a specific font, set `font` (and optionally `font_url`); see the configuration options.
 
 ## Notes
 
-The card references the **Rajdhani** font by name for its numerals but does **not** bundle it; it degrades gracefully to your UI font if Rajdhani isn't available.
+The card prefers the **Rajdhani** font for its numerals when it is installed locally, but does **not** bundle or download it. Without Rajdhani the card uses your Home Assistant theme font (`--ha-card-header-font-family`), then a system UI font, so the default never depends on a missing font. Set `font` to prepend your own family to that stack, and `font_url` to point at a stylesheet (for example a Google Fonts link) that loads it.
 
 Midea is a trademark of its respective owner. This project is independent and unaffiliated.
+
+## Translations
+
+The card follows your Home Assistant language. HVAC mode names and fan mode names are localized through Home Assistant itself, so they always match the rest of your dashboard. The card's own labels (NOW, SWING, LED, SOUND, AUTO), tooltips, screen-reader text and editor labels ship with English and Spanish, and numbers (temperatures, the tick scale) are formatted with your locale's decimal separator and grouping.
+
+To add a language, edit the `LOCALE` map near the top of `climate-cluster-card.js`:
+
+1. Add a new two-letter key (for example `de`) alongside `en` and `es`.
+2. Mirror the keys under `en`, including the nested `editorLabels` and `editorHelpers` maps.
+3. Any key you leave out falls back to English, so a partial translation is fine.
+
+The active language is read from `hass.language` (then `hass.locale.language`); a region subtag is stripped, so `es-419` resolves to `es`. Do not translate mode or fan mode names here; those come from Home Assistant. Keep values free of em dashes. A pull request with a new language is welcome.
 
 ## Contributing
 
