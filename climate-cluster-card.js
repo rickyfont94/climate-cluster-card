@@ -142,6 +142,7 @@
         entity: "Climate entity",
         name: "Name",
         appearance: "Background",
+        reset_styling: "Reset styling to defaults",
         glass_color: "Glass tint",
         glass_opacity: "Glass opacity",
         accent: "Accent color",
@@ -173,6 +174,7 @@
       editorHelpers: {
         name: "Card title. Defaults to the entity's friendly name.",
         appearance: "Theme follows your active Home Assistant theme (works on light and dark). Frosted glass is a translucent panel, in a dark indigo or light finish, that holds its look on any theme.",
+        reset_styling: "Clears the appearance, glass, accent, font and per-mode color settings back to their defaults. Your entity, range, modes and other options are kept.",
         glass_color: "Tints the frosted glass panel. Applies only to the frosted glass backgrounds.",
         glass_opacity: "How solid the frosted glass is (0 clear to 1 solid). Applies only to the frosted glass backgrounds.",
         accent: "UI accent for the popup, lit chips, fan ring and caret. Defaults to #4fc3f7.",
@@ -250,6 +252,7 @@
         entity: "Entidad de clima",
         name: "Nombre",
         appearance: "Fondo",
+        reset_styling: "Restablecer estilo a los valores por defecto",
         glass_color: "Tinte del vidrio",
         glass_opacity: "Opacidad del vidrio",
         accent: "Color de acento",
@@ -281,6 +284,7 @@
       editorHelpers: {
         name: "Titulo de la tarjeta. Por defecto usa el nombre descriptivo de la entidad.",
         appearance: "Tema sigue el tema activo de Home Assistant (funciona en claro y oscuro). Vidrio esmerilado es un panel translucido, en acabado indigo oscuro o claro, que mantiene su aspecto en cualquier tema.",
+        reset_styling: "Borra los ajustes de apariencia, vidrio, acento, fuente y colores por modo a sus valores por defecto. Se conservan la entidad, el rango, los modos y las demas opciones.",
         glass_color: "Tinta el panel de vidrio esmerilado. Solo aplica a los fondos de vidrio esmerilado.",
         glass_opacity: "Que tan solido es el vidrio esmerilado (0 transparente a 1 solido). Solo aplica a los fondos de vidrio esmerilado.",
         accent: "Acento de la interfaz para el menu, los chips encendidos, el anillo del ventilador y la flecha. Por defecto #4fc3f7.",
@@ -3429,9 +3433,29 @@ ha-card[data-appearance="glass-light"] .ct-frost{
         style.textContent = "ha-form{display:block;padding:8px 4px;}" +
           ".ct-editor-warn{display:block;margin:4px 4px 10px;padding:10px 12px;border-radius:8px;" +
           "background:rgba(255,80,80,.12);border:1px solid rgba(255,120,120,.5);color:#ffb3b3;" +
-          "font-size:13px;line-height:1.35;}";
+          "font-size:13px;line-height:1.35;}" +
+          ".ct-reset-row{margin:10px 4px 4px;padding-top:8px;border-top:1px solid var(--divider-color, rgba(127,127,127,.2));}" +
+          ".ct-reset-btn{display:inline-flex;align-items:center;padding:8px 16px;border-radius:10px;cursor:pointer;" +
+          "font:inherit;font-size:14px;background:var(--secondary-background-color, rgba(120,130,145,.14));" +
+          "color:var(--primary-text-color);border:1px solid var(--divider-color, rgba(127,127,127,.35));}" +
+          ".ct-reset-btn:hover{border-color:var(--primary-color, #03a9f4);}" +
+          ".ct-reset-caption{margin-top:6px;color:var(--secondary-text-color);font-size:12px;line-height:1.35;}";
         root.appendChild(style);
         root.appendChild(this._form);
+        // "Reset styling to defaults": a real BUTTON (ha-form has no button field, and a
+        // boolean renders as a misleading on/off toggle). Click clears the styling
+        // overrides on the live config; label + caption are localized in the update below.
+        this._resetRow = document.createElement("div");
+        this._resetRow.className = "ct-reset-row";
+        this._resetBtn = document.createElement("button");
+        this._resetBtn.type = "button";
+        this._resetBtn.className = "ct-reset-btn";
+        this._resetBtn.addEventListener("click", () => this._resetStyling());
+        this._resetCaption = document.createElement("div");
+        this._resetCaption.className = "ct-reset-caption";
+        this._resetRow.appendChild(this._resetBtn);
+        this._resetRow.appendChild(this._resetCaption);
+        root.appendChild(this._resetRow);
         // Inline range-validation banner (issue #18): shown when min >= max so the
         // editor explains the flat dial instead of leaving a confusing blank card.
         this._warn = document.createElement("div");
@@ -3462,6 +3486,35 @@ ha-card[data-appearance="glass-light"] .ct-frost{
           this._warn.style.display = "none";
         }
       }
+      // Localize the reset button + caption, and only offer it when there is actually
+      // styling to clear (otherwise it would be a dead no-op control at defaults).
+      if (this._resetBtn) {
+        const L = editorMap(this._hass, "editorLabels");
+        const H = editorMap(this._hass, "editorHelpers");
+        this._resetBtn.textContent = L.reset_styling || "Reset styling to defaults";
+        this._resetCaption.textContent = H.reset_styling || "";
+        const styled = ["appearance", "glass_color", "glass_opacity", "accent", "font", "font_url", "mode_colors"]
+          .some((k) => this._config[k] != null);
+        this._resetRow.style.display = styled ? "" : "none";
+      }
+    }
+
+    // The reset BUTTON action: clear every styling override on the live (already lean)
+    // config, emit config-changed, and re-render the form so swatches/sliders fall back
+    // to their defaults. Non-styling options (entity, range, modes, actions) are kept.
+    _resetStyling() {
+      if (!this._config) return;
+      const cfg = Object.assign({}, this._config);
+      let changed = false;
+      for (const k of ["appearance", "glass_color", "glass_opacity", "accent", "font", "font_url", "mode_colors"]) {
+        if (k in cfg) { delete cfg[k]; changed = true; }
+      }
+      if (!changed) return;
+      this._config = cfg;
+      this.dispatchEvent(new CustomEvent("config-changed", {
+        detail: { config: cfg }, bubbles: true, composed: true,
+      }));
+      this._update();
     }
 
     // Build the ha-form `data` from the real config, seeding display-only defaults:
