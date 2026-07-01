@@ -26,7 +26,7 @@
   const NS = "http://www.w3.org/2000/svg";
 
   // ---- console version banner ---------------------------------------------
-  const VERSION = "1.2.0";
+  const VERSION = "1.2.1";
   console.info(
     "%c CLIMATE-CLUSTER-CARD %c v" + VERSION + " ",
     "color:#0b0f16;background:#4fc3f7;font-weight:700;border-radius:4px 0 0 4px;padding:2px 6px",
@@ -770,6 +770,11 @@
       this._centerStart = null;
       this._centerMoved = false;
       this._centerHeld = false;
+      // center TOUCH-tap teardown (svg touch guards): clear the touch hold timer + flags.
+      if (this._touchCenterHoldTimer) { clearTimeout(this._touchCenterHoldTimer); this._touchCenterHoldTimer = null; }
+      this._touchOnCenter = false;
+      this._centerTouchStart = null;
+      this._touchCenterHeld = false;
     }
 
     // ============================================================================
@@ -1029,41 +1034,101 @@
       // the whole dial as one unlabeled graphic. aria-label is refreshed in _render.
       svg.setAttribute("role", "group");
 
-      // KILL VIEW-SWIPE/PAGE-SCROLL ON A RING DRAG -- WITHOUT eating page scroll
-      // elsewhere (issues #4 + the touch regression). The grab bands carry
-      // touch-action:none (CSS), but WebKit ignores touch-action on inner SVG nodes
-      // and the browser begins panning within the first few px -- before the 8px
-      // tap-vs-drag threshold -- so the ring gesture is lost to a scroll. Fix: the
-      // moment a touch lands on a ring grab band, _ringPointerDown sets _ringArmed;
-      // from that first move we preventDefault here so the page can never scroll
-      // during the gesture. The 8px threshold no longer gates preventDefault -- it
-      // ONLY decides whether a value is committed (a pure tap arms+claims but commits
-      // nothing). A touch that did NOT start on a ring leaves _ringArmed false, so
-      // this guard stays out of the way and a card-body swipe still scrolls. These
-      // CAPTURING guards also stop the touch reaching an ancestor's JS swipe handler.
+      // SCROLL + TAP MODEL (issues #4 + the touch regression + the iPhone scroll/tap fix).
+      // The root .ct-svg is touch-action:pan-y, so a vertical swipe ANYWHERE on the dial
+      // scrolls the dashboard by DEFAULT. These CAPTURING touch guards carve out only the
+      // two exceptions, keyed off e.target so the touch hit-region matches the pointer one:
+      //   1. RING DRAG -- the instant a touch lands on a ring grab band we set
+      //      _touchOnRing, and from the first touchmove we preventDefault so the page can
+      //      never scroll while the ring owns the gesture. It is set on TOUCHSTART (not on
+      //      pointerdown) because iOS WebKit can fire the first touchmove BEFORE the
+      //      synthesized pointerdown, and a late preventDefault is ignored once a scroll
+      //      has begun. It is independent of _ringArmed (which still gates the pointer
+      //      commit) and is cleared on touchend/cancel below.
+      //   2. CENTER TAP -- a tap on the center disc opens the mode popup. We fire it from
+      //      touchend (movement within CENTER_TAP_SLOP of touchstart) instead of a
+      //      synthesized click/pointerup, which iOS can drop to a pointercancel under
+      //      pan-y (the old "focus square but no popup" bug). A center swipe past the slop
+      //      is not a tap, so we leave it alone and pan-y scrolls it.
+      // Everywhere else (empty dial, clover, swing) we never preventDefault, so pan-y
+      // scrolls; the guards also stopPropagation so an ancestor JS swipe navigator never
+      // sees the touch. Mouse/pen still run the full _centerPointerDown pointer path.
       this._onSvgTouchStart = (e) => {
         e.stopPropagation();
-        // Arm the scroll-block on TOUCHSTART, not on pointerdown: iOS WebKit often
-        // fires the first touchmove BEFORE the synthesized pointerdown, so _ringArmed
-        // is still false on that move, the page begins scrolling, and a late
-        // preventDefault is ignored. _touchOnRing is set the instant a touch lands on
-        // a ring grab band (radius inside the dial) so the very first touchmove is
-        // preventDefaulted. It is independent of _ringArmed (which still gates the
-        // pointer-driven commit) and is cleared on touchend/cancel below.
         this._touchOnRing = false;
+        this._touchOnCenter = false;
+        this._centerTouchStart = null;
+        this._touchCenterHeld = false;
+        if (this._touchCenterHoldTimer) { clearTimeout(this._touchCenterHoldTimer); this._touchCenterHoldTimer = null; }
         const t = e.touches && e.touches[0];
         if (!t || this._popOpen) return;
-        const s = this._st(this._config.entity);
-        if (!s || s.state === "off" || s.state === "unavailable" || s.state === "unknown") return;
-        const rad = this._eventToRadius({ clientX: t.clientX, clientY: t.clientY });
-        if (rad != null && rad >= PICK_INNER && rad <= PICK_OUTER) this._touchOnRing = true;
+        const tgt = e.target;
+        // CENTER disc tap: record the start so touchend can open the mode popup directly.
+        // Independent of on/off state (the mode can be changed while the entity is off).
+        if (tgt === this._refs.centerHit) {
+          this._touchOnCenter = true;
+          this._centerTouchStart = { x: t.clientX, y: t.clientY };
+          this._setPress(true);
+          const hold = this._config.hold_action || { action: "more-info" };
+          if (hold.action && hold.action !== "none") {
+            this._touchCenterHoldTimer = setTimeout(() => {
+              this._touchCenterHoldTimer = null;
+              if (!this._touchOnCenter) return; // moved/cancelled before the hold landed
+              this._touchCenterHeld = true;
+              this._setPress(false);
+              this._runHoldAction();
+            }, HOLD_MS);
+          }
+          return;
+        }
+        // RING grab band: arm the scroll-block so a real drag owns the gesture. Only when
+        // the entity is controllable (a drag no-ops on off/unavailable/unknown anyway).
+        if (tgt === this._refs.drag || tgt === this._refs.fanGrab) {
+          const s = this._st(this._config.entity);
+          if (!s || s.state === "off" || s.state === "unavailable" || s.state === "unknown") return;
+          this._touchOnRing = true;
+        }
       };
-      this._onSvgTouchMove = (e) => { e.stopPropagation(); if ((this._ringArmed || this._touchOnRing) && e.cancelable) e.preventDefault(); };
-      this._onSvgTouchEnd = () => { this._touchOnRing = false; };
+      this._onSvgTouchMove = (e) => {
+        e.stopPropagation();
+        if (this._touchOnCenter && this._centerTouchStart) {
+          const t = e.touches && e.touches[0];
+          if (t && Math.hypot(t.clientX - this._centerTouchStart.x, t.clientY - this._centerTouchStart.y) > CENTER_TAP_SLOP) {
+            // past the tap slop -> it's a swipe: drop the tap/hold and let pan-y scroll.
+            this._touchOnCenter = false;
+            this._centerTouchStart = null;
+            this._setPress(false);
+            if (this._touchCenterHoldTimer) { clearTimeout(this._touchCenterHoldTimer); this._touchCenterHoldTimer = null; }
+          }
+        }
+        if ((this._ringArmed || this._touchOnRing) && e.cancelable) e.preventDefault();
+      };
+      this._onSvgTouchEnd = (e) => {
+        // A clean center tap (touchend, moved within the slop, no hold, popup closed)
+        // opens the mode popup straight from the touch stream. preventDefault swallows
+        // the follow-up synthesized click so the tap can't double-fire; setting
+        // _lastCenterUp backstops the click-listener's own 700ms de-dup guard too.
+        if (e.type === "touchend" && this._touchOnCenter && this._centerTouchStart
+            && !this._touchCenterHeld && !this._popOpen) {
+          const c = e.changedTouches && e.changedTouches[0];
+          const moved = c && Math.hypot(c.clientX - this._centerTouchStart.x, c.clientY - this._centerTouchStart.y) > CENTER_TAP_SLOP;
+          if (!moved) {
+            if (e.cancelable) e.preventDefault();
+            this._lastCenterUp = Date.now();
+            this._runTapAction();
+          }
+        }
+        if (this._touchCenterHoldTimer) { clearTimeout(this._touchCenterHoldTimer); this._touchCenterHoldTimer = null; }
+        this._setPress(false);
+        this._touchOnRing = false;
+        this._touchOnCenter = false;
+        this._centerTouchStart = null;
+        this._touchCenterHeld = false;
+      };
       svg.addEventListener("touchstart", this._onSvgTouchStart, { capture: true, passive: false });
       svg.addEventListener("touchmove", this._onSvgTouchMove, { capture: true, passive: false });
-      svg.addEventListener("touchend", this._onSvgTouchEnd, { capture: true, passive: true });
-      svg.addEventListener("touchcancel", this._onSvgTouchEnd, { capture: true, passive: true });
+      svg.addEventListener("touchend", this._onSvgTouchEnd, { capture: true, passive: false });
+      svg.addEventListener("touchcancel", this._onSvgTouchEnd, { capture: true, passive: false });
 
       // ---- defs: gradients + tight glow filters ----
       const defs = el("defs");
@@ -2168,6 +2233,11 @@
     _centerPointerDown(e) {
       if (this._popOpen || this._ringArmed) return;
       if (e.button && e.button !== 0) return;
+      // Touch taps/holds are driven from the svg touch guards (touchend fires the tap,
+      // a hold timer fires hold_action) so iOS can't drop the tap to a pointercancel
+      // under pan-y, and a vertical swipe off the disc still scrolls. Mouse/pen keep
+      // the full pointer tap/hold/double-tap path below.
+      if (e.pointerType === "touch") return;
       e.stopPropagation();
       this._centerStart = { x: e.clientX, y: e.clientY };
       this._centerPointerType = e.pointerType || "mouse";
@@ -3083,21 +3153,22 @@ ha-card{ position:relative; display:block; overflow:visible; }
 .ct-card.ct-compact .ct-fanname,
 .ct-card.ct-compact .ct-swingcap{ display:none !important; }
 
-/* touch-action:none on the dial (NOT pan-y): pan-y let iOS WebKit START a scroll on
-   the first vertical jitter of a touch, and once iOS begins a scroll a later
-   preventDefault is ignored -- so a ring drag scrolled the page and a center tap got
-   pointercancel'd (the "blue focus square but no popup" bug). none stops iOS from ever
-   stealing a dial touch for a scroll; the dashboard is scrolled from outside the dial.
-   touch-action on the root svg IS honored by WebKit (only INNER svg nodes ignore it),
-   so this one rule governs every grab band + the center disc. overflow:hidden clips the
+/* touch-action:pan-y on the dial (NOT none): a vertical swipe over the dial scrolls the
+   dashboard by default. touch-action on the root svg IS honored by WebKit (only INNER svg
+   nodes ignore it), so this one rule opens scrolling everywhere on the dial; the capturing
+   touchmove guard (JS) preventDefaults ONLY while a ring drag owns the gesture, so the page
+   still can't scroll mid-drag, and the center tap fires from touchend so iOS never drops it
+   to a pointercancel (the old "focus square but no popup" bug). overflow:hidden clips the
    svg to its own 600x392 box so the arcs / caps / needle / fan chevron never bleed. */
-.ct-svg{ display:block; width:100%; height:auto; position:relative; z-index:2; touch-action:none; overflow:hidden; }
+.ct-svg{ display:block; width:100%; height:auto; position:relative; z-index:2; touch-action:pan-y; overflow:hidden; }
 .ct-svg text{ font-family:var(--ct-font); }
 .nope{ pointer-events:none; }
-/* The interactive grab bands/buttons own the touch: touch-action:none keeps the
-   browser from stealing a ring drag for a scroll. The tap-vs-drag threshold (JS)
-   makes sure a pure tap on a band is still discarded, not committed. */
-.ct-hit{ cursor:pointer; touch-action:none; -webkit-tap-highlight-color:transparent; -webkit-user-select:none; user-select:none; }
+/* Interactive grab bands/buttons. touch-action:pan-y matches the root svg so a vertical
+   swipe still scrolls the page on engines that honor touch-action on inner svg nodes
+   (WebKit ignores it here anyway); a ring drag is held off scroll by the capturing
+   touchmove preventDefault, and the JS tap-vs-drag threshold keeps a pure tap on a band
+   from committing a value. */
+.ct-hit{ cursor:pointer; touch-action:pan-y; -webkit-tap-highlight-color:transparent; -webkit-user-select:none; user-select:none; }
 /* Center press-feedback disc (issue #15): faint accent fill flashed on a center
    pointerdown. Opacity-only transition so it survives prefers-reduced-motion and
    never clobbers a presentation transform. */
