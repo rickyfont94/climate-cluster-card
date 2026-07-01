@@ -123,6 +123,7 @@
       "editor.section.modes": "Modes",
       "editor.section.fan": "Fan",
       "editor.section.features": "Features",
+      "editor.section.extra_toggles": "Extra toggles",
       "editor.section.layout": "Layout",
       "editor.section.actions": "Actions",
       "editor.section.mode_colors": "Per-mode colors",
@@ -165,6 +166,7 @@
         show_led: "Show LED",
         sound_entity: "Sound / beep entity (switch.*)",
         show_sound: "Show sound",
+        extra_toggles: "Extra toggle entities",
         show_hints: "Show gesture hints",
         max_height: "Max height",
         tap_action: "Tap action",
@@ -197,6 +199,7 @@
         show_led: "Force the LED chip on or off. Auto shows it when the entity resolves; a forced chip with no source renders disabled.",
         sound_entity: "Override the beep/prompt-tone switch. Leave empty to auto-discover (Midea).",
         show_sound: "Force the sound chip on or off. Auto shows it when the entity resolves; a forced chip with no source renders disabled.",
+        extra_toggles: "Add any switch, input boolean or select entity as an extra chip in the mode popup, for functions the card does not auto-detect (anti-mildew, UV lamp, gentle wind, and so on). A two-state entity becomes an on/off chip; a select becomes a chip that cycles its own options. The chip uses the entity name and a default icon; set a custom name or icon in YAML. A missing or unavailable entity is dimmed.",
         show_hints: "Faint MODE / FAN / AUTO labels showing the dial is interactive.",
         max_height: "CSS length cap, e.g. 34vh or 360px. Width follows the dial aspect.",
         tap_action: "Leave unset to keep the default: tap opens the mode menu.",
@@ -233,6 +236,7 @@
       "editor.section.modes": "Modos",
       "editor.section.fan": "Ventilador",
       "editor.section.features": "Funciones",
+      "editor.section.extra_toggles": "Controles adicionales",
       "editor.section.layout": "Diseno",
       "editor.section.actions": "Acciones",
       "editor.section.mode_colors": "Colores por modo",
@@ -275,6 +279,7 @@
         show_led: "Mostrar LED",
         sound_entity: "Entidad de sonido / pitido (switch.*)",
         show_sound: "Mostrar sonido",
+        extra_toggles: "Entidades adicionales",
         show_hints: "Mostrar pistas de gestos",
         max_height: "Altura maxima",
         tap_action: "Accion al tocar",
@@ -307,6 +312,7 @@
         show_led: "Forzar el chip de LED encendido o apagado. Auto lo muestra cuando la entidad se resuelve; un chip forzado sin fuente se muestra deshabilitado.",
         sound_entity: "Anula el interruptor de pitido/tono. Dejar vacio para autodetectar (Midea).",
         show_sound: "Forzar el chip de sonido encendido o apagado. Auto lo muestra cuando la entidad se resuelve; un chip forzado sin fuente se muestra deshabilitado.",
+        extra_toggles: "Anade cualquier interruptor, input boolean o select como un chip adicional en el menu de modos, para funciones que la tarjeta no detecta sola (antimoho, lampara UV, viento suave, etc.). Una entidad de dos estados se muestra como un chip de encendido/apagado; un select se muestra como un chip que rota entre sus opciones. El chip usa el nombre de la entidad y un icono por defecto; define un nombre o icono personalizado en YAML. Una entidad ausente o no disponible se atenua.",
         show_hints: "Etiquetas tenues MODO / VENT. / AUTO que muestran que el dial es interactivo.",
         max_height: "Limite de longitud CSS, por ejemplo 34vh o 360px. El ancho sigue la proporcion del dial.",
         tap_action: "Dejar sin definir para mantener el valor por defecto: tocar abre el menu de modos.",
@@ -494,6 +500,32 @@
     return a.every((x) => sb.has(String(x)));
   }
 
+  // Defensive cap so a config cannot flood the popup row (issue #34).
+  const MAX_EXTRA_TOGGLES = 8;
+
+  // Normalize config.extra_toggles into a clean [{entity, name, icon}] list. Accepts a
+  // bare "switch.x" string OR a {entity, name?, icon?} object, or an array of either.
+  // Drops entries with no usable entity id (needs a "domain.object" shape); order kept;
+  // name/icon are null when unset. Missing / non-array -> []. Never throws. Shared by the
+  // card render path and the editor display seed. Capped at MAX_EXTRA_TOGGLES.
+  function normalizeExtra(v) {
+    if (!Array.isArray(v)) return [];
+    const out = [];
+    for (const row of v) {
+      if (out.length >= MAX_EXTRA_TOGGLES) break;
+      let entity = "", name = null, icon = null;
+      if (typeof row === "string") { entity = row.trim(); }
+      else if (row && typeof row === "object" && typeof row.entity === "string") {
+        entity = row.entity.trim();
+        if (typeof row.name === "string" && row.name.trim()) name = row.name.trim();
+        if (typeof row.icon === "string" && row.icon.trim()) icon = row.icon.trim();
+      } else { continue; }
+      if (!entity || entity.indexOf(".") < 1) continue; // require a real entity_id
+      out.push({ entity, name, icon });
+    }
+    return out;
+  }
+
   // Display-side defaults for the editor color swatches / default-on toggles.
   const DEFAULT_ACCENT_RGB = colorToRgb(DEFAULT_ACCENT);   // [79,195,247]
   const MODE_COLORS_RGB = {};                              // per-mode defaults as [r,g,b]
@@ -558,6 +590,7 @@
       this._built = false;
       this._hass = null;
       this._config = null;
+      this._extraToggles = [];
       this._accent = DEFAULT_ACCENT;
       this._modeColors = Object.assign({}, MODE_COLORS);
       this._popOpen = false;
@@ -580,6 +613,14 @@
         throw new Error("climate-cluster-card: 'entity' is required (e.g. climate.living_room)");
       }
       this._config = Object.assign({}, config);
+
+      // User-defined feature chips (issue #34). Structural parse only; capability
+      // (toggle vs cycle) and availability are resolved live at paint. Absent -> [].
+      this._extraToggles = normalizeExtra(this._config.extra_toggles);
+      // Extra chips are dynamic (count varies with config), unlike the build-once
+      // swing/led/sound chips, so force _buildPop to rebuild the sheet next open. The
+      // sheet click listener is guarded by `if (!this._onPopClick)` so it is not re-bound.
+      if (this._built) this._popBuilt = false;
 
       // UI accent (popup-active, lit chips, swing-lit, fan ring end + handle, caret).
       this._accent = toColor(this._config.accent) || DEFAULT_ACCENT;
@@ -1737,6 +1778,15 @@
           if (now >= o.until || this._liveFeatureOn(kind) === o.val) this._optToggle[kind] = null;
         });
       }
+      // Extra toggles (issue #34): only toggle entities take a hold; selects never do.
+      if (this._optToggle && this._extraToggles.length) {
+        this._extraToggles.forEach((it) => {
+          if (this._xIsSelect(it)) return;
+          const o = this._optToggle["x:" + it.entity];
+          if (!o) return;
+          if (now >= o.until || this._xLiveOn(it) === o.val) this._optToggle["x:" + it.entity] = null;
+        });
+      }
     }
 
     // ============================================================================
@@ -2481,6 +2531,73 @@
         () => this._revertToggle(kind));
     }
 
+    // ---- USER EXTRA TOGGLES (issue #34): capability + resolution helpers ----
+    _xDomain(it) { return String(it.entity).split(".")[0]; }
+    _xIsSelect(it) { const d = this._xDomain(it); return d === "select" || d === "input_select"; }
+
+    // null = missing/unavailable/unknown (chip renders disabled). Reads via _st (null-safe).
+    _xAvail(it) {
+      const st = this._st(it.entity);
+      if (!st) return false;
+      const s = String(st.state).toLowerCase();
+      return s !== "unavailable" && s !== "unknown";
+    }
+    _xName(it) {
+      if (it.name) return it.name;
+      const st = this._st(it.entity);
+      const fn = st && st.attributes && st.attributes.friendly_name;
+      return fn || (String(it.entity).split(".")[1] || it.entity).replace(/_/g, " ");
+    }
+    _xIcon(it) {
+      if (it.icon) return it.icon;
+      const st = this._st(it.entity);
+      const ic = st && st.attributes && st.attributes.icon;
+      if (ic) return ic;
+      return this._xIsSelect(it) ? "mdi:format-list-bulleted" : "mdi:toggle-switch-variant";
+    }
+    // TOGGLE live/optimistic state, keyed "x:<entity>" so it never collides with swing/led/sound.
+    _xLiveOn(it) { const st = this._st(it.entity); return !!(st && String(st.state).toLowerCase() === "on"); }
+    _xOn(it) {
+      const o = this._optToggle && this._optToggle["x:" + it.entity];
+      if (o && Date.now() < o.until) return o.val;
+      return this._xLiveOn(it);
+    }
+    // SELECT readers (raw option strings; HA does not localize arbitrary options).
+    _xCurOpt(it) { const st = this._st(it.entity); return st ? String(st.state) : null; }
+    _xNextOpt(it) {
+      const st = this._st(it.entity);
+      const opts = st && st.attributes && st.attributes.options;
+      if (!Array.isArray(opts) || !opts.length) return null;
+      const i = opts.findIndex((o) => String(o) === String(st.state)); // -1 -> opts[0]
+      return opts[(i + 1) % opts.length];
+    }
+    // Tap: switch/input_boolean/other -> optimistic on/off; select/input_select -> cycle.
+    _xTap(idx) {
+      const it = this._extraToggles[idx];
+      if (!it || !this._hass || !this._xAvail(it)) return;   // missing/unavailable -> inert
+      const dom = this._xDomain(it);
+      if (this._xIsSelect(it)) {
+        const next = this._xNextOpt(it);
+        if (next == null) return;
+        this._announce(this._xName(it) + " " + next);
+        const sd = dom === "input_select" ? "input_select" : "select";
+        this._svc(sd, "select_option", { entity_id: it.entity, option: next }, () => this._render());
+        return;                                               // no optimistic hold; live state repaints
+      }
+      const on = this._xLiveOn(it);
+      this._optToggle = this._optToggle || {};
+      this._optToggle["x:" + it.entity] = { val: !on, until: Date.now() + OPT_HOLD_MS };
+      this._paintPop();
+      this._announce(this._xName(it) + " " + this._t(!on ? "on" : "off"));
+      const sd = (dom === "switch" || dom === "input_boolean") ? dom : "homeassistant";
+      this._svc(sd, on ? "turn_off" : "turn_on", { entity_id: it.entity }, () => this._revertExtra(it.entity));
+    }
+    _revertExtra(entityId) {
+      if (this._optToggle) this._optToggle["x:" + entityId] = null;
+      if (this._popOpen) this._paintPop();
+      this._render();
+    }
+
     // ---- face VERTICAL SWING chip ----
     _swingPointerDown(e) {
       e.stopPropagation();
@@ -2530,6 +2647,25 @@
         row.appendChild(b);
         this._refs.toggles[t.kind] = b;
       });
+      // USER EXTRA TOGGLES (issue #34): one chip per configured entry, into the same
+      // .ct-toggles row so they inherit the swing/led/sound chip styling. Built once;
+      // icon/label/lit state are set in _paintPop. Arbitrary entities cannot use inline
+      // SVG glyphs, so use <ha-icon> (HA-registered at runtime; empty if absent, chip
+      // still works). Rebuilt when setConfig clears _popBuilt.
+      this._refs.extra = [];
+      this._extraToggles.forEach((it, idx) => {
+        const b = document.createElement("button");
+        b.className = "ct-toggle";
+        b.dataset.xtoggle = String(idx);
+        const icon = document.createElement("ha-icon");
+        icon.className = "ct-tg-ic";
+        const lb = document.createElement("span");
+        lb.className = "ct-tg-lb";
+        b.appendChild(icon);
+        b.appendChild(lb);
+        row.appendChild(b);
+        this._refs.extra.push({ btn: b, icon, lb });
+      });
       sheet.appendChild(row);
       if (!this._onPopClick) {
         this._onPopClick = (e) => {
@@ -2538,6 +2674,7 @@
           e.stopPropagation();
           // Toggle chips flip a feature and KEEP the popup open; mode buttons close it.
           if (b.dataset.toggle) { if (this._featureAvail(b.dataset.toggle)) this._featureToggle(b.dataset.toggle); return; }
+          if (b.dataset.xtoggle != null) { this._xTap(+b.dataset.xtoggle); return; }
           this._selectMode(b.dataset.mode);
         };
         sheet.addEventListener("click", this._onPopClick);
@@ -2589,6 +2726,42 @@
           const on = avail && this._featureOn(t.kind);
           b.classList.toggle("on", on);
           b.setAttribute("aria-pressed", on ? "true" : "false"); // a11y (issue #5)
+        });
+      }
+      // USER EXTRA TOGGLES (issue #34): dim+inert when missing/unavailable; toggle chips
+      // light ".on"; select chips are neutral (never lit) and show the current option.
+      if (this._refs.extra) {
+        this._refs.extra.forEach((ref, idx) => {
+          const it = this._extraToggles[idx];
+          const b = ref.btn;
+          if (!it) { b.style.display = "none"; return; }
+          b.style.display = "";
+          ref.icon.setAttribute("icon", this._xIcon(it));   // live: reflects a late friendly icon
+          const name = this._xName(it);
+          b.title = name;
+          if (!this._xAvail(it)) {                           // configured but missing/unavailable
+            b.classList.add("disabled"); b.classList.remove("on");
+            b.setAttribute("aria-disabled", "true");
+            b.removeAttribute("aria-pressed");
+            ref.lb.textContent = name;
+            b.setAttribute("aria-label", name);
+            return;
+          }
+          b.classList.remove("disabled");
+          b.setAttribute("aria-disabled", "false");
+          if (this._xIsSelect(it)) {
+            const cur = this._xCurOpt(it);
+            b.classList.remove("on");
+            b.removeAttribute("aria-pressed");
+            ref.lb.textContent = cur != null ? cur : name;
+            b.setAttribute("aria-label", name + ": " + (cur != null ? cur : ""));
+          } else {
+            const on = this._xOn(it);
+            b.classList.toggle("on", on);
+            b.setAttribute("aria-pressed", on ? "true" : "false");
+            ref.lb.textContent = name;
+            b.setAttribute("aria-label", name + " " + this._t(on ? "on" : "off"));
+          }
         });
       }
     }
@@ -3330,6 +3503,8 @@ ha-card[data-appearance="glass-light"] .ct-frost{
 }
 .ct-sheet button.ct-toggle.disabled{ opacity:.4; cursor:default; }
 .ct-toggle .ct-tg-ic{ width:24px; height:24px; display:block; }
+/* ha-icon paints in currentColor, so the .on accent lights a user chip like the inline-SVG ones. */
+.ct-sheet button.ct-toggle ha-icon.ct-tg-ic{ --mdc-icon-size:24px; color:inherit; }
 .ct-toggle .ct-tg-lb{ display:block; }
 @media (max-width:480px){ .ct-sheet button.ct-toggle{ min-width:72px; padding:9px 8px; } }
 
@@ -3488,6 +3663,10 @@ ha-card[data-appearance="glass-light"] .ct-frost{
           { name: "show_led", selector: { select: { mode: "dropdown", options: autoTF } } },
           { name: "sound_entity", selector: { entity: { domain: "switch" } } },
           { name: "show_sound", selector: { select: { mode: "dropdown", options: autoTF } } },
+        ] },
+
+        { type: "expandable", name: "", title: this._t("editor.section.extra_toggles"), icon: "mdi:toggle-switch-variant", schema: [
+          { name: "extra_toggles", selector: { entity: { multiple: true, domain: ["switch", "input_boolean", "select"] } } },
         ] },
 
         { type: "expandable", name: "", title: this._t("editor.section.layout"), icon: "mdi:arrange-bring-forward", schema: [
@@ -3660,6 +3839,12 @@ ha-card[data-appearance="glass-light"] .ct-frost{
       if (data.glass_color === undefined || data.glass_color === null) data.glass_color = gb.rgb.slice();
       else data.glass_color = colorToRgb(data.glass_color) || gb.rgb.slice();
       if (data.glass_opacity === undefined || data.glass_opacity === null) data.glass_opacity = gb.alpha;
+
+      // Extra toggles: the multiple-entity picker understands only an array of entity ids,
+      // so flatten object rows to their id for display. Per-row name/icon overrides are
+      // re-attached in _valueChanged. Unset seeds [] (clean empty add-control); [] is
+      // pruned back out on save.
+      data.extra_toggles = normalizeExtra(config.extra_toggles).map((t) => t.entity);
       return data;
     }
 
@@ -3696,6 +3881,28 @@ ha-card[data-appearance="glass-light"] .ct-frost{
       // Modes: a selection equal to the entity's full hvac_modes is the default ->
       // drop it so an unchanged all-checked list is not persisted (only save subsets).
       if (Array.isArray(cfg.modes) && arrSetEq(cfg.modes, this._hvacModes(cfg))) delete cfg.modes;
+      // Extra toggles: the picker emits an array of entity-id strings. Re-attach any per-row
+      // override (name/icon or a future key) the PRIOR config carried for a still-selected
+      // entity, so a membership edit never destroys a YAML-authored name/icon; keep new picks
+      // as bare strings; drop the key entirely when empty. this._config here is still the
+      // PRIOR saved config (reassigned at the method tail), which is the diff base we need.
+      if ("extra_toggles" in cfg) {
+        const picked = Array.isArray(cfg.extra_toggles) ? cfg.extra_toggles : [];
+        const prev = {};
+        const prevList = Array.isArray(this._config && this._config.extra_toggles) ? this._config.extra_toggles : [];
+        for (const row of prevList) {
+          const id = typeof row === "string" ? row : (row && typeof row === "object" ? row.entity : null);
+          if (typeof id === "string" && id.trim()) prev[id.trim()] = row; // RAW row, keeps overrides
+        }
+        const rows = [];
+        for (const sel of picked) {
+          const id = typeof sel === "string" ? sel.trim() : (sel && sel.entity);
+          if (!id) continue;
+          const prior = prev[id];
+          rows.push(prior && typeof prior === "object" ? prior : id);
+        }
+        if (rows.length) cfg.extra_toggles = rows; else delete cfg.extra_toggles;
+      }
       // Glass tint/opacity: drop when still at the per-variant default so an unchanged
       // glass keeps a lean YAML (theme mode, where appearance is already deleted above,
       // compares against the dark base and prunes the seeded values out).
