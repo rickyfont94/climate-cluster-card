@@ -436,6 +436,11 @@
   // service call reverts sooner via its .catch() (issue #9).
   const OPT_HOLD_MS = 5000;
 
+  // Long-press dwell (ms) before the swing chip opens its position picker. A shorter
+  // release fires the tap/cycle instead. Sits between a deliberate hold and the
+  // center disc's more-info HOLD_MS so the two gestures never feel the same.
+  const SWING_HOLD_MS = 500;
+
   // ---- small helpers ------------------------------------------------------
   function el(tag, attrs, text) {
     const e = document.createElementNS(NS, tag);
@@ -816,6 +821,12 @@
       this._touchOnCenter = false;
       this._centerTouchStart = null;
       this._touchCenterHeld = false;
+      // swing chip long-press teardown: clear the hold timer + detach the picker's
+      // document-level Escape so a card removed mid-hold or mid-pick leaks nothing.
+      if (this._swingHoldTimer) { clearTimeout(this._swingHoldTimer); this._swingHoldTimer = null; }
+      this._swingPressActive = false;
+      this._swingLongPressed = false;
+      if (this._onSwingDocKeydown) document.removeEventListener("keydown", this._onSwingDocKeydown, true);
     }
 
     // ============================================================================
@@ -1414,7 +1425,11 @@
       this._refs.swingCap.style.fontWeight = "600";
       svg.appendChild(this._refs.swingCap);
       this._onSwingDown = (e) => this._swingPointerDown(e);
+      this._onSwingUp = (e) => this._swingPointerUp(e);
+      this._onSwingCancel = () => this._swingPointerCancel();
       swingChip.addEventListener("pointerdown", this._onSwingDown);
+      swingChip.addEventListener("pointerup", this._onSwingUp);
+      swingChip.addEventListener("pointercancel", this._onSwingCancel);
       swingChip.addEventListener("keydown", (e) => {
         if (e.key !== "Enter" && e.key !== " " && e.key !== "Spacebar") return;
         e.preventDefault(); e.stopPropagation();
@@ -1697,6 +1712,7 @@
     }
     _revertToggle(kind) {
       if (this._optToggle) this._optToggle[kind] = null;
+      if (kind === "swing") this._optSwingPos = null; // drop the optimistic position too
       if (this._popOpen) this._paintPop();
       this._render();
     }
@@ -1786,6 +1802,17 @@
           if (!o) return;
           if (now >= o.until || this._xLiveOn(it) === o.val) this._optToggle["x:" + it.entity] = null;
         });
+      }
+      // SWING position (climate branch): drop the optimistic pick the moment the live
+      // swing_mode reports the member we asked for (case-insensitive), else on timeout.
+      if (this._optSwingPos) {
+        const m = this._swingMode();
+        const st = m.kind === "climate" ? this._st(m.ref) : null;
+        const live = st && st.attributes && st.attributes.swing_mode;
+        if (now >= this._optSwingPos.until
+            || (live != null && String(live).toLowerCase() === String(this._optSwingPos.mode).toLowerCase())) {
+          this._optSwingPos = null;
+        }
       }
     }
 
@@ -2457,6 +2484,43 @@
       }
       return false;
     }
+    // The entity's own swing_modes for the CLIMATE branch (empty for switch/none).
+    // The picker + long-press gate read this, so a switch-backed device (Midea)
+    // and a device with no swing_modes never expose the position picker.
+    _swingModesList() {
+      const m = this._swingMode();
+      if (m.kind !== "climate") return [];
+      const st = this._st(m.ref);
+      const sm = st && st.attributes && st.attributes.swing_modes;
+      return Array.isArray(sm) ? sm : [];
+    }
+    // Effective swing position (CLIMATE branch): the optimistic pick while it is held
+    // (until reconciled or OPT_HOLD_MS), otherwise the live swing_mode. Null for the
+    // switch branch so Midea keeps its plain on/off label.
+    _swingEffMode() {
+      const m = this._swingMode();
+      if (m.kind !== "climate") return null;
+      const o = this._optSwingPos;
+      if (o && Date.now() < o.until) return o.mode;
+      const st = this._st(m.ref);
+      return (st && st.attributes && st.attributes.swing_mode) || null;
+    }
+    // Chip caption: the live/optimistic position value when a climate swing is ON,
+    // else the localized SWING word. Switch-backed swing always reads SWING.
+    _swingLabelText() {
+      const def = this._t("swing");
+      const m = this._swingMode();
+      if (m.kind !== "climate") return def;
+      const eff = this._swingEffMode();
+      if (!eff || String(eff).toLowerCase() === "off") return def;
+      return String(eff);
+    }
+    // Record the optimistic position we just asked for so the label + accent flip
+    // instantly, and drop the stale on/off boolean hold (the position supersedes it).
+    _setOptSwingPos(mode) {
+      this._optSwingPos = { mode: mode, until: Date.now() + OPT_HOLD_MS };
+      if (this._optToggle) this._optToggle.swing = null;
+    }
     _swingToggle() {
       const m = this._swingMode();
       if (!this._hass || !m.kind) return;
@@ -2471,18 +2535,22 @@
       // swing_modes (case-insensitive match to "off", but send the entity's own
       // casing) and toggle against a real on member. With no off member (pure
       // vane-position lists like MelCloud ["Auto","1".."5","Swing"]) cycle to the
-      // next real swing_mode. Never send a value outside swing_modes.
+      // next real swing_mode. Never send a value outside swing_modes. Cycling is
+      // optimistic-aware (reads the effective position) so rapid taps keep advancing.
       const st = this._st(m.ref);
       const modes = (st && st.attributes && st.attributes.swing_modes) || [];
       const onMode = modes.find((x) => String(x).toLowerCase() !== "off") || modes[0] || "vertical";
-      const cur = st && st.attributes && st.attributes.swing_mode;
+      const eff = this._swingEffMode();
+      const effOn = !!(eff && String(eff).toLowerCase() !== "off");
       const offMode = modes.find((x) => String(x).toLowerCase() === "off");
+      let target = null;
       if (offMode) {
-        this._svcSetSwingMode(this._swingIsOn() ? offMode : onMode);
+        target = effOn ? offMode : onMode;
       } else if (modes.length) {
-        const i = modes.findIndex((x) => String(x) === String(cur));
-        this._svcSetSwingMode(modes[(i + 1) % modes.length]);
+        const i = modes.findIndex((x) => String(x) === String(eff));
+        target = modes[(i + 1) % modes.length];
       }
+      if (target != null) { this._setOptSwingPos(target); this._svcSetSwingMode(target); }
     }
     // Whether a feature has a backing source the card can auto-detect.
     _featureAvail(kind) {
@@ -2506,17 +2574,32 @@
     }
     // Optimistic-or-live on/off (held until reconciled or OPT_HOLD_MS, like temp/fan).
     _featureOn(kind) {
+      // CLIMATE-backed swing has no on/off boolean hold; its accent tracks the
+      // effective (optimistic-or-live) position so a vane-position cycle lights the
+      // chip instantly and only reads OFF when the position is a real off member.
+      if (kind === "swing" && this._swingMode().kind === "climate") {
+        const eff = this._swingEffMode();
+        return !!(eff && String(eff).toLowerCase() !== "off");
+      }
       const o = this._optToggle && this._optToggle[kind];
       if (o && Date.now() < o.until) return o.val;
       return this._liveFeatureOn(kind);
     }
     _featureToggle(kind) {
       if (kind === "swing") {
-        this._optToggle = this._optToggle || {};
-        this._optToggle.swing = { val: !this._swingIsOn(), until: Date.now() + OPT_HOLD_MS };
-        this._paintPop();
-        this._announce(this._t("swing") + " " + this._t(this._optToggle.swing.val ? "on" : "off"));
-        this._swingToggle();
+        // Climate branch: the cycle sets its own optimistic POSITION (label + accent);
+        // switch branch (Midea): keep the plain optimistic on/off boolean, unchanged.
+        if (this._swingMode().kind === "climate") {
+          this._swingToggle();
+          this._paintPop();
+          this._announce(this._t("swing") + " " + this._swingLabelText());
+        } else {
+          this._optToggle = this._optToggle || {};
+          this._optToggle.swing = { val: !this._swingIsOn(), until: Date.now() + OPT_HOLD_MS };
+          this._paintPop();
+          this._announce(this._t("swing") + " " + this._t(this._optToggle.swing.val ? "on" : "off"));
+          this._swingToggle();
+        }
         return;
       }
       const ref = kind === "led" ? this._ledRef() : this._soundRef();
@@ -2598,13 +2681,117 @@
       this._render();
     }
 
-    // ---- face VERTICAL SWING chip ----
+    // ---- face VERTICAL SWING chip: short tap cycles, long-press opens the picker ----
+    // A press starts a hold timer; releasing before SWING_HOLD_MS cycles, holding past
+    // it opens the position picker and suppresses the release tap. The picker only arms
+    // when the CLIMATE swing exposes 2+ real members (switch-backed Midea never picks).
     _swingPointerDown(e) {
       e.stopPropagation();
       e.preventDefault();
-      if (!this._swingMode().kind || !this._hass) return;
+      const m = this._swingMode();
+      if (!m.kind || !this._hass) return;
+      this._swingLongPressed = false;
+      this._swingPressActive = true;
+      const canPick = m.kind === "climate" && this._swingModesList().length >= 2;
+      if (this._swingHoldTimer) { clearTimeout(this._swingHoldTimer); this._swingHoldTimer = null; }
+      if (canPick) {
+        // Capture the pointer so the release still lands on the chip if the finger
+        // drifted a few pixels; a real scroll fires pointercancel and drops the hold.
+        try { if (e.pointerId != null && this._refs.swingChip && this._refs.swingChip.setPointerCapture) this._refs.swingChip.setPointerCapture(e.pointerId); } catch (err) {}
+        this._swingHoldTimer = setTimeout(() => {
+          this._swingHoldTimer = null;
+          if (!this._swingPressActive) return; // released/cancelled before the hold landed
+          this._swingLongPressed = true;
+          this._openSwingPicker();
+        }, SWING_HOLD_MS);
+      }
+    }
+    _swingPointerUp(e) {
+      if (!this._swingPressActive) return;
+      this._swingPressActive = false;
+      try { if (e && e.pointerId != null && this._refs.swingChip && this._refs.swingChip.releasePointerCapture) this._refs.swingChip.releasePointerCapture(e.pointerId); } catch (err) {}
+      if (this._swingHoldTimer) { clearTimeout(this._swingHoldTimer); this._swingHoldTimer = null; }
+      if (this._swingLongPressed) { this._swingLongPressed = false; return; } // picker opened -> swallow the tap
+      if (e) { e.stopPropagation(); e.preventDefault(); }
       this._featureToggle("swing");
       this._render(); // optimistic face repaint
+    }
+    // A cancelled press (scroll took over, pointer left) drops the hold without cycling.
+    _swingPointerCancel() {
+      this._swingPressActive = false;
+      this._swingLongPressed = false;
+      if (this._swingHoldTimer) { clearTimeout(this._swingHoldTimer); this._swingHoldTimer = null; }
+    }
+
+    // ---- swing POSITION picker (long-press): a small modal, styled like the mode popup ----
+    _buildSwingPicker() {
+      if (this._refs.swingPop) return;
+      const card = this.shadowRoot && this.shadowRoot.querySelector(".ct-card");
+      if (!card) return;
+      const pop = document.createElement("div");
+      pop.className = "ct-pop ct-swingpop";
+      pop.setAttribute("role", "dialog");
+      pop.setAttribute("aria-modal", "true");
+      pop.setAttribute("aria-label", "Select swing position");
+      pop.addEventListener("click", (e) => { if (e.target === pop) this._closeSwingPicker(); });
+      const sheet = document.createElement("div");
+      sheet.className = "ct-sheet ct-swingsheet";
+      pop.appendChild(sheet);
+      this._onSwingPickClick = (e) => {
+        const b = e.target && e.target.closest ? e.target.closest("button[data-swingopt]") : null;
+        if (!b) return;
+        e.stopPropagation();
+        this._pickSwingMode(b.dataset.swingopt);
+      };
+      sheet.addEventListener("click", this._onSwingPickClick);
+      // Escape closes the picker regardless of where focus sits (mirrors the mode popup).
+      this._onSwingDocKeydown = (e) => {
+        if (this._swingPickerOpen && e.key === "Escape") { e.preventDefault(); e.stopPropagation(); this._closeSwingPicker(); }
+      };
+      card.appendChild(pop);
+      this._refs.swingPop = pop;
+      this._refs.swingSheet = sheet;
+    }
+    _openSwingPicker() {
+      const m = this._swingMode();
+      const modes = this._swingModesList();
+      if (m.kind !== "climate" || modes.length < 2 || !this._hass) return;
+      this._buildSwingPicker();
+      const sheet = this._refs.swingSheet;
+      if (!sheet) return;
+      sheet.innerHTML = "";
+      const cur = this._swingEffMode();
+      modes.forEach((opt) => {
+        const b = document.createElement("button");
+        b.dataset.swingopt = String(opt);
+        b.textContent = String(opt);
+        const active = String(opt) === String(cur);
+        b.classList.toggle("active", active);
+        b.setAttribute("aria-pressed", active ? "true" : "false");
+        sheet.appendChild(b);
+      });
+      this._swingPickerOpen = true;
+      this._refs.swingPop.classList.add("open");
+      if (this._onSwingDocKeydown) document.addEventListener("keydown", this._onSwingDocKeydown, true);
+      const target = sheet.querySelector("button.active") || sheet.querySelector("button");
+      if (target) requestAnimationFrame(() => { try { target.focus(); } catch (err) {} });
+    }
+    // Pick an exact member: optimistic label + accent flip now, then set_swing_mode.
+    _pickSwingMode(mode) {
+      const modes = this._swingModesList();
+      if (!this._hass || !modes.some((x) => String(x) === String(mode))) { this._closeSwingPicker(); return; }
+      this._setOptSwingPos(mode);
+      this._svcSetSwingMode(mode);
+      this._announce(this._t("swing") + " " + String(mode));
+      if (this._popOpen) this._paintPop();
+      this._render();
+      this._closeSwingPicker();
+    }
+    _closeSwingPicker() {
+      this._swingPickerOpen = false;
+      if (this._refs.swingPop) this._refs.swingPop.classList.remove("open");
+      if (this._onSwingDocKeydown) document.removeEventListener("keydown", this._onSwingDocKeydown, true);
+      if (this._refs.swingChip) { try { this._refs.swingChip.focus(); } catch (err) {} }
     }
 
     // ---- service-call signatures preserved for contract parity (failure-aware) ----
@@ -2716,7 +2903,8 @@
           const b = this._refs.toggles[t.kind];
           if (!b) return;
           const lb = b.querySelector(".ct-tg-lb");
-          if (lb) lb.textContent = this._t(t.kind); // localized chip label (issue #19)
+          // Swing chip shows its live/optimistic position; led/sound keep their words.
+          if (lb) lb.textContent = (t.kind === "swing") ? this._swingLabelText() : this._t(t.kind);
           if (!this._featureResolved(t.kind)) { b.style.display = "none"; return; }
           b.style.display = "";
           // Forced-visible with no backing source -> inert, dimmed, not lit.
@@ -3235,6 +3423,11 @@
         const on = avail && this._featureOn("swing");
         this._refs.swingChip.style.display = "";
         this._refs.swingCap.style.display = "";
+        // Caption shows the current position ("3" / "Auto" / "Swing") for a climate
+        // swing that is on, else the localized SWING word. Aria mirrors it.
+        const swingLabel = this._swingLabelText();
+        this._refs.swingCap.textContent = swingLabel;
+        this._refs.swingChip.setAttribute("aria-label", swingLabel);
         this._refs.swingIcon.setAttribute("stroke", on ? this._accent : "#8a98a6");
         this._refs.swingChipBg.setAttribute("stroke", on ? this._glow(55) : "rgba(234,235,238,.16)");
         this._refs.swingChipBg.setAttribute("fill", on ? this._glow(14) : "rgba(40,52,66,.45)");
@@ -3507,6 +3700,13 @@ ha-card[data-appearance="glass-light"] .ct-frost{
 .ct-sheet button.ct-toggle ha-icon.ct-tg-ic{ --mdc-icon-size:24px; color:inherit; }
 .ct-toggle .ct-tg-lb{ display:block; }
 @media (max-width:480px){ .ct-sheet button.ct-toggle{ min-width:72px; padding:9px 8px; } }
+
+/* Swing POSITION picker (long-press): reuses the mode-popup glass, tighter grid so
+   the short vane labels ("Auto" / "1" / "Swing") pack into a small modal. The .active
+   member highlights like an active mode. */
+.ct-swingsheet{ grid-template-columns:repeat(2, minmax(0,1fr)); gap:10px; padding:18px; }
+.ct-swingsheet button{ min-width:96px; padding:14px 12px; }
+@media (max-width:480px){ .ct-swingsheet button{ min-width:72px; padding:12px 8px; } }
 
 /* ---- ACCESSIBILITY (issue #5) ---- */
 /* Visually-hidden polite live region: announced by screen readers, never shown. */
