@@ -26,7 +26,7 @@
   const NS = "http://www.w3.org/2000/svg";
 
   // ---- console version banner ---------------------------------------------
-  const VERSION = "1.3.0";
+  const VERSION = "1.3.1";
   console.info(
     "%c CLIMATE-CLUSTER-CARD %c v" + VERSION + " ",
     "color:#0b0f16;background:#4fc3f7;font-weight:700;border-radius:4px 0 0 4px;padding:2px 6px",
@@ -2623,7 +2623,15 @@
       const st = this._st(it.entity);
       if (!st) return false;
       const s = String(st.state).toLowerCase();
-      return s !== "unavailable" && s !== "unknown";
+      if (s === "unavailable") return false;
+      // A select is usable whenever it advertises options, even when no option is
+      // chosen yet (state "unknown", common on Tuya wind/mode selects): a tap just
+      // picks the first option. Only a truly "unavailable" entity is inert.
+      if (this._xIsSelect(it)) {
+        const opts = st.attributes && st.attributes.options;
+        return Array.isArray(opts) && opts.length > 0;
+      }
+      return s !== "unknown";
     }
     _xName(it) {
       if (it.name) return it.name;
@@ -2938,11 +2946,16 @@
           b.classList.remove("disabled");
           b.setAttribute("aria-disabled", "false");
           if (this._xIsSelect(it)) {
+            const st = this._st(it.entity);
+            const opts = (st && st.attributes && st.attributes.options) || [];
             const cur = this._xCurOpt(it);
+            // Show the live option only when it is a real member; a not-yet-chosen
+            // select (state "unknown") shows the name instead of the word "unknown".
+            const shown = (cur != null && opts.indexOf(cur) >= 0) ? cur : name;
             b.classList.remove("on");
             b.removeAttribute("aria-pressed");
-            ref.lb.textContent = cur != null ? cur : name;
-            b.setAttribute("aria-label", name + ": " + (cur != null ? cur : ""));
+            ref.lb.textContent = shown;
+            b.setAttribute("aria-label", name + ": " + shown);
           } else {
             const on = this._xOn(it);
             b.classList.toggle("on", on);

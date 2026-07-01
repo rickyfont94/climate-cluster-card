@@ -23,6 +23,7 @@ The **dual-ring AC control** card: drag the **inner ring** for temperature and t
 
 - [Demo](#demo)
 - [Features](#features)
+  - [What's new in v1.3.1](#whats-new-in-v131)
   - [What's new in v1.3.0](#whats-new-in-v130)
   - [What's new in v1.2.1](#whats-new-in-v121)
   - [What's new in v1.2.0](#whats-new-in-v120)
@@ -51,6 +52,12 @@ The **dual-ring AC control** card: drag the **inner ring** for temperature and t
 </details>
 
 ## Features
+
+### What's new in v1.3.1
+
+- **Select chips in `extra_toggles` fixed** - a `select` you added (for example a Tuya "smart wind" or mode select) that has options but no option chosen yet no longer renders greyed out and unresponsive. It stays a live cycle chip, a tap picks the first option, and it shows its name until you choose one.
+
+No breaking changes, safe to update via HACS. Hard-refresh your browser (Ctrl+F5 / Cmd+Shift+R) after updating so the new build loads.
 
 ### What's new in v1.3.0
 

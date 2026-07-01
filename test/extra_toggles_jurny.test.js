@@ -149,3 +149,49 @@ test("object form operates identically: overridden switch still fires switch.tur
   assert.equal(c.service, "turn_on");
   assert.equal(c.data.entity_id, "switch.salon_anti_mould", "override does not change the target entity");
 });
+
+// Regression for the reported bug: a Tuya "smart wind" select that has options but no
+// option chosen yet idles at state "unknown". It must NOT render dimmed/inert; it stays a
+// live cycle chip whose tap picks the first option. (A truly unavailable select stays inert.)
+test("BUG #34: an unknown-state select stays clickable (not dimmed) and shows its name", () => {
+  const st = structuredClone(jurny.states);
+  st["select.salon_smart_wind"].state = "unknown";
+  const hass = makeHass(st, { entities: jurny.entities });
+  const live = makeLiveCard(jurny.config, hass);
+
+  const sel = live._refs.sheet.querySelectorAll("button[data-xtoggle]")[1];
+  assert.equal(sel.classList.contains("disabled"), false, "a select with options must not be dimmed just because its state is unknown");
+  assert.equal(sel.getAttribute("aria-disabled"), "false");
+  const label = sel.querySelector(".ct-tg-lb").textContent;
+  assert.equal(label, "Salon Smart Wind", "an unchosen select shows its name, not the word 'unknown'");
+  assert.notEqual(label.toLowerCase(), "unknown");
+});
+
+test("BUG #34: tapping an unknown-state select picks the first real option", () => {
+  const st = structuredClone(jurny.states);
+  st["select.salon_smart_wind"].state = "unknown";
+  const hass = makeHass(st, { entities: jurny.entities });
+  const card = makeCard(jurny.config, hass);
+
+  card._xTap(1);
+
+  assert.equal(hass.calls.length, 1, "an unknown-state select must still act on tap");
+  const c = hass.calls[0];
+  assert.equal(c.domain, "select");
+  assert.equal(c.service, "select_option");
+  assert.equal(c.data.entity_id, "select.salon_smart_wind");
+  assert.equal(c.data.option, jurny.SMART_WIND_OPTIONS[0], "picks the first option when none is currently selected");
+});
+
+test("a genuinely unavailable select stays disabled and inert (fires nothing on tap)", () => {
+  const st = structuredClone(jurny.states);
+  st["select.salon_smart_wind"].state = "unavailable";
+  const hass = makeHass(st, { entities: jurny.entities });
+  const live = makeLiveCard(jurny.config, hass);
+  const sel = live._refs.sheet.querySelectorAll("button[data-xtoggle]")[1];
+  assert.equal(sel.classList.contains("disabled"), true, "an unavailable entity must render disabled");
+
+  const card = makeCard(jurny.config, makeHass(st, { entities: jurny.entities }));
+  card._xTap(1);
+  assert.equal(card._hass.calls.length, 0, "an unavailable select must not fire a service call");
+});
