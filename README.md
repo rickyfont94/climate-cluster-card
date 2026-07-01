@@ -23,6 +23,7 @@ The **dual-ring AC control** card: drag the **inner ring** for temperature and t
 
 - [Demo](#demo)
 - [Features](#features)
+  - [What's new in v1.3.0](#whats-new-in-v130)
   - [What's new in v1.2.1](#whats-new-in-v121)
   - [What's new in v1.2.0](#whats-new-in-v120)
 - [Screenshots](#screenshots)
@@ -51,6 +52,14 @@ The **dual-ring AC control** card: drag the **inner ring** for temperature and t
 
 ## Features
 
+### What's new in v1.3.0
+
+- **Custom toggle chips** - a new `extra_toggles` option adds your own controls to the mode popup. Point it at any `switch`, `input_boolean`, `select`, or `input_select` entity and each renders as a chip: two-state entities toggle on and off, selects cycle through their options. Handy for device functions the card does not auto-detect, like anti-mildew, UV, or a gentle-wind mode.
+- **Swing position picker** - the swing chip now shows the active swing position, and a long-press opens a picker of the entity's real swing options, so vane-position units can jump straight to a position instead of only cycling. The chip label and accent update the moment you tap.
+- **Swing fix for vane-position units** - swing now works on climate entities whose swing options are vane positions (for example MelCloud / Mitsubishi `["Auto", "1".."5", "Swing"]`) or use a capitalized `Off`. The card previously sent a hardcoded lowercase `off` that those units reject, so the chip stopped responding; it now resolves a real off member from the entity's own `swing_modes`, or cycles to the next position when there is no off member. Midea switch-backed swing is unchanged.
+
+No breaking changes, safe to update via HACS. Hard-refresh your browser (Ctrl+F5 / Cmd+Shift+R) after updating so the new build loads.
+
 ### What's new in v1.2.1
 
 - **Reliable center tap on touch** - on iPhone and iPad the dial center now opens the mode popup every time, instead of leaving a stray focus outline with no popup.
@@ -74,6 +83,8 @@ No breaking changes, safe to update via HACS.
 - **Glass mode popup** - tap the center to open a frosted mode picker (`cool` / `heat` / `heat_cool` / `dry` / `fan_only` / `auto` / `off`) with per-mode glyphs; the center caret follows `hvac_action` (down = cooling, up = heating).
 - **Discoverable gestures + custom actions** - faint MODE / FAN / AUTO hints and press feedback show the dial is interactive; the center supports the standard `tap_action` / `hold_action` / `double_tap_action` (hold opens more-info by default).
 - **On-card feature toggles** - swing, LED display, and beep/sound toggles, auto-wired to Midea sibling entities when present.
+- **Swing position picker** - the swing chip shows the active swing position, and a long-press opens a picker of the entity's real swing options, so vane-position units (MelCloud / Mitsubishi and the like) can jump straight to a position instead of only cycling.
+- **Custom toggle chips** - `extra_toggles` puts your own `switch`, `input_boolean`, `select`, or `input_select` controls in the mode popup for features the card does not auto-detect; switches toggle and selects cycle their options.
 - **Fan animation** - a clover fan that can spin proportional to the fan value, at a constant rate, or off.
 - **Fahrenheit & Celsius** - unit, range, and step auto-detected from Home Assistant (or set them explicitly).
 - **Fully GUI-configurable** - every option is exposed in a visual editor; no YAML required.
@@ -295,6 +306,7 @@ All options are optional except `entity`. Defaults reproduce sensible behavior, 
 | `led_entity` | `switch.*` | Midea sibling | LED-display toggle override. |
 | `sound_entity` | `switch.*` | Midea sibling | Beep/sound toggle override. |
 | `show_swing` / `show_led` / `show_sound` | `auto` \| `true` \| `false` | `auto` | Force show/hide each toggle. A forced (`true`) chip with no resolvable entity still renders, but as a disabled, dimmed, inert chip. |
+| `extra_toggles` | list | unset | Extra chips added to the mode popup, for functions the card does not auto-detect. Accepts a list of `switch`, `input_boolean`, `select`, or `input_select` entities, each as a bare `domain.object_id` string or a `{ entity, name, icon }` object for a custom label and icon. Switch and boolean chips toggle on and off; select chips cycle through their options. A missing or unavailable entity renders as a dimmed, inert chip. |
 
 #### Layout
 

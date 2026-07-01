@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.3.0] - unreleased
+## [1.3.0] - 2026-07-01
 
 ### Added
 - `extra_toggles` option to add your own controls to the mode pop-up. Point it at any `switch`, `input_boolean`, `select`, or `input_select` entity (bare `domain.object_id` strings, or `{ entity, name, icon }` for a custom label and icon) and each renders as a chip: switches toggle, selects cycle through their options. Handy for device functions the card does not auto-detect, like anti-mildew, UV, or a gentle-wind mode.
@@ -77,6 +77,7 @@ First public release of the Climate Cluster Card for Home Assistant.
 - Full GUI editor, no YAML required.
 - Auto-discovery of fan / swing / LED / sound sibling entities, tuned for Midea (`midea_ac_lan`).
 
+[1.3.0]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v1.3.0
 [1.2.1]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v1.2.1
 [1.2.0]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v1.2.0
 [1.1.0]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v1.1.0
