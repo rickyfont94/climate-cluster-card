@@ -42,7 +42,11 @@ The **dual-ring AC control** card: drag the **inner ring** for temperature and t
 
 ## Demo
 
+<details open><summary><b>Demo</b></summary>
+
 <img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/demo.gif" alt="Climate Cluster Card demo" width="470">
+
+</details>
 
 ## Features
 
@@ -68,10 +72,14 @@ No breaking changes, safe to update via HACS.
 
 ## Screenshots
 
+<details open><summary><b>Screenshots</b></summary>
+
 <table border="0"><tr>
   <td><img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/preview.png" alt="Two-ring dial" width="360"><br><b>Two-ring dial</b> - inner=temp, outer=fan</td>
   <td><img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/view-modes.png" alt="Mode popup" width="360"><br><b>Mode popup</b> - modes + Swing/LED/Sound</td>
 </tr></table>
+
+</details>
 
 ## Theming and frosted glass
 
@@ -92,8 +100,14 @@ mode_colors:
   heat: "#ff7043"
 ```
 
-![Light theme](assets/theme-light.png)
-![Dark theme](assets/theme-dark.png)
+<details><summary><b>Light and dark theme</b></summary>
+
+<table border="0"><tr>
+  <td><img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/theme-light.png" alt="Light theme" width="360"><br><b>Light theme</b></td>
+  <td><img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/theme-dark.png" alt="Dark theme" width="360"><br><b>Dark theme</b></td>
+</tr></table>
+
+</details>
 
 ### Frosted glass
 
@@ -112,8 +126,14 @@ glass_color: "#2a6f6a"
 glass_opacity: 0.6
 ```
 
-![Aurora glass](assets/glass-aurora.png)
-![Purple glass](assets/glass-purple.png)
+<details><summary><b>Frosted glass variations</b></summary>
+
+<table border="0"><tr>
+  <td><img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/glass-aurora.png" alt="Aurora glass" width="360"><br><b>Aurora glass</b></td>
+  <td><img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/glass-purple.png" alt="Purple glass" width="360"><br><b>Purple glass</b></td>
+</tr></table>
+
+</details>
 
 ## Requirements
 
