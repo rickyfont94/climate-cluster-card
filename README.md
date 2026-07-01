@@ -4,7 +4,7 @@
 
 An instrument-cluster climate dial for Home Assistant that follows your theme.
 
-[![Release](https://img.shields.io/github/v/release/rickyfont94/climate-cluster-card?style=for-the-badge&color=4fc3f7&label=Release)](https://github.com/rickyfont94/climate-cluster-card/releases)
+[![Release](https://img.shields.io/github/v/release/rickyfont94/climate-cluster-card?style=for-the-badge&color=4fc3f7&label=Release&sort=semver)](https://github.com/rickyfont94/climate-cluster-card/releases)
 <!-- HACS Custom for now. This becomes "HACS Default" once the card is accepted into the HACS default store. Leave the badge unchanged until then. -->
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5?style=for-the-badge)](https://github.com/hacs/integration)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](LICENSE)
