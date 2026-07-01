@@ -26,7 +26,7 @@
   const NS = "http://www.w3.org/2000/svg";
 
   // ---- console version banner ---------------------------------------------
-  const VERSION = "1.3.1";
+  const VERSION = "1.4.0";
   console.info(
     "%c CLIMATE-CLUSTER-CARD %c v" + VERSION + " ",
     "color:#0b0f16;background:#4fc3f7;font-weight:700;border-radius:4px 0 0 4px;padding:2px 6px",
@@ -127,6 +127,7 @@
       "editor.section.layout": "Layout",
       "editor.section.actions": "Actions",
       "editor.section.mode_colors": "Per-mode colors",
+      "editor.section.mode_names": "Mode labels (rename the mode buttons)",
       "editor.opt.auto": "Auto",
       "editor.opt.show": "Show",
       "editor.opt.hide": "Hide",
@@ -240,6 +241,7 @@
       "editor.section.layout": "Diseno",
       "editor.section.actions": "Acciones",
       "editor.section.mode_colors": "Colores por modo",
+      "editor.section.mode_names": "Etiquetas de modo (renombrar los botones)",
       "editor.opt.auto": "Auto",
       "editor.opt.show": "Mostrar",
       "editor.opt.hide": "Ocultar",
@@ -2094,7 +2096,11 @@
     _t(key) { return tr(this._hass, key); }
     // HVAC mode display name via Home Assistant; uppercased fallback for the SVG
     // center label (no CSS text-transform there). Returns a non-empty string.
-    _modeName(mode) { return modeName(this._hass, mode) || String(mode).toUpperCase(); }
+    _modeName(mode) {
+      const mn = this._config && this._config.mode_names;
+      if (mn && typeof mn === "object" && typeof mn[mode] === "string" && mn[mode].trim()) return mn[mode];
+      return modeName(this._hass, mode) || String(mode).toUpperCase();
+    }
     // fan_mode display name via Home Assistant (matches the dashboard); uppercased
     // raw fallback so custom fan_modes and older HA still render. DISPLAY ONLY:
     // service calls always send the raw fan_mode value, never this string.
@@ -3854,6 +3860,8 @@ ha-card[data-appearance="glass-light"] .ct-frost{
 
         { type: "expandable", name: "", title: this._t("editor.section.modes"), icon: "mdi:thermostat", schema: [
           { name: "modes", selector: { select: { multiple: true, mode: "list", options: modeOptions } } },
+          { type: "expandable", name: "", title: this._t("editor.section.mode_names"), icon: "mdi:rename-box",
+            schema: hvac.map((m) => ({ name: "mn__" + m, selector: { text: {} }, _label: modeName(this._hass, m) || String(m).toUpperCase() })) },
         ] },
 
         { type: "expandable", name: "", title: this._t("editor.section.fan"), icon: "mdi:fan", schema: [
@@ -3880,6 +3888,11 @@ ha-card[data-appearance="glass-light"] .ct-frost{
 
         { type: "expandable", name: "", title: this._t("editor.section.extra_toggles"), icon: "mdi:toggle-switch-variant", schema: [
           { name: "extra_toggles", selector: { entity: { multiple: true, domain: ["switch", "input_boolean", "select"] } } },
+          ...normalizeExtra(config.extra_toggles).map((t) => {
+            const st = this._hass && this._hass.states && this._hass.states[t.entity];
+            const fn = st && st.attributes && st.attributes.friendly_name;
+            return { name: "xtn__" + t.entity, selector: { text: {} }, _label: fn || t.entity };
+          }),
         ] },
 
         { type: "expandable", name: "", title: this._t("editor.section.layout"), icon: "mdi:arrange-bring-forward", schema: [
@@ -3906,6 +3919,7 @@ ha-card[data-appearance="glass-light"] .ct-frost{
         // English); falls back to a localized mode name (per-mode color swatches),
         // then the field title, then a prettified key (issue #19).
         this._form.computeLabel = (s) => {
+          if (s && s._label) return s._label;   // dynamic per-mode / per-toggle name fields
           const L = editorMap(this._hass, "editorLabels");
           return L[s.name] || modeName(this._hass, s.name) || s.title || prettifyName(s.name);
         };
@@ -4058,6 +4072,13 @@ ha-card[data-appearance="glass-light"] .ct-frost{
       // re-attached in _valueChanged. Unset seeds [] (clean empty add-control); [] is
       // pruned back out on save.
       data.extra_toggles = normalizeExtra(config.extra_toggles).map((t) => t.entity);
+
+      // Per-mode label overrides (mn__<mode>) and per-extra-toggle name overrides
+      // (xtn__<entity>) are editor-only display keys: seed each text field with the
+      // current custom label so it round-trips, then strip them back out in _valueChanged.
+      const mnames = (config.mode_names && typeof config.mode_names === "object" && !Array.isArray(config.mode_names)) ? config.mode_names : {};
+      for (const m of this._hvacModes(config)) data["mn__" + m] = (typeof mnames[m] === "string") ? mnames[m] : "";
+      for (const t of normalizeExtra(config.extra_toggles)) data["xtn__" + t.entity] = t.name || "";
       return data;
     }
 
@@ -4066,6 +4087,17 @@ ha-card[data-appearance="glass-light"] .ct-frost{
     _valueChanged(ev) {
       ev.stopPropagation();
       const cfg = Object.assign({}, ev.detail.value);
+
+      // Editor-only label fields: mn__<mode> -> mode_names, xtn__<entity> -> extra_toggles[].name.
+      // Track PRESENCE (a field emitted empty means "clear this label", not "leave unchanged").
+      const modeNameOv = {}, xtNameOv = {};
+      for (const k of Object.keys(cfg)) {
+        if (k.indexOf("mn__") === 0) { const v = cfg[k]; modeNameOv[k.slice(4)] = (typeof v === "string" ? v.trim() : ""); delete cfg[k]; }
+        else if (k.indexOf("xtn__") === 0) { const v = cfg[k]; xtNameOv[k.slice(5)] = (typeof v === "string" ? v.trim() : ""); delete cfg[k]; }
+      }
+      const mn = {};
+      for (const m of Object.keys(modeNameOv)) if (modeNameOv[m]) mn[m] = modeNameOv[m];
+      if (Object.keys(mn).length) cfg.mode_names = mn; else delete cfg.mode_names;
 
       // Undo the display seeding (issues #12, #13): the form re-emits the FULL
       // value including the seeded accent / per-mode colors / default-on toggles,
@@ -4112,7 +4144,19 @@ ha-card[data-appearance="glass-light"] .ct-frost{
           const id = typeof sel === "string" ? sel.trim() : (sel && sel.entity);
           if (!id) continue;
           const prior = prev[id];
-          rows.push(prior && typeof prior === "object" ? prior : id);
+          const priorObj = (prior && typeof prior === "object") ? prior : null;
+          // name: an emitted xtn__ field wins (empty string clears it); else keep the
+          // prior YAML/GUI name. icon stays as authored (YAML-only for now).
+          const name = (id in xtNameOv) ? (xtNameOv[id] || null) : ((priorObj && priorObj.name) || null);
+          const icon = (priorObj && priorObj.icon) || null;
+          if (name || icon) {
+            const r = { entity: id };
+            if (name) r.name = name;
+            if (icon) r.icon = icon;
+            rows.push(r);
+          } else {
+            rows.push(id);
+          }
         }
         if (rows.length) cfg.extra_toggles = rows; else delete cfg.extra_toggles;
       }

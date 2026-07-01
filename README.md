@@ -23,6 +23,7 @@ The **dual-ring AC control** card: drag the **inner ring** for temperature and t
 
 - [Demo](#demo)
 - [Features](#features)
+  - [What's new in v1.4.0](#whats-new-in-v140)
   - [What's new in v1.3.1](#whats-new-in-v131)
   - [What's new in v1.3.0](#whats-new-in-v130)
   - [What's new in v1.2.1](#whats-new-in-v121)
@@ -52,6 +53,13 @@ The **dual-ring AC control** card: drag the **inner ring** for temperature and t
 </details>
 
 ## Features
+
+### What's new in v1.4.0
+
+- **Rename the mode buttons** - a new `mode_names` option, and a "Mode labels" section in the visual editor, lets you relabel the OFF / COOL / DRY / and other mode buttons (for example `mode_names: { fan_only: Fan }`). Any mode you leave unset keeps its default label.
+- **Rename extra toggles in the editor** - each `extra_toggles` chip now has its own name field in the visual editor, so you can give it a short label without editing YAML.
+
+No breaking changes, safe to update via HACS. Hard-refresh your browser (Ctrl+F5 / Cmd+Shift+R) after updating so the new build loads.
 
 ### What's new in v1.3.1
 
@@ -295,6 +303,7 @@ All options are optional except `entity`. Defaults reproduce sensible behavior, 
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `modes` | list | entity `hvac_modes` | Which HVAC modes appear in the popup. |
+| `mode_names` | map | unset | Rename the mode buttons. A map of `hvac_mode: "Label"`, for example `mode_names: { fan_only: Fan, cool: Cooling }`. Any mode you do not list keeps its default localized label. Also editable in the visual editor under Modes. |
 
 #### Fan
 
@@ -313,7 +322,7 @@ All options are optional except `entity`. Defaults reproduce sensible behavior, 
 | `led_entity` | `switch.*` | Midea sibling | LED-display toggle override. |
 | `sound_entity` | `switch.*` | Midea sibling | Beep/sound toggle override. |
 | `show_swing` / `show_led` / `show_sound` | `auto` \| `true` \| `false` | `auto` | Force show/hide each toggle. A forced (`true`) chip with no resolvable entity still renders, but as a disabled, dimmed, inert chip. |
-| `extra_toggles` | list | unset | Extra chips added to the mode popup, for functions the card does not auto-detect. Accepts a list of `switch`, `input_boolean`, `select`, or `input_select` entities, each as a bare `domain.object_id` string or a `{ entity, name, icon }` object for a custom label and icon. Switch and boolean chips toggle on and off; select chips cycle through their options. A missing or unavailable entity renders as a dimmed, inert chip. |
+| `extra_toggles` | list | unset | Extra chips added to the mode popup, for functions the card does not auto-detect. Accepts a list of `switch`, `input_boolean`, `select`, or `input_select` entities, each as a bare `domain.object_id` string or a `{ entity, name, icon }` object. Switch and boolean chips toggle on and off; select chips cycle through their options. Set each chip's name in the visual editor (Extra toggles section), or its name and icon in YAML. A missing or unavailable entity renders as a dimmed, inert chip. |
 
 #### Layout
 

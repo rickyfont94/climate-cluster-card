@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-07-01
+
+### Added
+- `mode_names` option to rename the mode buttons: a map of `hvac_mode: "Label"` (for example `mode_names: { fan_only: Fan, cool: Cooling }`). Any mode left unset keeps its default localized label. The visual editor gains a "Mode labels" section with a field per mode.
+- The visual editor can now rename `extra_toggles` chips: each configured toggle entity gets its own name field in the Extra toggles section, so a custom chip label no longer requires editing YAML.
+
 ## [1.3.1] - 2026-07-01
 
 ### Fixed
@@ -82,6 +88,7 @@ First public release of the Climate Cluster Card for Home Assistant.
 - Full GUI editor, no YAML required.
 - Auto-discovery of fan / swing / LED / sound sibling entities, tuned for Midea (`midea_ac_lan`).
 
+[1.4.0]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v1.4.0
 [1.3.1]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v1.3.1
 [1.3.0]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v1.3.0
 [1.2.1]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v1.2.1
