@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2026-07-01
+
+### Fixed
+- Touch center tap on iOS (iPhone / iPad) now reliably opens the mode pop-up instead of leaving a focus outline with no pop-up.
+- Vertical swipes anywhere on the card now scroll the dashboard, except on the two arc rings, which still drag to set temperature and fan.
+- The center no longer flashes a focus square on tap.
+
 ## [1.2.0] - 2026-06-30
 
 ### Added
@@ -61,6 +68,7 @@ First public release of the Climate Cluster Card for Home Assistant.
 - Full GUI editor, no YAML required.
 - Auto-discovery of fan / swing / LED / sound sibling entities, tuned for Midea (`midea_ac_lan`).
 
+[1.2.1]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v1.2.1
 [1.2.0]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v1.2.0
 [1.1.0]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v1.1.0
 [1.0.6]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v1.0.6

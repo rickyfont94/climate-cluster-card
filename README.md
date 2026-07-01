@@ -23,6 +23,7 @@ The **dual-ring AC control** card: drag the **inner ring** for temperature and t
 
 - [Demo](#demo)
 - [Features](#features)
+  - [What's new in v1.2.1](#whats-new-in-v121)
   - [What's new in v1.2.0](#whats-new-in-v120)
 - [Screenshots](#screenshots)
 - [Theming and frosted glass](#theming-and-frosted-glass)
@@ -49,6 +50,14 @@ The **dual-ring AC control** card: drag the **inner ring** for temperature and t
 </details>
 
 ## Features
+
+### What's new in v1.2.1
+
+- **Reliable center tap on touch** - on iPhone and iPad the dial center now opens the mode popup every time, instead of leaving a stray focus outline with no popup.
+- **Scroll past the dial** - a vertical swipe anywhere on the card scrolls the dashboard; only the two arc rings still capture the drag to set temperature and fan.
+- **No focus square** - tapping the center no longer flashes a white outline around the temperature.
+
+Touch-only fixes, no config changes, safe to update via HACS.
 
 ### What's new in v1.2.0
 
