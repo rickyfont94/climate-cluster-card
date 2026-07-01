@@ -1,0 +1,13 @@
+{
+  "private": true,
+  "type": "module",
+  "name": "climate-cluster-card-dev",
+  "description": "Dev-only test harness for climate-cluster-card. The shipped artifact is the single vanilla file climate-cluster-card.js; nothing here is bundled or published.",
+  "scripts": {
+    "check": "node --check climate-cluster-card.js",
+    "test": "node --import ./test/setup.js --test"
+  },
+  "devDependencies": {
+    "@happy-dom/global-registrator": "20.10.6"
+  }
+}

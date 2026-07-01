@@ -26,7 +26,7 @@
   const NS = "http://www.w3.org/2000/svg";
 
   // ---- console version banner ---------------------------------------------
-  const VERSION = "1.2.1";
+  const VERSION = "1.2.2-beta.1";
   console.info(
     "%c CLIMATE-CLUSTER-CARD %c v" + VERSION + " ",
     "color:#0b0f16;background:#4fc3f7;font-weight:700;border-radius:4px 0 0 4px;padding:2px 6px",
@@ -2417,11 +2417,22 @@
           () => this._revertToggle("swing"));
         return;
       }
-      // climate generic: toggle between first non-off swing_mode and "off".
+      // climate generic: resolve a REAL off-like member from the entity's own
+      // swing_modes (case-insensitive match to "off", but send the entity's own
+      // casing) and toggle against a real on member. With no off member (pure
+      // vane-position lists like MelCloud ["Auto","1".."5","Swing"]) cycle to the
+      // next real swing_mode. Never send a value outside swing_modes.
       const st = this._st(m.ref);
       const modes = (st && st.attributes && st.attributes.swing_modes) || [];
       const onMode = modes.find((x) => String(x).toLowerCase() !== "off") || modes[0] || "vertical";
-      this._svcSetSwingMode(this._swingIsOn() ? "off" : onMode);
+      const cur = st && st.attributes && st.attributes.swing_mode;
+      const offMode = modes.find((x) => String(x).toLowerCase() === "off");
+      if (offMode) {
+        this._svcSetSwingMode(this._swingIsOn() ? offMode : onMode);
+      } else if (modes.length) {
+        const i = modes.findIndex((x) => String(x) === String(cur));
+        this._svcSetSwingMode(modes[(i + 1) % modes.length]);
+      }
     }
     // Whether a feature has a backing source the card can auto-detect.
     _featureAvail(kind) {

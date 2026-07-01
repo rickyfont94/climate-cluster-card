@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.2] - unreleased
+
+### Fixed
+- Swing chip now works on climate entities whose swing options are vane positions (for example MelCloud / Mitsubishi `["Auto", "1".."5", "Swing"]`) or use a capitalized `Off`. The card previously sent a hardcoded lowercase `off`, which is not a member of those lists, so Home Assistant rejected the call and the chip stopped responding. The off direction now resolves a real off-like member from the entity's own `swing_modes` (matched case-insensitively, sent with the entity's own casing); when there is no off member the chip cycles to the next real swing option instead. Midea and other switch-backed swing controls are unaffected.
+
 ## [1.2.1] - 2026-07-01
 
 ### Fixed
