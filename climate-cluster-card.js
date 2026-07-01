@@ -1405,7 +1405,7 @@
       // (default = more-info), and a double tap to double_tap_action (default none),
       // while respecting DRAG_THRESH_PX so a swipe off the disc is never an action.
       this._refs.centerHit = el("circle", {
-        class: "ct-hit", cx: 300, cy: 255, r: 86, fill: "transparent",
+        class: "ct-hit ct-center-hit", cx: 300, cy: 255, r: 86, fill: "transparent",
         role: "button", tabindex: "0", "aria-label": "Change mode", "aria-haspopup": "dialog",
       });
       svg.appendChild(this._refs.centerHit);
@@ -3338,6 +3338,14 @@ ha-card[data-appearance="glass-light"] .ct-frost{
   outline:none;
   stroke:color-mix(in srgb, var(--ct-accent) 26%, transparent);
 }
+/* The center disc is a full-bleed SVG circle, so ANY focus outline boxes its square
+   bounding box instead of the round dial. Focus lands on it when a tap/click opens the
+   mode popup and again when the popup closes and hands focus back to its trigger, which
+   flashed that square on pointer and touch. Scope the ring off the center hit only
+   (Enter/Space still open the popup via the keydown handler; the ring-slider focus
+   styling above is untouched). :focus, not :focus-visible, so the programmatic
+   focus return on popup close never leaves a lingering outline either. */
+.ct-card .ct-center-hit:focus{ outline:none; }
 /* Respect the reduce-motion setting: stop the fan-clover spin and the popup
    open/close transitions. !important so it also beats the inline fanSpin animation. */
 @media (prefers-reduced-motion: reduce){
