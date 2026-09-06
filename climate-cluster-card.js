@@ -26,7 +26,7 @@
   const NS = "http://www.w3.org/2000/svg";
 
   // ---- console version banner ---------------------------------------------
-  const VERSION = "1.5.0";
+  const VERSION = "1.5.1";
   console.info(
     "%c CLIMATE-CLUSTER-CARD %c v" + VERSION + " ",
     "color:#0b0f16;background:#4fc3f7;font-weight:700;border-radius:4px 0 0 4px;padding:2px 6px",
@@ -99,6 +99,8 @@
       swing: "SWING",
       led: "LED",
       sound: "SOUND",
+      close: "Close",
+      unavailable: "UNAVAILABLE",
       auto: "AUTO",
       automatic: "Automatic",
       percent: "percent",
@@ -213,6 +215,8 @@
       swing: "OSCILAR",
       led: "LED",
       sound: "SONIDO",
+      close: "Cerrar",
+      unavailable: "NO DISPONIBLE",
       auto: "AUTO",
       automatic: "Automatico",
       percent: "por ciento",
@@ -1408,8 +1412,11 @@
         class: "ct-swing ct-hit", transform: "translate(388,322)",
         role: "button", tabindex: "0", "aria-label": "Swing", "aria-pressed": "false",
       });
+      // 56x44 viewBox units. The card renders 600 units into roughly 470 CSS px on a
+      // normal dashboard column, so this is the smallest box that still clears the
+      // 44 CSS px touch-target guideline at that width (issue #21).
       this._refs.swingChipBg = el("rect", {
-        x: -19, y: -15, width: 38, height: 30, rx: 9,
+        x: -28, y: -22, width: 56, height: 44, rx: 12,
         fill: "rgba(40,52,66,.30)", stroke: "rgba(234,235,238,.14)", "stroke-width": "1",
       });
       swingChip.appendChild(this._refs.swingChipBg);
@@ -2834,10 +2841,28 @@
       const modes = this._config.modes
         || s.attributes.hvac_modes
         || ["off", "cool", "heat", "heat_cool", "dry", "fan_only", "auto"];
+      // Visible close affordance (issue #21). Escape and a backdrop click already
+      // closed the dialog, but neither is discoverable on a wall tablet.
+      const closeBtn = document.createElement("button");
+      closeBtn.className = "ct-popclose";
+      closeBtn.type = "button";
+      closeBtn.setAttribute("aria-label", this._t("close"));
+      closeBtn.title = this._t("close");
+      closeBtn.innerHTML =
+        '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+        '<path d="M6 6 L18 18 M18 6 L6 18" fill="none" stroke="currentColor" ' +
+        'stroke-width="2.4" stroke-linecap="round"/></svg>';
+      closeBtn.addEventListener("click", (e) => { e.stopPropagation(); this._closePop(); });
+      sheet.appendChild(closeBtn);
+      this._refs.popClose = closeBtn;
+
       modes.forEach((m) => {
         const b = document.createElement("button");
         b.dataset.mode = m; // raw hvac_mode value (service payload), never localized
         b.textContent = this._modeName(m); // CSS uppercases; HA localizes the name
+        // Light the active button in that MODE's own color rather than one global
+        // accent, so the popup reads as part of the same instrument as the dial.
+        b.style.setProperty("--ct-lit", this._modeColor(m));
         sheet.appendChild(b);
       });
       // TOGGLES ROW (SWING / LED / SOUND), below the modes with a separator. Built
@@ -3206,6 +3231,18 @@
       this._refs.modeGlyph.style.opacity = off ? "0.45" : "0.85";
     }
 
+    // Fit the card title to the open band above the arc apex. The title sits at
+    // font-size 24 with 3 units of letter-spacing in a 600-unit viewBox; the arc
+    // shoulders leave roughly 420 units of clear width, which is about 26 glyphs at
+    // the average advance of this stack. Measured per render would need a layout
+    // read, so this is a character budget, not a pixel fit: it never overflows and
+    // the full name always stays available on the <title> tooltip.
+    _fitTitle(name) {
+      const MAX = 26;
+      const s = String(name == null ? "" : name);
+      return s.length <= MAX ? s : s.slice(0, MAX - 1).trimEnd() + "…";
+    }
+
     // Display name: config.name first, else friendly_name, else entity id, else "AC".
     _acName() {
       const cfgName = this._config && this._config.name ? String(this._config.name).trim() : "";
@@ -3228,7 +3265,16 @@
       if (this._i18nLang !== lang) { this._i18nLang = lang; this._applyStaticStrings(); }
       const s = this._st(this._config.entity);
 
-      if (this._refs.title) this._refs.title.textContent = this._acName();
+      // Title: SVG text has no text-overflow, so a long name used to run off both
+      // ends of the card. Truncate to what fits the open band above the arc and
+      // hang the full name off a <title> child for hover and screen readers.
+      if (this._refs.title) {
+        const full = this._acName();
+        this._refs.title.textContent = this._fitTitle(full); // wipes children
+        const tip = document.createElementNS(NS, "title");   // so re-add the tooltip
+        tip.textContent = full;
+        this._refs.title.appendChild(tip);
+      }
       // a11y: name the control group so it isn't read as one unlabeled graphic (issue #5).
       if (this._refs.svg) this._refs.svg.setAttribute("aria-label", this._acName() + " " + this._t("climate_control"));
 
@@ -3257,8 +3303,17 @@
         card.style.setProperty("--accent", this._modeColor("off"));
         this._refs.bigNum.textContent = "--";
         this._refs.bigNum.setAttribute("font-size", "104");
-        this._refs.labelTop.textContent = s ? s.state.toUpperCase() : this._t("missing");
+        this._refs.labelTop.textContent = s
+          ? (s.state === "unavailable" ? this._t("unavailable") : s.state.toUpperCase())
+          : this._t("missing");
         this._refs.labelTop.style.fill = "var(--secondary-text-color, #6b7a88)";
+        // Clear the arc fills too. Without this the ring keeps the last value it
+        // painted, so a unit that drops offline still reads as a live setpoint
+        // behind the dimmed face (issue #21).
+        ["coldFill", "warmFill", "coldHalo", "warmHalo"].forEach((k) => {
+          if (this._refs[k]) this._refs[k].setAttribute("d", "");
+        });
+        if (this._refs.tempNeedle) this._refs.tempNeedle.style.display = "none";
         this._refs.nowCap.style.display = "none";
         this._refs.caret.style.display = "none";
         this._refs.curMarker.style.display = "none";
@@ -3279,6 +3334,9 @@
       }
 
       const attr = s.attributes || {};
+      // Undo the unavailable branch's hide: the entity is live again, so the warm
+      // needle comes back. (The cyan low needle is driven per-mode further down.)
+      if (this._refs.tempNeedle) this._refs.tempNeedle.style.display = "";
       // Drop any optimistic hold the moment live state catches up (issue #9), so
       // the optimistic-vs-live checks below paint live as soon as it is real.
       this._reconcileOptimistic(attr);
@@ -3706,12 +3764,39 @@ ha-card[data-appearance="glass-light"] .ct-frost{
   border:1px solid var(--divider-color, rgba(234,235,238,.14)); border-radius:12px;
   font:inherit; font-size:15px; letter-spacing:2px; text-transform:uppercase; transition:.15s;
 }
-.ct-sheet button:hover{ border-color:color-mix(in srgb, var(--ct-accent) 45%, transparent); color:var(--primary-text-color, #c6d3df); }
+.ct-sheet button:hover{ border-color:color-mix(in srgb, var(--ct-lit, var(--ct-accent)) 45%, transparent); color:var(--primary-text-color, #c6d3df); }
+/* The lit mode button wears its OWN mode color (--ct-lit, set per button in
+   _buildPop) and falls back to the UI accent for any button without one, so the
+   popup belongs to the same instrument as the arc instead of going one flat blue. */
 .ct-sheet button.active{
-  background:color-mix(in srgb, var(--ct-accent) 16%, transparent); color:var(--primary-text-color, rgba(234,235,238,.98));
-  border:1.5px solid var(--ct-accent);
-  box-shadow:0 0 14px color-mix(in srgb, var(--ct-accent) 40%, transparent),
-    inset 0 0 12px color-mix(in srgb, var(--ct-accent) 14%, transparent);
+  background:color-mix(in srgb, var(--ct-lit, var(--ct-accent)) 16%, transparent); color:var(--primary-text-color, rgba(234,235,238,.98));
+  border:1.5px solid var(--ct-lit, var(--ct-accent));
+  box-shadow:0 0 14px color-mix(in srgb, var(--ct-lit, var(--ct-accent)) 40%, transparent),
+    inset 0 0 12px color-mix(in srgb, var(--ct-lit, var(--ct-accent)) 14%, transparent);
+}
+/* Close button: pinned to the sheet corner, never a grid cell. The extra top
+   padding is the band it sits in, so it never covers the first row of modes. */
+.ct-sheet{ position:relative; padding-top:52px; }
+.ct-sheet button.ct-popclose{
+  position:absolute; top:10px; right:10px;
+  min-width:0; width:36px; height:36px; padding:0;
+  display:grid; place-items:center; border-radius:50%;
+  background:var(--secondary-background-color, rgba(30,40,52,.55));
+  color:var(--secondary-text-color, #9aa8b6);
+  border:1px solid var(--divider-color, rgba(234,235,238,.14));
+}
+.ct-sheet button.ct-popclose:hover{ color:var(--primary-text-color, #c6d3df); }
+.ct-popclose svg{ width:18px; height:18px; display:block; }
+
+/* Respect the OS "reduce motion" setting: kill the clover spin, the popup scale-in
+   and every hover/press transition. A wall tablet left running should not animate
+   for someone who asked the platform not to. */
+@media (prefers-reduced-motion: reduce){
+  .ct-clover g, .ct-pop, .ct-sheet, .ct-sheet button, .ct-hit, .ct-pressdisc{
+    animation:none !important; transition:none !important;
+  }
+  .ct-pop.open .ct-sheet{ transform:none; }
+  .ct-sheet{ transform:none; }
 }
 @media (max-width:480px){ .ct-sheet button{ min-width:88px; padding:14px 8px; font-size:13px; } }
 

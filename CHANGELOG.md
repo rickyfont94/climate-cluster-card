@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.1] - 2026-09-06
+
+### Added
+- The mode pop-up has a visible close button. Escape and a backdrop click already closed it, but neither is discoverable on a wall tablet.
+- The card honors the operating system "reduce motion" setting. The clover stops spinning and the pop-up stops scaling in for anyone who has asked their platform to reduce animation.
+
+### Changed
+- Each mode button in the pop-up now lights in its own mode color instead of a single UI accent, so the pop-up reads as part of the same instrument as the dial.
+- The swing chip is 56 by 44 viewBox units, which clears the 44 pixel touch target guideline at a normal dashboard width. It used to be 38 by 30.
+
+### Fixed
+- A long card title ran off both ends of the card. Titles are now truncated to what fits above the arc, with the full name kept on a tooltip for hover and screen readers.
+- An unavailable entity kept the last temperature arc it painted, so a unit that dropped offline still showed a setpoint behind the dimmed face. The arc and the setpoint needle are now cleared.
+- The unavailable label is localized instead of always printing the raw English state.
+
 ## [1.5.0] - 2026-09-06
 
 ### Added
@@ -107,6 +122,7 @@ First public release of the Climate Cluster Card for Home Assistant.
 - Full GUI editor, no YAML required.
 - Auto-discovery of fan / swing / LED / sound sibling entities, tuned for Midea (`midea_ac_lan`).
 
+[1.5.1]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v1.5.1
 [1.5.0]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v1.5.0
 [1.4.0]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v1.4.0
 [1.3.1]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v1.3.1
