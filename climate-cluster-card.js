@@ -26,7 +26,7 @@
   const NS = "http://www.w3.org/2000/svg";
 
   // ---- console version banner ---------------------------------------------
-  const VERSION = "1.8.0";
+  const VERSION = "2.0.0";
   console.info(
     "%c CLIMATE-CLUSTER-CARD %c v" + VERSION + " ",
     "color:#0b0f16;background:#4fc3f7;font-weight:700;border-radius:4px 0 0 4px;padding:2px 6px",
@@ -589,6 +589,18 @@
   const DEFAULT_ON_KEYS = ["show_scale", "show_current", "fan_animation", "show_hints"];
 
   // Polar helper (CW from top): x = cx + r*sin(deg), y = cy - r*cos(deg).
+  // The group card composes its markup as a string, so every value that comes from
+  // an entity (a friendly name, a preset, a state) is escaped on the way in. Entity
+  // names are user-controlled, and one carrying a quote or an angle bracket must not
+  // be able to close an attribute or open a tag.
+  function escapeText(v) {
+    return String(v == null ? "" : v)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+  function escapeAttr(v) {
+    return escapeText(v).replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+
   function polar(cx, cy, r, angDeg) {
     const a = ((angDeg - 90) * Math.PI) / 180;
     return [cx + r * Math.cos(a), cy + r * Math.sin(a)];
@@ -3288,7 +3300,7 @@
       if (this._refs.presetRow) {
         const row = this._refs.presetRow;
         const list = this._presetModes();
-        const sig = list.join(" ");
+        const sig = list.join(" ");
         if (this._presetsBuiltFor !== sig) {
           this._presetsBuiltFor = sig;
           row.innerHTML = "";
@@ -4849,6 +4861,466 @@ ha-card[data-appearance="glass-light"] .ct-frost{
     return { entity: first || "climate.example" };
   };
 
+  // Group-card styles. Everything is theme-driven; the only literal colors are the
+  // two arc gradients, which are the instrument's identity and are shared with the
+  // single dial.
+  const GROUP_CSS = `
+.cg-card{ display:block; padding:14px 16px 16px; font-family:${FONT_STACK}; }
+.cg-head{ display:flex; align-items:baseline; justify-content:space-between; gap:12px;
+  padding-bottom:8px; border-bottom:1px solid var(--divider-color, rgba(127,127,127,.2)); }
+.cg-title{ font-size:22px; font-weight:600; letter-spacing:3px; text-transform:uppercase;
+  color:var(--primary-text-color); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cg-count{ font-size:13px; font-weight:600; letter-spacing:2px; color:var(--secondary-text-color); flex:none; }
+
+.cg-body{ display:grid; grid-template-columns:minmax(190px,1fr) minmax(0,1.15fr); gap:12px; margin-top:10px; align-items:start; }
+@media (max-width:460px){ .cg-body{ grid-template-columns:1fr; } }
+.cg-hero{ min-width:0; }
+.cg-hero-svg{ display:block; width:100%; height:auto; overflow:visible; }
+
+.cg-zones{ display:grid; grid-template-columns:repeat(auto-fill, minmax(126px, 1fr)); gap:8px; min-width:0; }
+.cg-zone{ appearance:none; font:inherit; cursor:pointer; text-align:left; padding:8px 8px 4px;
+  border-radius:12px; border:1px solid var(--divider-color, rgba(127,127,127,.25));
+  background:color-mix(in srgb, var(--secondary-text-color, #8c99a7) 5%, transparent);
+  color:var(--primary-text-color); transition:border-color .15s ease, background .15s ease; min-width:0; }
+.cg-zone.on{ border-color:color-mix(in srgb, var(--cg-mode, var(--primary-color)) 45%, transparent); }
+.cg-zone.focused{ border-color:var(--cg-mode, var(--primary-color)); border-width:1.5px;
+  box-shadow:0 0 12px color-mix(in srgb, var(--cg-mode, var(--primary-color)) 30%, transparent); }
+.cg-zone.dead{ opacity:.5; }
+.cg-zone:hover{ background:color-mix(in srgb, var(--cg-mode, var(--primary-color)) 10%, transparent); }
+.cg-zone:focus-visible{ outline:2px solid var(--primary-color, #03a9f4); outline-offset:2px; }
+.cg-zone-head{ display:flex; align-items:baseline; justify-content:space-between; gap:6px; }
+.cg-zone-name{ font-size:12px; font-weight:600; letter-spacing:1.4px; text-transform:uppercase;
+  color:var(--secondary-text-color); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cg-zone-mode{ font-size:10px; font-weight:600; letter-spacing:1px; flex:none;
+  color:var(--cg-mode, var(--secondary-text-color)); }
+.cg-zone.dead .cg-zone-mode, .cg-zone:not(.on) .cg-zone-mode{ color:var(--secondary-text-color); }
+.cg-zone-svg{ display:block; width:100%; height:auto; margin-top:2px; }
+
+.cg-track{ stroke: color-mix(in srgb, var(--secondary-text-color, #8c99a7) 24%, transparent); }
+.cg-tick{ stroke: color-mix(in srgb, var(--secondary-text-color, #8c99a7) 45%, transparent); stroke-width:1.2; stroke-linecap:round; }
+.cg-tick-maj{ stroke: var(--secondary-text-color, #8c99a7); stroke-width:2; }
+.cg-num{ font-size:11px; font-weight:600; letter-spacing:.4px; fill:var(--secondary-text-color); }
+.cg-marker{ fill:var(--primary-text-color); stroke:var(--ha-card-background, var(--card-background-color, #fff)); stroke-width:1; stroke-linejoin:round; }
+.cg-clover{ fill:var(--secondary-text-color); opacity:.7; }
+.cg-dim{ fill:var(--secondary-text-color); }
+.cg-hero-label{ font-size:13px; font-weight:600; letter-spacing:4px; fill:var(--secondary-text-color); }
+.cg-hero-now{ font-size:12px; letter-spacing:2.5px; fill:var(--primary-text-color); }
+.cg-hero-big{ font-size:58px; letter-spacing:2px; fill:var(--primary-text-color); }
+.cg-hero-sub{ font-size:11px; font-weight:600; letter-spacing:2px; fill:var(--secondary-text-color); }
+.cg-zone-big{ font-size:26px; fill:var(--primary-text-color); }
+.cg-zone-now{ font-size:9.5px; letter-spacing:1.4px; fill:var(--primary-text-color); }
+text.cg-dim, tspan.cg-dim{ fill:var(--secondary-text-color); }
+
+.cg-actions{ display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; padding-top:10px;
+  border-top:1px solid var(--divider-color, rgba(127,127,127,.2)); }
+.cg-act{ appearance:none; font:inherit; cursor:pointer; padding:9px 16px; border-radius:10px;
+  font-size:13px; font-weight:600; letter-spacing:2px; text-transform:uppercase;
+  background:var(--secondary-background-color, rgba(120,130,145,.14));
+  color:var(--primary-text-color); border:1px solid var(--divider-color, rgba(127,127,127,.3));
+  transition:border-color .15s ease; }
+.cg-act:hover{ border-color:var(--primary-color, #03a9f4); }
+.cg-act:focus-visible{ outline:2px solid var(--primary-color, #03a9f4); outline-offset:2px; }
+@media (prefers-reduced-motion: reduce){ .cg-zone, .cg-act{ transition:none !important; } }
+`;
+
+  // ============================================================================
+  // GROUP CARD  (custom:climate-cluster-group-card)
+  // ============================================================================
+  // A second card type: one house gauge plus every zone as a live mini instrument.
+  // It is the SAME instrument at three sizes, drawn with the same helpers as the
+  // single dial (polar / arcPath / the needle path / the clover), so the two cards
+  // cannot drift apart visually.
+  //
+  // Zones live in a CSS grid rather than fixed SVG slots, so the card takes any
+  // number of entities and reflows instead of silently dropping the overflow.
+  // ============================================================================
+  const G_A0 = 250, G_SPAN = 220, G_A1 = G_A0 + G_SPAN;
+
+  // Needle path, authored tip at +Y so rotate(ang) turns it inward. Shared shape
+  // with the single dial; only the scale differs.
+  const G_NEEDLE =
+    'M 0 15 Q 5.6 10 7.2 2.5 Q 8.2 -4.5 4.2 -9.5 Q 2.2 -11.5 0 -10 ' +
+    'Q -2.2 -11.5 -4.2 -9.5 Q -8.2 -4.5 -7.2 2.5 Q -5.6 10 0 15 Z';
+
+  function gArc(cx, cy, r, a0, a1) {
+    const p = polar(cx, cy, r, a0), q = polar(cx, cy, r, a1);
+    return `M ${p[0].toFixed(1)} ${p[1].toFixed(1)} A ${r} ${r} 0 ${(a1 - a0) > 180 ? 1 : 0} 1 ${q[0].toFixed(1)} ${q[1].toFixed(1)}`;
+  }
+
+  class ClimateClusterGroupCard extends HTMLElement {
+    constructor() {
+      super();
+      this._built = false;
+      this._hass = null;
+      this._config = null;
+      this._focus = null;   // entity_id currently promoted into the hero, or null
+      this._sig = null;     // last painted state signature (dirty check)
+    }
+
+    setConfig(config) {
+      if (!config) throw new Error("Invalid configuration");
+      const list = Array.isArray(config.entities) ? config.entities : [];
+      const ents = list
+        .map((e) => (typeof e === "string" ? { entity: e } : e))
+        .filter((e) => e && typeof e.entity === "string" && e.entity.indexOf("climate.") === 0);
+      if (!ents.length) throw new Error("Define at least one climate entity in `entities`");
+      this._config = Object.assign({}, config);
+      this._zones = ents;
+      this._focus = null;
+      this._sig = null;
+      if (this._built) this._render();
+    }
+
+    set hass(hass) {
+      this._hass = hass;
+      if (!this._built) this._build();
+      this._render();
+    }
+
+    getCardSize() { return 8; }
+    getGridOptions() {
+      return { columns: 12, rows: 8, min_columns: 6, min_rows: 4 };
+    }
+
+    // Only repaint when something this card actually shows has changed. A group
+    // card watches several entities, so without this it would rebuild its whole
+    // SVG on every unrelated state change in the house.
+    _signature() {
+      if (!this._hass) return "";
+      const parts = [this._focus || ""];
+      for (const z of this._zones) {
+        const s = this._hass.states[z.entity];
+        if (!s) { parts.push(z.entity + ":-"); continue; }
+        const a = s.attributes || {};
+        parts.push([z.entity, s.state, a.temperature, a.current_temperature,
+          a.target_temp_low, a.target_temp_high, a.hvac_action, a.preset_mode].join("|"));
+      }
+      return parts.join(";");
+    }
+
+    _st(id) {
+      return this._hass && this._hass.states ? this._hass.states[id] : null;
+    }
+    _unit() {
+      const u = this._config.temperature_unit;
+      if (u === "F" || u === "C") return u;
+      const sys = this._hass && this._hass.config && this._hass.config.unit_system;
+      return sys && String(sys.temperature).indexOf("C") >= 0 ? "C" : "F";
+    }
+    _range() {
+      const u = this._unit();
+      let lo = num(this._config.min_temp), hi = num(this._config.max_temp);
+      if (lo == null || hi == null) {
+        // Widest range any zone advertises, so one gauge scale fits them all.
+        let mn = null, mx = null;
+        for (const z of this._zones) {
+          const a = (this._st(z.entity) || {}).attributes || {};
+          const zl = num(a.min_temp), zh = num(a.max_temp);
+          if (zl != null) mn = mn == null ? zl : Math.min(mn, zl);
+          if (zh != null) mx = mx == null ? zh : Math.max(mx, zh);
+        }
+        const d = u === "C" ? { lo: 16, hi: 30 } : { lo: 61, hi: 86 };
+        lo = lo != null ? lo : (mn != null ? mn : d.lo);
+        hi = hi != null ? hi : (mx != null ? mx : d.hi);
+      }
+      if (!(hi > lo)) hi = lo + 1;
+      return { lo, hi };
+    }
+    _setpoint(s) {
+      if (!s) return null;
+      const a = s.attributes || {};
+      const t = num(a.temperature);
+      if (t != null) return t;
+      const l = num(a.target_temp_low), h = num(a.target_temp_high);
+      if (l != null && h != null) return (l + h) / 2;
+      return null;
+    }
+    _live(z) {
+      const s = this._st(z.entity);
+      const a = (s && s.attributes) || {};
+      const dead = !s || s.state === "unavailable" || s.state === "unknown";
+      return {
+        id: z.entity,
+        name: z.name || a.friendly_name || z.entity,
+        state: s ? s.state : "unavailable",
+        dead,
+        on: !dead && s.state !== "off",
+        set: this._setpoint(s),
+        now: num(a.current_temperature),
+        rh: num(a.current_humidity),
+        action: a.hvac_action || null,
+        color: MODE_COLORS[s ? s.state : "off"] || MODE_COLORS.off,
+      };
+    }
+    // The hero reading: an average, the hottest zone, a named entity, or whichever
+    // zone the user has tapped into focus.
+    _heroPick(zones) {
+      if (this._focus) {
+        const f = zones.find((z) => z.id === this._focus);
+        if (f) return { kind: "zone", z: f };
+      }
+      const mode = this._config.hero || "average";
+      const live = zones.filter((z) => !z.dead && z.set != null);
+      if (mode !== "average" && mode !== "hottest") {
+        const named = zones.find((z) => z.id === mode);
+        if (named) return { kind: "zone", z: named };
+      }
+      if (!live.length) return { kind: "empty" };
+      if (mode === "hottest") {
+        return { kind: "zone", z: live.reduce((a, b) => ((b.now != null ? b.now : -1e9) > (a.now != null ? a.now : -1e9) ? b : a)) };
+      }
+      const avg = (arr) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null);
+      return {
+        kind: "average",
+        set: avg(live.map((z) => z.set)),
+        now: avg(live.filter((z) => z.now != null).map((z) => z.now)),
+        rh: avg(zones.filter((z) => z.rh != null).map((z) => z.rh)),
+        running: zones.filter((z) => z.on).length,
+      };
+    }
+
+    _fmt(v) {
+      if (v == null) return "--";
+      const r = Math.round(v * 10) / 10;
+      return Number.isInteger(r) ? String(r) : r.toFixed(1);
+    }
+
+    _build() {
+      const root = this.shadowRoot || this.attachShadow({ mode: "open" });
+      root.innerHTML = "";
+      const style = document.createElement("style");
+      style.textContent = GROUP_CSS;
+      root.appendChild(style);
+      const card = document.createElement("ha-card");
+      card.className = "cg-card";
+      this._card = card;
+      root.appendChild(card);
+      card.addEventListener("click", (e) => this._onClick(e));
+      this._built = true;
+    }
+
+    _onClick(e) {
+      const zoneEl = e.target && e.target.closest ? e.target.closest("[data-zone]") : null;
+      if (zoneEl) {
+        const id = zoneEl.dataset.zone;
+        const how = this._config.tap_zone || "focus";
+        if (how === "more-info") {
+          this.dispatchEvent(new CustomEvent("hass-more-info", {
+            detail: { entityId: id }, bubbles: true, composed: true,
+          }));
+          return;
+        }
+        this._focus = this._focus === id ? null : id; // tap again to go back
+        this._sig = null;
+        this._render();
+        return;
+      }
+      const actEl = e.target && e.target.closest ? e.target.closest("[data-act]") : null;
+      if (actEl) this._groupAction(actEl.dataset.act, actEl.dataset.arg);
+    }
+
+    _call(domain, service, data) {
+      if (!this._hass) return;
+      try {
+        const p = this._hass.callService(domain, service, data);
+        if (p && typeof p.catch === "function") {
+          p.catch((err) => { console.error("climate-cluster-group-card:", err); });
+        }
+      } catch (err) { console.error("climate-cluster-group-card:", err); }
+    }
+
+    _groupAction(act, arg) {
+      const ids = this._zones.map((z) => z.entity);
+      if (act === "off") { this._call("climate", "turn_off", { entity_id: ids }); return; }
+      if (act === "preset") { this._call("climate", "set_preset_mode", { entity_id: ids, preset_mode: arg }); return; }
+      if (act === "setpoint") {
+        const t = num(arg);
+        if (t == null) return;
+        // Only entities with a single setpoint: a heat_cool zone wants low/high,
+        // and guessing which one to move would be worse than skipping it.
+        const single = this._zones
+          .map((z) => this._st(z.entity))
+          .filter((s) => s && s.state !== "off" && s.state !== "unavailable"
+            && num((s.attributes || {}).temperature) != null)
+          .map((s) => s.entity_id);
+        if (single.length) this._call("climate", "set_temperature", { entity_id: single, temperature: t });
+      }
+    }
+
+    // Presets every zone supports, so a group preset button can never write a value
+    // one of them would reject.
+    _sharedPresets() {
+      let shared = null;
+      for (const z of this._zones) {
+        const a = (this._st(z.entity) || {}).attributes || {};
+        const list = Array.isArray(a.preset_modes) ? a.preset_modes : [];
+        shared = shared == null ? list.slice() : shared.filter((p) => list.includes(p));
+        if (!shared.length) return [];
+      }
+      return (shared || []).filter((p) => String(p).toLowerCase() !== "none");
+    }
+
+    _heroSvg(hero, zones) {
+      const { lo, hi } = this._range();
+      const CXH = 168, CYH = 208, R = 104, W = 13;
+      const t2a = (t) => G_A0 + G_SPAN * ((clamp(t, lo, hi) - lo) / (hi - lo));
+      const isZone = hero.kind === "zone";
+      const set = isZone ? hero.z.set : (hero.kind === "average" ? hero.set : null);
+      const now = isZone ? hero.z.now : (hero.kind === "average" ? hero.now : null);
+      const label = isZone ? hero.z.name : this._t("average");
+      const sub = isZone
+        ? (hero.z.on ? String(hero.z.state).toUpperCase().replace("_", " ") : this._t("off_word"))
+        : (hero.kind === "average" ? `${hero.running} ${this._t("running")}` : "");
+
+      let s = `<svg viewBox="0 0 600 392" class="cg-hero-svg" role="img" aria-label="${escapeAttr(label)}">`;
+      s += '<defs>'
+        + '<linearGradient id="cgCold" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#2aa7d6"/><stop offset="1" stop-color="#7fe4ff"/></linearGradient>'
+        + '<linearGradient id="cgWarm" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFC98A"/><stop offset="1" stop-color="#F2933A"/></linearGradient>'
+        + '<filter id="cgGlow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="5"/></filter>'
+        + '</defs>';
+
+      // tick scale, same proportions as the single dial
+      let tk = "";
+      const span = hi - lo;
+      const minor = span > 40 ? span / 40 : 1;
+      const stride = span > 40 ? 10 : 5;
+      for (let t = lo; t <= hi + 1e-6; t += minor) {
+        const a = t2a(t);
+        const major = Math.abs(t / stride - Math.round(t / stride)) < 1e-6;
+        const len = major ? 7 : 3.5;
+        const p = polar(CXH, CYH, R - 11 - len, a), q = polar(CXH, CYH, R - 11, a);
+        tk += `<line x1="${p[0].toFixed(1)}" y1="${p[1].toFixed(1)}" x2="${q[0].toFixed(1)}" y2="${q[1].toFixed(1)}" class="cg-tick${major ? " cg-tick-maj" : ""}"/>`;
+      }
+      for (let t = Math.ceil(lo / stride) * stride; t <= hi + 1e-6; t += stride) {
+        const np = polar(CXH, CYH, R - 32, t2a(t));
+        tk += `<text x="${np[0].toFixed(1)}" y="${np[1].toFixed(1)}" text-anchor="middle" dominant-baseline="central" class="cg-num">${this._fmt(t)}</text>`;
+      }
+      s += `<g>${tk}</g>`;
+
+      s += `<path d="${gArc(CXH, CYH, R, G_A0, G_A1)}" class="cg-track" stroke-width="${W}" fill="none" stroke-linecap="round"/>`;
+      if (set != null) {
+        const a = t2a(set);
+        s += `<path d="${gArc(CXH, CYH, R, G_A0, Math.max(G_A0 + 0.01, a))}" fill="none" stroke="#5CD6FF" stroke-width="${W}" stroke-linecap="round" opacity=".35" filter="url(#cgGlow)"/>`;
+        s += `<path d="${gArc(CXH, CYH, R, G_A0, Math.max(G_A0 + 0.01, a))}" fill="none" stroke="url(#cgCold)" stroke-width="${W}" stroke-linecap="round"/>`;
+        s += `<path d="${gArc(CXH, CYH, R, Math.min(a, G_A1 - 0.01), G_A1)}" fill="none" stroke="url(#cgWarm)" stroke-width="${W}" stroke-linecap="round"/>`;
+        const seat = polar(CXH, CYH, R, a);
+        s += `<g transform="translate(${seat[0].toFixed(1)},${seat[1].toFixed(1)}) rotate(${a.toFixed(1)}) scale(0.8)">`
+          + `<path d="${G_NEEDLE}" fill="#F2933A" stroke="#FFB55E" stroke-width="1" stroke-opacity=".55" stroke-linejoin="round"/></g>`;
+      }
+      if (now != null) {
+        const a = t2a(now), m = polar(CXH, CYH, R, a);
+        s += `<g transform="translate(${m[0].toFixed(1)},${m[1].toFixed(1)}) rotate(${a.toFixed(1)})">`
+          + '<path d="M0,7 L4.4,.8 L-4.4,.8 Z" class="cg-marker"/></g>';
+      }
+      s += `<text x="${CXH}" y="${CYH - 44}" text-anchor="middle" class="cg-hero-label">${escapeText(String(label).toUpperCase())}</text>`;
+      if (now != null) {
+        s += `<text x="${CXH}" y="${CYH - 26}" text-anchor="middle" class="cg-hero-now">`
+          + `<tspan class="cg-dim">${escapeText(this._t("now"))} </tspan><tspan>${this._fmt(now)}&#176;</tspan></text>`;
+      }
+      s += `<text x="${CXH}" y="${CYH + 16}" text-anchor="middle" dominant-baseline="central" class="cg-hero-big">${set == null ? "--" : this._fmt(set)}</text>`;
+      s += `<text x="${CXH}" y="${CYH + 48}" text-anchor="middle" class="cg-hero-sub">${escapeText(String(sub).toUpperCase())}</text>`;
+      return s + "</svg>";
+    }
+
+    _zoneSvg(z) {
+      const { lo, hi } = this._range();
+      const cx = 60, cy = 62, r = 30, w = 7;
+      const t2a = (t) => G_A0 + G_SPAN * ((clamp(t, lo, hi) - lo) / (hi - lo));
+      let s = '<svg viewBox="0 0 120 92" class="cg-zone-svg" aria-hidden="true">';
+      s += `<path d="${gArc(cx, cy, r, G_A0, G_A1)}" class="cg-track" stroke-width="${w}" fill="none" stroke-linecap="round"/>`;
+      if (z.on && z.set != null) {
+        const a = t2a(z.set);
+        s += `<path d="${gArc(cx, cy, r, G_A0, Math.max(G_A0 + 0.01, a))}" fill="none" stroke="url(#cgCold)" stroke-width="${w}" stroke-linecap="round"/>`;
+        s += `<path d="${gArc(cx, cy, r, Math.min(a, G_A1 - 0.01), G_A1)}" fill="none" stroke="url(#cgWarm)" stroke-width="${w}" stroke-linecap="round"/>`;
+        const seat = polar(cx, cy, r, a);
+        s += `<g transform="translate(${seat[0].toFixed(1)},${seat[1].toFixed(1)}) rotate(${a.toFixed(1)}) scale(0.36)">`
+          + `<path d="${G_NEEDLE}" fill="#F2933A" stroke="#FFB55E" stroke-width="1" stroke-opacity=".55" stroke-linejoin="round"/></g>`;
+      }
+      s += `<text x="${cx}" y="${cy - 4}" text-anchor="middle" dominant-baseline="central" class="cg-zone-big${z.on ? "" : " cg-dim"}">${z.dead ? "--" : (z.set == null ? "--" : this._fmt(z.set))}</text>`;
+      if (z.now != null) {
+        s += `<text x="${cx}" y="${cy + 16}" text-anchor="middle" class="cg-zone-now">`
+          + `<tspan class="cg-dim">${escapeText(this._t("now"))} </tspan><tspan>${this._fmt(z.now)}&#176;</tspan></text>`;
+      }
+      if (z.on) {
+        s += `<g transform="translate(104,56) scale(.55)" class="cg-clover"><path d="${fanGlyph()}"/></g>`;
+      }
+      return s + "</svg>";
+    }
+
+    _t(k) {
+      const M = {
+        average: { en: "Average", es: "Promedio" },
+        running: { en: "running", es: "encendidos" },
+        now: { en: "NOW", es: "AHORA" },
+        off_word: { en: "Off", es: "Apagado" },
+        all_off: { en: "All off", es: "Apagar todo" },
+        sync: { en: "Sync all", es: "Igualar todo" },
+        unavailable: { en: "Unavailable", es: "No disponible" },
+      };
+      const lang = langOf(this._hass);
+      const row = M[k] || {};
+      return row[lang] || row.en || k;
+    }
+
+    _render() {
+      if (!this._built || !this._hass || !this._config) return;
+      const sig = this._signature();
+      if (sig === this._sig) return; // nothing this card shows has changed
+      this._sig = sig;
+
+      const zones = this._zones.map((z) => this._live(z));
+      const hero = this._heroPick(zones);
+      const running = zones.filter((z) => z.on).length;
+      const heroSet = hero.kind === "average" ? hero.set : (hero.kind === "zone" ? hero.z.set : null);
+
+      let html = '<div class="cg-head">'
+        + `<span class="cg-title">${escapeText(this._config.name || "House")}</span>`
+        + `<span class="cg-count">${running} / ${zones.length}</span>`
+        + "</div>";
+
+      html += `<div class="cg-body"><div class="cg-hero">${this._heroSvg(hero, zones)}</div>`;
+      html += '<div class="cg-zones">';
+      for (const z of zones) {
+        const cls = "cg-zone" + (z.on ? " on" : "") + (z.dead ? " dead" : "")
+          + (this._focus === z.id ? " focused" : "");
+        html += `<button type="button" class="${cls}" data-zone="${escapeAttr(z.id)}" `
+          + `style="--cg-mode:${z.color}" aria-pressed="${this._focus === z.id ? "true" : "false"}">`
+          + '<span class="cg-zone-head">'
+          + `<span class="cg-zone-name">${escapeText(z.name)}</span>`
+          + `<span class="cg-zone-mode">${escapeText(z.dead ? this._t("unavailable") : (z.on ? String(z.state).toUpperCase().replace("_", " ") : "OFF"))}</span>`
+          + "</span>"
+          + this._zoneSvg(z)
+          + "</button>";
+      }
+      html += "</div></div>";
+
+      const acts = this._config.group_actions === false ? [] : ["off", "setpoint", "preset"];
+      if (acts.length) {
+        html += '<div class="cg-actions">';
+        if (acts.includes("off")) {
+          html += `<button type="button" class="cg-act" data-act="off">${escapeText(this._t("all_off"))}</button>`;
+        }
+        if (acts.includes("setpoint") && heroSet != null) {
+          const target = Math.round(heroSet);
+          html += `<button type="button" class="cg-act" data-act="setpoint" data-arg="${target}">`
+            + `${escapeText(this._t("sync"))} ${target}&#176;</button>`;
+        }
+        if (acts.includes("preset")) {
+          for (const p of this._sharedPresets().slice(0, 3)) {
+            html += `<button type="button" class="cg-act" data-act="preset" data-arg="${escapeAttr(p)}">`
+              + `${escapeText(p.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase()))}</button>`;
+          }
+        }
+        html += "</div>";
+      }
+      this._card.innerHTML = html;
+    }
+  }
+
+  if (!customElements.get("climate-cluster-group-card")) {
+    customElements.define("climate-cluster-group-card", ClimateClusterGroupCard);
+  }
+
   window.customCards = window.customCards || [];
   window.customCards.push({
     type: "climate-cluster-card",
@@ -4864,5 +5336,12 @@ ha-card[data-appearance="glass-light"] .ct-frost{
       (typeof entityId === "string" && entityId.indexOf("climate.") === 0)
         ? [{ config: { type: "custom:climate-cluster-card", entity: entityId } }]
         : [],
+  });
+  window.customCards.push({
+    type: "climate-cluster-group-card",
+    name: "Climate Cluster Group Card",
+    description: "One house gauge plus every zone as a live mini instrument. Tap a zone to focus it.",
+    preview: true,
+    documentationURL: "https://github.com/rickyfont94/climate-cluster-card",
   });
 })();

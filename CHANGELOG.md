@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-09-06
+
+### Added
+- **A second card type: `custom:climate-cluster-group-card`.** One house gauge plus every zone as a live mini instrument. It is the same instrument at three sizes, drawn with the same helpers as the single dial, so the two cards cannot drift apart visually.
+  - The hero reads the average, the hottest zone, or a named entity. Tap any zone to promote it into the hero, tap it again to go back.
+  - Group actions: turn everything off, sync every single-setpoint zone to the hero temperature, or apply a preset. A preset button only appears when EVERY zone advertises it, so a group write can never be rejected by one member. Sync deliberately skips a `heat_cool` zone, because guessing which of its two setpoints to move would be worse than leaving it alone.
+  - Zones live in a responsive grid, so the card takes any number of entities and reflows rather than dropping the overflow.
+  - It repaints only when something it actually shows has changed, so watching six entities does not mean rebuilding on every unrelated state change in the house.
+  - Entity names are escaped on the way into the markup. A friendly name carrying a tag or a quote cannot break out of the card.
+
+### Fixed
+- A stray NUL byte in the shipped file, introduced with the preset row in 1.6.0 and present in 1.6.0, 1.7.0 and 1.8.0. It never changed behavior, since it was a string separator, but it made the file read as binary to grep, diff and some editors.
+
+### Notes
+- Nothing about the existing card changed and no config key moved, so every `custom:climate-cluster-card` config keeps working untouched. The major version marks the new card type, not a break.
+
 ## [1.8.0] - 2026-09-06
 
 ### Added
@@ -151,6 +167,7 @@ First public release of the Climate Cluster Card for Home Assistant.
 - Full GUI editor, no YAML required.
 - Auto-discovery of fan / swing / LED / sound sibling entities, tuned for Midea (`midea_ac_lan`).
 
+[2.0.0]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v2.0.0
 [1.8.0]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v1.8.0
 [1.7.0]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v1.7.0
 [1.6.0]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v1.6.0

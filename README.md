@@ -114,6 +114,23 @@ max_height: 34vh
 
 </details>
 
+## Multi-zone card
+
+`custom:climate-cluster-group-card` shows a house gauge plus every zone as a live mini instrument. Tap a zone to promote it into the hero.
+
+```yaml
+type: custom:climate-cluster-group-card
+name: House
+entities:
+  - climate.living_room
+  - climate.bedroom
+  - climate.office
+hero: average          # average | hottest | a named entity
+tap_zone: focus        # focus | more-info
+```
+
+A preset button appears only when every zone advertises that preset, and Sync skips any `heat_cool` zone rather than guessing which of its two setpoints to move.
+
 ## Compatibility
 
 The card drives any `climate.*` entity. Midea units get their extra hardware controls discovered for free, and every other brand adds the same controls through `extra_toggles`.
