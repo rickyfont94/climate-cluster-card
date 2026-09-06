@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-09-06
+
+### Added
+- `zone_rows` and `action_rows` on the group card. Say how many rows you want the zone tiles or the group buttons laid out in and the columns are worked out from the count, so five zones with `zone_rows: 2` gives three across and two below. Leave either out and that grid stays responsive as before. A value of zero, a negative or anything non-numeric falls back to the responsive grid rather than breaking the layout.
+
+### Changed
+- The setpoint numeral is smaller and the whole lower shelf of the dial moved up. The fan clover, its readout, the swing chips and their captions were sitting below the arc's own lower tips, so they read as falling out of the instrument rather than sitting inside it. Everything on that shelf is now above the tip line, and the numeral shrinks further when a humidity line sits above it.
+- Three geometry tests now guard this: nothing on the lower shelf may cross the arc tip line, the numeral must clear the chip row, and the fan cluster must stay inboard of the numeral. The collisions this release fixes were all introduced by earlier changes that no test could see.
+
 ## [2.0.2] - 2026-09-06
 
 ### Fixed
@@ -183,6 +192,7 @@ First public release of the Climate Cluster Card for Home Assistant.
 - Full GUI editor, no YAML required.
 - Auto-discovery of fan / swing / LED / sound sibling entities, tuned for Midea (`midea_ac_lan`).
 
+[2.1.0]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v2.1.0
 [2.0.2]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v2.0.2
 [2.0.1]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v2.0.1
 [2.0.0]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v2.0.0

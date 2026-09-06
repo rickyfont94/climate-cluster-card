@@ -26,7 +26,7 @@
   const NS = "http://www.w3.org/2000/svg";
 
   // ---- console version banner ---------------------------------------------
-  const VERSION = "2.0.2";
+  const VERSION = "2.1.0";
   console.info(
     "%c CLIMATE-CLUSTER-CARD %c v" + VERSION + " ",
     "color:#0b0f16;background:#4fc3f7;font-weight:700;border-radius:4px 0 0 4px;padding:2px 6px",
@@ -169,6 +169,8 @@
         show_fan: "Show fan ring",
         show_presets: "Show preset row",
         show_humidity: "Show humidity",
+        zone_rows: "Zone rows",
+        action_rows: "Button rows",
         show_swing_h: "Show horizontal swing chip",
         swing_h_entity: "Horizontal swing entity (switch.*)",
         show_steppers: "Show plus / minus buttons",
@@ -208,6 +210,8 @@
         show_fan: "Force the fan ring on or off. Auto shows it when a fan source resolves.",
         show_presets: "Force the preset row on or off. Auto shows it when the entity advertises preset_modes.",
         show_humidity: "Force the humidity line on or off. Auto shows it when the entity reports current_humidity.",
+        zone_rows: "How many rows the zone tiles are laid out in. Leave empty to let them reflow with the card width.",
+        action_rows: "How many rows the group buttons are laid out in. Leave empty to let them wrap on their own.",
         show_swing_h: "Force the horizontal swing chip on or off. Auto shows it when a horizontal axis resolves, from a switch entity or the entity's own swing_horizontal_modes.",
         show_steppers: "Force the plus and minus buttons on or off. Auto shows them on a single-setpoint dial and hides them on a heat_cool dial, where two setpoints would make a bare plus ambiguous.",
         fan_animation: "The spinning clover animation.",
@@ -301,6 +305,8 @@
         show_fan: "Mostrar anillo del ventilador",
         show_presets: "Mostrar fila de preajustes",
         show_humidity: "Mostrar humedad",
+        zone_rows: "Filas de zonas",
+        action_rows: "Filas de botones",
         show_swing_h: "Mostrar chip de oscilacion horizontal",
         swing_h_entity: "Entidad de oscilacion horizontal (switch.*)",
         show_steppers: "Mostrar botones mas / menos",
@@ -340,6 +346,8 @@
         show_fan: "Forzar el anillo del ventilador encendido o apagado. Auto lo muestra cuando se resuelve una fuente de ventilador.",
         show_presets: "Forzar la fila de preajustes encendida o apagada. Auto la muestra cuando la entidad expone preset_modes.",
         show_humidity: "Forzar la linea de humedad. Auto la muestra cuando la entidad reporta current_humidity.",
+        zone_rows: "En cuantas filas se acomodan las zonas. Vacio deja que fluyan con el ancho de la tarjeta.",
+        action_rows: "En cuantas filas se acomodan los botones de grupo. Vacio deja que se acomoden solos.",
         show_swing_h: "Forzar el chip de oscilacion horizontal. Auto lo muestra cuando se resuelve un eje horizontal.",
         show_steppers: "Forzar los botones mas y menos. Auto los muestra en un dial de un solo punto y los oculta en heat_cool, donde dos puntos harian ambiguo un mas solitario.",
         fan_animation: "La animacion giratoria del trebol.",
@@ -1423,8 +1431,8 @@
 
       // big setpoint number (no degree).
       this._refs.bigNum = el("text", {
-        x: CX, y: 264, "text-anchor": "middle", "dominant-baseline": "central", class: "ct-big nope",
-        fill: "rgba(234,235,238,.98)", "font-size": "100", "letter-spacing": "2",
+        x: CX, y: 244, "text-anchor": "middle", "dominant-baseline": "central", class: "ct-big nope",
+        fill: "rgba(234,235,238,.98)", "font-size": "84", "letter-spacing": "2",
       }, "--");
       this._refs.bigNum.style.fontWeight = "400";
       svg.appendChild(this._refs.bigNum);
@@ -1467,7 +1475,7 @@
       });
 
       // ---- clover fan (lower-LEFT), spins with the FAN value ----
-      const fanG = el("g", { class: "ct-clover nope", transform: "translate(212,322)" });
+      const fanG = el("g", { class: "ct-clover nope", transform: "translate(212,296)" });
       const fanSpin = el("g", { fill: "#9fb1c0", opacity: ".75" });
       fanSpin.style.transformBox = "fill-box";
       fanSpin.style.transformOrigin = "center";
@@ -1480,7 +1488,7 @@
 
       // fan VALUE readout.
       this._refs.fanPct = el("text", {
-        x: 212, y: 355, "text-anchor": "middle", class: "ct-fanpct nope",
+        x: 212, y: 326, "text-anchor": "middle", class: "ct-fanpct nope",
         fill: "rgba(234,235,238,.92)", "font-size": "22", "letter-spacing": "0.5", opacity: "1",
       }, "--%");
       this._refs.fanPct.style.fontWeight = "600";
@@ -1488,7 +1496,7 @@
 
       // fan NAME label (AUTO/SILENT/MEDIUM/... for percent mode).
       this._refs.fanName = el("text", {
-        x: 212, y: 377, "text-anchor": "middle", class: "ct-fanname nope",
+        x: 212, y: 344, "text-anchor": "middle", class: "ct-fanname nope",
         fill: "rgba(234,235,238,.7)", "font-size": "12", "letter-spacing": "2", opacity: ".9",
       }, "");
       this._refs.fanName.style.fontWeight = "600";
@@ -1497,7 +1505,7 @@
       // clover tap hit (TAP = AUTO, or cycle named fan_mode when there's no auto).
       // a11y (issue #5): focusable button; aria-pressed tracks the AUTO state.
       this._refs.fanIconHit = el("circle", {
-        class: "ct-hit", cx: 212, cy: 322, r: 24, fill: "transparent",
+        class: "ct-hit", cx: 212, cy: 296, r: 24, fill: "transparent",
         role: "button", tabindex: "0", "aria-label": "Set fan to automatic", "aria-pressed": "false",
       });
       svg.appendChild(this._refs.fanIconHit);
@@ -1515,7 +1523,7 @@
       // ---- VERTICAL SWING chip (lower-RIGHT) ----
       // a11y (issue #5): focusable toggle button; aria-pressed tracks the swing state.
       const swingChip = el("g", {
-        class: "ct-swing ct-hit", transform: "translate(388,340)",
+        class: "ct-swing ct-hit", transform: "translate(388,312)",
         role: "button", tabindex: "0", "aria-label": "Swing", "aria-pressed": "false",
       });
       // 56x44 viewBox units. The card renders 600 units into roughly 470 CSS px on a
@@ -1534,7 +1542,7 @@
       this._refs.swingChip = swingChip;
       svg.appendChild(swingChip);
       this._refs.swingCap = el("text", {
-        x: 388, y: 381, "text-anchor": "middle", class: "ct-swingcap nope",
+        x: 388, y: 348, "text-anchor": "middle", class: "ct-swingcap nope",
         fill: "rgba(234,235,238,.7)", "font-size": "13.5", "letter-spacing": "2", opacity: ".9",
       }, "SWING");
       this._refs.swingCap.style.fontWeight = "600";
@@ -1544,7 +1552,7 @@
       // two chips split the lower-right shelf; when it does not, the vertical chip
       // keeps the single centred position it has always had.
       const swingHChip = el("g", {
-        class: "ct-swingh ct-hit", transform: "translate(432,340)",
+        class: "ct-swingh ct-hit", transform: "translate(432,312)",
         role: "button", tabindex: "0", "aria-label": "Horizontal swing", "aria-pressed": "false",
       });
       this._refs.swingHChipBg = el("rect", {
@@ -1561,7 +1569,7 @@
       swingHChip.style.display = "none";
       svg.appendChild(swingHChip);
       this._refs.swingHCap = el("text", {
-        x: 432, y: 381, "text-anchor": "middle", class: "ct-swingcap nope",
+        x: 432, y: 348, "text-anchor": "middle", class: "ct-swingcap nope",
         fill: "rgba(234,235,238,.7)", "font-size": "13.5", "letter-spacing": "2", opacity: ".9",
       }, "SWING H");
       this._refs.swingHCap.style.fontWeight = "600";
@@ -1602,9 +1610,9 @@
         "text-anchor": "middle", "font-size": "10", "letter-spacing": "1.5",
         "font-weight": "600", fill: "rgba(234,235,238,.4)",
       };
-      this._refs.hintMode = el("text", Object.assign({ x: 300, y: 371 }, hintAttrs), "MODE");
-      this._refs.hintFan = el("text", Object.assign({ x: 120, y: 360 }, hintAttrs), "FAN");
-      this._refs.hintAuto = el("text", Object.assign({ x: 212, y: 300 }, hintAttrs), "AUTO");
+      this._refs.hintMode = el("text", Object.assign({ x: 300, y: 346 }, hintAttrs), "MODE");
+      this._refs.hintFan = el("text", Object.assign({ x: 132, y: 338 }, hintAttrs), "FAN");
+      this._refs.hintAuto = el("text", Object.assign({ x: 212, y: 278 }, hintAttrs), "AUTO");
       hints.appendChild(this._refs.hintMode);
       hints.appendChild(this._refs.hintFan);
       hints.appendChild(this._refs.hintAuto);
@@ -3473,7 +3481,7 @@
       // Shrink when the string is long OR when the humidity line is pushing down from
       // above; 100 at y264 already reaches the chip row at y340 on its own.
       const rhOn = this._refs.rhCap && this._refs.rhCap.style.display !== "none";
-      this._refs.bigNum.setAttribute("font-size", disp.length > 2 ? "84" : (rhOn ? "86" : "100"));
+      this._refs.bigNum.setAttribute("font-size", disp.length > 2 ? "70" : (rhOn ? "74" : "84"));
       // a11y: keep the temp slider's reported value in sync (issue #5). The numeric
       // aria-value* stay on _fmt (dotted decimal) so they remain machine-parseable;
       // only the human aria-valuetext uses the locale-formatted string (issue #19).
@@ -3516,7 +3524,7 @@
         '<tspan fill="#5CD6FF">' + loTxt + '</tspan>' +
         '<tspan fill="#8c99a7"> - </tspan>' +
         '<tspan fill="#F2933A">' + hiTxt + '</tspan>';
-      this._refs.bigNum.setAttribute("font-size", plain.length > 8 ? "42" : "54");
+      this._refs.bigNum.setAttribute("font-size", plain.length > 8 ? "38" : "48");
       // a11y: the single temp slider reports the HIGH setpoint, with a paired
       // valuetext for both ends; keyboard nudges the HIGH handle (issue #5). Numeric
       // aria-value* stay on _fmt (dotted) so they remain machine-parseable (issue #19).
@@ -3921,11 +3929,11 @@
         // Two axes share the shelf; one keeps the original centred slot.
         const vx = showH && showV ? 356 : 388;
         const hx = 432;
-        if (this._refs.swingChip) this._refs.swingChip.setAttribute("transform", `translate(${vx},340)`);
+        if (this._refs.swingChip) this._refs.swingChip.setAttribute("transform", `translate(${vx},312)`);
         if (this._refs.swingCap) this._refs.swingCap.setAttribute("x", String(vx));
         if (this._refs.swingHChip) {
           this._refs.swingHChip.style.display = showH ? "" : "none";
-          this._refs.swingHChip.setAttribute("transform", `translate(${hx},340)`);
+          this._refs.swingHChip.setAttribute("transform", `translate(${hx},312)`);
           this._refs.swingHChip.setAttribute("tabindex", showH && !off ? "0" : "-1");
           const hOn = this._swingHIsOn();
           this._refs.swingHChip.setAttribute("aria-pressed", hOn ? "true" : "false");
@@ -4936,6 +4944,8 @@ ha-card[data-appearance="glass-light"] .ct-frost{
 .cg-zone-now{ font-size:9.5px; letter-spacing:1.4px; fill:var(--primary-text-color); }
 text.cg-dim, tspan.cg-dim{ fill:var(--secondary-text-color); }
 
+.cg-actions-grid{ display:grid !important; }
+.cg-actions-grid .cg-act{ flex:none; }
 .cg-actions{ display:flex; flex-wrap:wrap; gap:7px; padding-top:10px;
   border-top:1px solid var(--divider-color, rgba(127,127,127,.2)); }
 .cg-act{ appearance:none; font:inherit; cursor:pointer; padding:9px 13px; border-radius:10px;
@@ -5129,6 +5139,17 @@ text.cg-dim, tspan.cg-dim{ fill:var(--secondary-text-color); }
       if (v == null) return "--";
       const r = Math.round(v * 10) / 10;
       return Number.isInteger(r) ? String(r) : r.toFixed(1);
+    }
+
+    // Rows, not columns, because that is how people describe what they want: "put
+    // my five zones on two rows". Columns are derived. Anything unset, zero or
+    // non-numeric falls back to the responsive auto-fit grid.
+    _gridStyle(key, count) {
+      const raw = this._config[key];
+      const rows = typeof raw === "number" ? raw : parseInt(raw, 10);
+      if (!Number.isFinite(rows) || rows < 1 || !count) return "";
+      const cols = Math.ceil(count / Math.min(rows, count));
+      return ` style="grid-template-columns:repeat(${cols},minmax(0,1fr))"`;
     }
 
     _build() {
@@ -5339,7 +5360,7 @@ text.cg-dim, tspan.cg-dim{ fill:var(--secondary-text-color); }
       // space under the gauge instead of stretching across the whole card.
       html += `<div class="cg-body"><div class="cg-left"><div class="cg-hero">${this._heroSvg(hero, zones)}</div>`;
       html += this._actionsHtml(heroSet);
-      html += '</div><div class="cg-zones">';
+      html += `</div><div class="cg-zones"${this._gridStyle("zone_rows", zones.length)}>`;
       for (const z of zones) {
         const cls = "cg-zone" + (z.on ? " on" : "") + (z.dead ? " dead" : "")
           + (this._focus === z.id ? " focused" : "");
@@ -5358,18 +5379,21 @@ text.cg-dim, tspan.cg-dim{ fill:var(--secondary-text-color); }
 
     _actionsHtml(heroSet) {
       if (this._config.group_actions === false) return "";
-      let html = '<div class="cg-actions">'
-        + `<button type="button" class="cg-act" data-act="off">${escapeText(this._t("all_off"))}</button>`;
+      const btns = [`<button type="button" class="cg-act" data-act="off">${escapeText(this._t("all_off"))}</button>`];
       if (heroSet != null) {
         const target = Math.round(heroSet);
-        html += `<button type="button" class="cg-act" data-act="setpoint" data-arg="${target}">`
-          + `${escapeText(this._t("sync"))} ${target}&#176;</button>`;
+        btns.push(`<button type="button" class="cg-act" data-act="setpoint" data-arg="${target}">`
+          + `${escapeText(this._t("sync"))} ${target}&#176;</button>`);
       }
       for (const p of this._sharedPresets().slice(0, 2)) {
-        html += `<button type="button" class="cg-act cg-act-preset" data-act="preset" data-arg="${escapeAttr(p)}">`
-          + `${escapeText(p.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase()))}</button>`;
+        btns.push(`<button type="button" class="cg-act cg-act-preset" data-act="preset" data-arg="${escapeAttr(p)}">`
+          + `${escapeText(p.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase()))}</button>`);
       }
-      return html + "</div>";
+      const forced = this._gridStyle("action_rows", btns.length);
+      // With a row count the bar becomes a real grid; without one it stays a
+      // flex row that wraps on its own.
+      const cls = forced ? "cg-actions cg-actions-grid" : "cg-actions";
+      return `<div class="${cls}"${forced}>` + btns.join("") + "</div>";
     }
   }
 

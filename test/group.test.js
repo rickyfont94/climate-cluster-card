@@ -211,3 +211,44 @@ test("group: eight zones all render, nothing is silently dropped", () => {
   const el = makeGroup({ entities: ids }, makeHass(many));
   assert.equal(el.shadowRoot.querySelectorAll("[data-zone]").length, 8);
 });
+
+test("group: zone_rows lays the tiles out in the requested number of rows", () => {
+  const el = makeGroup(Object.assign({}, baseConfig, { zone_rows: 3 }), makeHass(states));
+  const zones = el.shadowRoot.querySelector(".cg-zones");
+  // 3 zones over 3 rows is 1 column
+  assert.match(zones.getAttribute("style") || "", /repeat\(1,/);
+
+  const two = makeGroup(Object.assign({}, baseConfig, { zone_rows: 2 }), makeHass(states));
+  // 3 zones over 2 rows is 2 columns
+  assert.match(two.shadowRoot.querySelector(".cg-zones").getAttribute("style") || "", /repeat\(2,/);
+
+  const one = makeGroup(Object.assign({}, baseConfig, { zone_rows: 1 }), makeHass(states));
+  assert.match(one.shadowRoot.querySelector(".cg-zones").getAttribute("style") || "", /repeat\(3,/);
+});
+
+test("group: zone_rows unset leaves the responsive grid alone", () => {
+  const el = makeGroup(baseConfig, makeHass(states));
+  const style = el.shadowRoot.querySelector(".cg-zones").getAttribute("style");
+  assert.ok(!style || !style.includes("repeat("), "no inline column override");
+});
+
+test("group: a silly zone_rows value is ignored rather than breaking the grid", () => {
+  for (const bad of [0, -2, "abc", null]) {
+    const el = makeGroup(Object.assign({}, baseConfig, { zone_rows: bad }), makeHass(states));
+    const style = el.shadowRoot.querySelector(".cg-zones").getAttribute("style");
+    assert.ok(!style || !style.includes("repeat("), `zone_rows ${JSON.stringify(bad)} must fall back`);
+  }
+});
+
+test("group: more rows than zones does not produce an empty column count", () => {
+  const el = makeGroup(Object.assign({}, baseConfig, { zone_rows: 99 }), makeHass(states));
+  assert.match(el.shadowRoot.querySelector(".cg-zones").getAttribute("style") || "", /repeat\(1,/);
+});
+
+test("group: action_rows lays the group buttons out in rows too", () => {
+  const el = makeGroup(Object.assign({}, baseConfig, { action_rows: 1 }), makeHass(states));
+  const bar = el.shadowRoot.querySelector(".cg-actions");
+  assert.ok(bar.classList.contains("cg-actions-grid"));
+  const n = el.shadowRoot.querySelectorAll(".cg-act").length;
+  assert.match(bar.getAttribute("style") || "", new RegExp("repeat\\(" + n + ","));
+});

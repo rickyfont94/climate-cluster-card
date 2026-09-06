@@ -129,7 +129,13 @@ entities:
   - climate.office
 hero: average          # average | hottest | a named entity
 tap_zone: focus        # focus | more-info
+zone_rows: 2           # lay the zone tiles out in 2 rows; omit to reflow with the width
+action_rows: 1         # put the group buttons on one row
 ```
+
+`zone_rows` and `action_rows` take any whole number. Columns are worked out from the
+count, so five zones with `zone_rows: 2` gives you three across and two below. Leave
+either one out and that grid stays responsive.
 
 A preset button appears only when every zone advertises that preset, and Sync skips any `heat_cool` zone rather than guessing which of its two setpoints to move.
 
