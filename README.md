@@ -118,6 +118,8 @@ max_height: 34vh
 
 `custom:climate-cluster-group-card` shows a house gauge plus every zone as a live mini instrument. Tap a zone to promote it into the hero.
 
+<img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/group-card.png" alt="Multi-zone group card" width="820">
+
 ```yaml
 type: custom:climate-cluster-group-card
 name: House

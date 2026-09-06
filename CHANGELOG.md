@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.2] - 2026-09-06
+
+### Fixed
+- The swing chips drew on a hardcoded dark fill, so on a light theme they rendered as solid grey blocks instead of quiet outlined chips. Same fault the ring tracks had in 1.5.0 and the same fix: the resting fill now derives from the theme, with the old value left as a fallback for engines without `color-mix`.
+- The setpoint numeral had grown into the chip row. The chip got taller in 1.5.1 and a second one arrived in 1.8.0, and between them the big number was overlapping both. The numeral, the chip row and the chip captions all have room now, and the numeral shrinks further when a humidity line is present.
+
+### Changed
+- Screenshots and the demo animation reshot against the current card. The previous set predated 1.2.0, so it showed neither the preset row, the plus and minus buttons, the second swing axis, nor any of the theme fixes. The multi-zone card now has an image in the README instead of only a config block.
+
 ## [2.0.1] - 2026-09-06
 
 ### Fixed
@@ -174,6 +183,7 @@ First public release of the Climate Cluster Card for Home Assistant.
 - Full GUI editor, no YAML required.
 - Auto-discovery of fan / swing / LED / sound sibling entities, tuned for Midea (`midea_ac_lan`).
 
+[2.0.2]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v2.0.2
 [2.0.1]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v2.0.1
 [2.0.0]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v2.0.0
 [1.8.0]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v1.8.0

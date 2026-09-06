@@ -26,7 +26,7 @@
   const NS = "http://www.w3.org/2000/svg";
 
   // ---- console version banner ---------------------------------------------
-  const VERSION = "2.0.1";
+  const VERSION = "2.0.2";
   console.info(
     "%c CLIMATE-CLUSTER-CARD %c v" + VERSION + " ",
     "color:#0b0f16;background:#4fc3f7;font-weight:700;border-radius:4px 0 0 4px;padding:2px 6px",
@@ -1423,8 +1423,8 @@
 
       // big setpoint number (no degree).
       this._refs.bigNum = el("text", {
-        x: CX, y: 266, "text-anchor": "middle", "dominant-baseline": "central", class: "ct-big nope",
-        fill: "rgba(234,235,238,.98)", "font-size": "104", "letter-spacing": "2",
+        x: CX, y: 264, "text-anchor": "middle", "dominant-baseline": "central", class: "ct-big nope",
+        fill: "rgba(234,235,238,.98)", "font-size": "100", "letter-spacing": "2",
       }, "--");
       this._refs.bigNum.style.fontWeight = "400";
       svg.appendChild(this._refs.bigNum);
@@ -1515,14 +1515,14 @@
       // ---- VERTICAL SWING chip (lower-RIGHT) ----
       // a11y (issue #5): focusable toggle button; aria-pressed tracks the swing state.
       const swingChip = el("g", {
-        class: "ct-swing ct-hit", transform: "translate(388,322)",
+        class: "ct-swing ct-hit", transform: "translate(388,340)",
         role: "button", tabindex: "0", "aria-label": "Swing", "aria-pressed": "false",
       });
       // 56x44 viewBox units. The card renders 600 units into roughly 470 CSS px on a
       // normal dashboard column, so this is the smallest box that still clears the
       // 44 CSS px touch-target guideline at that width (issue #21).
       this._refs.swingChipBg = el("rect", {
-        x: -28, y: -22, width: 56, height: 44, rx: 12,
+        x: -28, y: -22, width: 56, height: 44, rx: 12, class: "ct-chipbg",
         fill: "rgba(40,52,66,.30)", stroke: "rgba(234,235,238,.14)", "stroke-width": "1",
       });
       swingChip.appendChild(this._refs.swingChipBg);
@@ -1534,7 +1534,7 @@
       this._refs.swingChip = swingChip;
       svg.appendChild(swingChip);
       this._refs.swingCap = el("text", {
-        x: 388, y: 363, "text-anchor": "middle", class: "ct-swingcap nope",
+        x: 388, y: 381, "text-anchor": "middle", class: "ct-swingcap nope",
         fill: "rgba(234,235,238,.7)", "font-size": "13.5", "letter-spacing": "2", opacity: ".9",
       }, "SWING");
       this._refs.swingCap.style.fontWeight = "600";
@@ -1544,11 +1544,11 @@
       // two chips split the lower-right shelf; when it does not, the vertical chip
       // keeps the single centred position it has always had.
       const swingHChip = el("g", {
-        class: "ct-swingh ct-hit", transform: "translate(432,322)",
+        class: "ct-swingh ct-hit", transform: "translate(432,340)",
         role: "button", tabindex: "0", "aria-label": "Horizontal swing", "aria-pressed": "false",
       });
       this._refs.swingHChipBg = el("rect", {
-        x: -28, y: -22, width: 56, height: 44, rx: 12,
+        x: -28, y: -22, width: 56, height: 44, rx: 12, class: "ct-chipbg",
         fill: "rgba(40,52,66,.30)", stroke: "rgba(234,235,238,.14)", "stroke-width": "1",
       });
       swingHChip.appendChild(this._refs.swingHChipBg);
@@ -1561,7 +1561,7 @@
       swingHChip.style.display = "none";
       svg.appendChild(swingHChip);
       this._refs.swingHCap = el("text", {
-        x: 432, y: 363, "text-anchor": "middle", class: "ct-swingcap nope",
+        x: 432, y: 381, "text-anchor": "middle", class: "ct-swingcap nope",
         fill: "rgba(234,235,238,.7)", "font-size": "13.5", "letter-spacing": "2", opacity: ".9",
       }, "SWING H");
       this._refs.swingHCap.style.fontWeight = "600";
@@ -3470,7 +3470,10 @@
       const disp = this._fmtDisplay(t); // visible, locale-formatted (issue #19)
       this._refs.bigNum.textContent = disp;
       // shrink for "XX.5" / 3-digit so the decimal fits the center.
-      this._refs.bigNum.setAttribute("font-size", disp.length > 2 ? "84" : "104");
+      // Shrink when the string is long OR when the humidity line is pushing down from
+      // above; 100 at y264 already reaches the chip row at y340 on its own.
+      const rhOn = this._refs.rhCap && this._refs.rhCap.style.display !== "none";
+      this._refs.bigNum.setAttribute("font-size", disp.length > 2 ? "84" : (rhOn ? "86" : "100"));
       // a11y: keep the temp slider's reported value in sync (issue #5). The numeric
       // aria-value* stay on _fmt (dotted decimal) so they remain machine-parseable;
       // only the human aria-valuetext uses the locale-formatted string (issue #19).
@@ -3918,19 +3921,18 @@
         // Two axes share the shelf; one keeps the original centred slot.
         const vx = showH && showV ? 356 : 388;
         const hx = 432;
-        if (this._refs.swingChip) this._refs.swingChip.setAttribute("transform", `translate(${vx},322)`);
+        if (this._refs.swingChip) this._refs.swingChip.setAttribute("transform", `translate(${vx},340)`);
         if (this._refs.swingCap) this._refs.swingCap.setAttribute("x", String(vx));
         if (this._refs.swingHChip) {
           this._refs.swingHChip.style.display = showH ? "" : "none";
-          this._refs.swingHChip.setAttribute("transform", `translate(${hx},322)`);
+          this._refs.swingHChip.setAttribute("transform", `translate(${hx},340)`);
           this._refs.swingHChip.setAttribute("tabindex", showH && !off ? "0" : "-1");
           const hOn = this._swingHIsOn();
           this._refs.swingHChip.setAttribute("aria-pressed", hOn ? "true" : "false");
           this._refs.swingHChip.style.opacity = off ? "0.35" : "1";
           if (this._refs.swingHChipBg) {
-            this._refs.swingHChipBg.setAttribute("stroke", hOn ? accent : "rgba(234,235,238,.14)");
-            this._refs.swingHChipBg.setAttribute("fill", hOn
-              ? `color-mix(in srgb, ${accent} 16%, transparent)` : "rgba(40,52,66,.30)");
+            this._refs.swingHChipBg.style.setProperty("--ct-chip", accent);
+            this._refs.swingHChipBg.classList.toggle("on", hOn);
           }
           if (this._refs.swingHIcon) this._refs.swingHIcon.setAttribute("stroke", hOn ? accent : "#6a7480");
         }
@@ -3969,8 +3971,8 @@
         this._refs.swingCap.textContent = swingLabel;
         this._refs.swingChip.setAttribute("aria-label", swingLabel);
         this._refs.swingIcon.setAttribute("stroke", on ? this._accent : "#8a98a6");
-        this._refs.swingChipBg.setAttribute("stroke", on ? this._glow(55) : "rgba(234,235,238,.16)");
-        this._refs.swingChipBg.setAttribute("fill", on ? this._glow(14) : "rgba(40,52,66,.45)");
+        this._refs.swingChipBg.style.setProperty("--ct-chip", this._accent);
+        this._refs.swingChipBg.classList.toggle("on", !!on);
         this._refs.swingChip.style.filter = on ? `drop-shadow(0 0 6px ${this._glow(55)})` : "none";
         this._refs.swingChip.removeAttribute("aria-hidden");
         if (!avail) {
@@ -4106,6 +4108,18 @@ ha-card{ position:relative; display:block; overflow:visible; }
    attribute). If color-mix is unsupported the declaration drops and the original
    attribute still paints, so there is no unstyled state. */
 .ct-track{ stroke: color-mix(in srgb, var(--secondary-text-color, #8c99a7) 24%, transparent); }
+
+/* Feature chips. The resting fill used to be a dark literal, which reads as a solid
+   grey block on a light theme, the same fault the ring tracks had. CSS beats the
+   presentation attribute, and the attribute stays as the no-color-mix fallback. */
+.ct-chipbg{
+  fill: color-mix(in srgb, var(--secondary-text-color, #8c99a7) 10%, transparent);
+  stroke: color-mix(in srgb, var(--secondary-text-color, #8c99a7) 24%, transparent);
+}
+.ct-chipbg.on{
+  fill: color-mix(in srgb, var(--ct-chip, var(--ct-accent)) 16%, transparent);
+  stroke: var(--ct-chip, var(--ct-accent));
+}
 
 /* Setpoint steppers: quiet until touched, so they never compete with the numerals
    they sit beside. The ring picks up the active mode color through --ct-accent. */
@@ -4875,7 +4889,9 @@ ha-card[data-appearance="glass-light"] .ct-frost{
 /* Zero-size defs carrier: gradients only, never laid out. */
 .cg-defs{ position:absolute; width:0; height:0; overflow:hidden; }
 
-.cg-body{ display:grid; grid-template-columns:minmax(196px,0.95fr) minmax(0,1.05fr);
+/* The hero is a fixed-ish track, not a fraction. Left as a fraction it ballooned
+   on a full-width panel while the zones crowded into a corner. */
+.cg-body{ display:grid; grid-template-columns:minmax(170px,250px) minmax(0,1fr);
   gap:14px; margin-top:10px; align-items:start; }
 @media (max-width:520px){ .cg-body{ grid-template-columns:1fr; } }
 /* Hero and the group buttons stack in the left column so the buttons fill the
@@ -4884,7 +4900,7 @@ ha-card[data-appearance="glass-light"] .ct-frost{
 .cg-hero{ min-width:0; }
 .cg-hero-svg{ display:block; width:100%; height:auto; overflow:visible; }
 
-.cg-zones{ display:grid; grid-template-columns:repeat(auto-fill, minmax(96px, 1fr)); gap:7px; min-width:0; }
+.cg-zones{ display:grid; grid-template-columns:repeat(auto-fit, minmax(92px, 1fr)); gap:7px; min-width:0; align-content:start; }
 .cg-zone{ appearance:none; font:inherit; cursor:pointer; text-align:left; padding:8px 8px 4px;
   border-radius:12px; border:1px solid var(--divider-color, rgba(127,127,127,.25));
   background:color-mix(in srgb, var(--secondary-text-color, #8c99a7) 5%, transparent);
