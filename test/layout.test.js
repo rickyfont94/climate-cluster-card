@@ -61,3 +61,48 @@ test("layout: the fan cluster sits inboard of the numeral, never overlapping it"
   assert.ok(cloverX + 16 < 300 - halfNum,
     `clover right edge ${cloverX + 16} runs into the numeral starting at ${300 - halfNum}`);
 });
+
+test("layout: the swing chips stay clear of the numbered tick ring", () => {
+  // Numerals sit on a ring of radius 160 about 300/284 and are roughly 10 units
+  // tall, so anything reaching past ~150 from the centre can land on top of one.
+  // The horizontal chip used to sit at x=432, reaching 163, and the 85 numeral
+  // rendered inside it.
+  const card = makeCard(fx.config, makeHass(fx.states, { entities: fx.entities }));
+  card._build();
+  const NUMERAL_RING_INNER = 150;
+  for (const [name, ref] of [["swing", card._refs.swingChip], ["swingH", card._refs.swingHChip]]) {
+    if (!ref) continue;
+    const t = ref.getAttribute("transform");
+    const [x, y] = t.replace(/[^0-9.,-]/g, "").split(",").map(Number);
+    const reach = Math.hypot(x - 300, y - 284) + 28; // half the 56 wide chip
+    assert.ok(reach < NUMERAL_RING_INNER,
+      `${name} chip reaches ${Math.round(reach)}, numerals start at ${NUMERAL_RING_INNER}`);
+  }
+});
+
+test("layout: the two swing captions do not run into each other", () => {
+  // "SWING" at 352 and "SWING H" at 414 overlapped at the full caption size and
+  // rendered as one run-on string. Both shrink while two axes are on show.
+  const st = JSON.parse(JSON.stringify(fx.states));
+  st[fx.config.entity].attributes.swing_horizontal_modes = ["off", "left", "right"];
+  st[fx.config.entity].attributes.swing_horizontal_mode = "off";
+  const card = makeCard(fx.config, makeHass(st, { entities: fx.entities }));
+  card._build();
+  card._render();
+
+  const v = card._refs.swingCap, h = card._refs.swingHCap;
+  const bothShown = h && h.style.display !== "none";
+  if (!bothShown) return; // single axis, nothing to collide
+
+  const fs = parseFloat(h.getAttribute("font-size"));
+  const ls = parseFloat(h.getAttribute("letter-spacing"));
+  const widthOf = (el) => {
+    const n = (el.textContent || "").length;
+    return n * fs * 0.62 + Math.max(0, n - 1) * ls; // this face is narrow
+  };
+  const vx = parseFloat(v.getAttribute("x")), hx = parseFloat(h.getAttribute("x"));
+  const vRight = vx + widthOf(v) / 2;
+  const hLeft = hx - widthOf(h) / 2;
+  assert.ok(vRight < hLeft,
+    `"${v.textContent}" ends at ${vRight.toFixed(0)} but "${h.textContent}" starts at ${hLeft.toFixed(0)}`);
+});

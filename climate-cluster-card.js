@@ -26,7 +26,7 @@
   const NS = "http://www.w3.org/2000/svg";
 
   // ---- console version banner ---------------------------------------------
-  const VERSION = "2.1.0";
+  const VERSION = "2.1.1";
   console.info(
     "%c CLIMATE-CLUSTER-CARD %c v" + VERSION + " ",
     "color:#0b0f16;background:#4fc3f7;font-weight:700;border-radius:4px 0 0 4px;padding:2px 6px",
@@ -1552,7 +1552,7 @@
       // two chips split the lower-right shelf; when it does not, the vertical chip
       // keeps the single centred position it has always had.
       const swingHChip = el("g", {
-        class: "ct-swingh ct-hit", transform: "translate(432,312)",
+        class: "ct-swingh ct-hit", transform: "translate(414,312)",
         role: "button", tabindex: "0", "aria-label": "Horizontal swing", "aria-pressed": "false",
       });
       this._refs.swingHChipBg = el("rect", {
@@ -1569,7 +1569,7 @@
       swingHChip.style.display = "none";
       svg.appendChild(swingHChip);
       this._refs.swingHCap = el("text", {
-        x: 432, y: 348, "text-anchor": "middle", class: "ct-swingcap nope",
+        x: 414, y: 348, "text-anchor": "middle", class: "ct-swingcap nope",
         fill: "rgba(234,235,238,.7)", "font-size": "13.5", "letter-spacing": "2", opacity: ".9",
       }, "SWING H");
       this._refs.swingHCap.style.fontWeight = "600";
@@ -3927,8 +3927,8 @@
         const showH = this._swingHResolved();
         const showV = this._featureResolved("swing");
         // Two axes share the shelf; one keeps the original centred slot.
-        const vx = showH && showV ? 356 : 388;
-        const hx = 432;
+        const vx = showH && showV ? 352 : 388;
+        const hx = 414;
         if (this._refs.swingChip) this._refs.swingChip.setAttribute("transform", `translate(${vx},312)`);
         if (this._refs.swingCap) this._refs.swingCap.setAttribute("x", String(vx));
         if (this._refs.swingHChip) {
@@ -3948,6 +3948,19 @@
           this._refs.swingHCap.style.display = showH ? "" : "none";
           this._refs.swingHCap.setAttribute("x", String(hx));
           this._refs.swingHCap.textContent = this._t("swing_h");
+        }
+        // Two captions on one shelf run into each other at the full caption size
+        // ("SWING" and "SWING H" overlap and read as SWINGSWING H). Drop both a
+        // couple of sizes only while both axes are on show.
+        {
+          const both = showH && showV;
+          const fs = both ? "10" : "13.5";
+          const ls = both ? "1" : "2";
+          for (const cap of [this._refs.swingCap, this._refs.swingHCap]) {
+            if (!cap) continue;
+            cap.setAttribute("font-size", fs);
+            cap.setAttribute("letter-spacing", ls);
+          }
         }
       }
 

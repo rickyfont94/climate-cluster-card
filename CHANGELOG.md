@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.1] - 2026-09-06
+
+### Fixed
+- The horizontal swing chip sat far enough out that the `85` tick numeral rendered inside it. Both chips are pulled inboard of the numbered ring.
+- With two swing axes on show, the two chip captions overlapped and read as one run-on string. They shrink while both are visible.
+
+### Changed
+- Screenshots and the demo animation reshot against this release, and taken on Home Assistant's stock light and dark palettes rather than one particular custom theme, so they show what a new install actually looks like. The README now also pictures `zone_rows` rather than only describing it.
+- Six geometry tests now guard the dial face: the lower shelf may not cross the arc tips, the numeral must clear the chip row, the fan cluster must stay inboard of the numeral, the chips may not reach into the numbered ring, and the two captions may not overlap. Every one of these collisions shipped at some point without a single failing test.
+
 ## [2.1.0] - 2026-09-06
 
 ### Added
@@ -192,6 +202,7 @@ First public release of the Climate Cluster Card for Home Assistant.
 - Full GUI editor, no YAML required.
 - Auto-discovery of fan / swing / LED / sound sibling entities, tuned for Midea (`midea_ac_lan`).
 
+[2.1.1]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v2.1.1
 [2.1.0]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v2.1.0
 [2.0.2]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v2.0.2
 [2.0.1]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v2.0.1

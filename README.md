@@ -137,6 +137,8 @@ action_rows: 1         # put the group buttons on one row
 count, so five zones with `zone_rows: 2` gives you three across and two below. Leave
 either one out and that grid stays responsive.
 
+<img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/group-rows.png" alt="Group card with zone_rows 2" width="620">
+
 A preset button appears only when every zone advertises that preset, and Sync skips any `heat_cool` zone rather than guessing which of its two setpoints to move.
 
 ## Compatibility
