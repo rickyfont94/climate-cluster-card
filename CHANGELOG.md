@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.1] - 2026-09-06
+
+### Changed
+- Every screenshot and the demo animation reshot at 3x device scale, so they stay sharp on a retina display instead of softening the moment GitHub scales them.
+- The frosted-glass screenshots were taken over a nearly flat backdrop, which gave the panel's blur nothing to blur and made the glass read as a plain dark box. They are reshot over a layered backdrop with light and colour moving across it, which is what the card actually looks like on a real wallpaper.
+- The demo animation is now an animated WebP with a GIF kept as the fallback. A smooth two-tone arc sweep is the worst case for a 256-colour palette and the GIF was visibly banded; the WebP carries the same frames at twice the width for about a fifteenth of the bytes.
+
 ## [2.2.0] - 2026-09-06
 
 ### Added
