@@ -26,7 +26,7 @@
   const NS = "http://www.w3.org/2000/svg";
 
   // ---- console version banner ---------------------------------------------
-  const VERSION = "1.5.1";
+  const VERSION = "1.6.0";
   console.info(
     "%c CLIMATE-CLUSTER-CARD %c v" + VERSION + " ",
     "color:#0b0f16;background:#4fc3f7;font-weight:700;border-radius:4px 0 0 4px;padding:2px 6px",
@@ -101,6 +101,9 @@
       sound: "SOUND",
       close: "Close",
       unavailable: "UNAVAILABLE",
+      preset: "Preset",
+      increase_temp: "Increase temperature",
+      decrease_temp: "Decrease temperature",
       auto: "AUTO",
       automatic: "Automatic",
       percent: "percent",
@@ -123,6 +126,7 @@
       hint_auto: "AUTO",
       "editor.section.appearance": "Appearance",
       "editor.section.modes": "Modes",
+      "editor.section.presets": "Presets",
       "editor.section.fan": "Fan",
       "editor.section.features": "Features",
       "editor.section.extra_toggles": "Extra toggles",
@@ -161,6 +165,8 @@
         modes: "Modes",
         fan_entity: "Fan speed entity (number.*)",
         show_fan: "Show fan ring",
+        show_presets: "Show preset row",
+        show_steppers: "Show plus / minus buttons",
         fan_animation: "Fan animation",
         fan_animation_speed: "Fan animation speed",
         swing_entity: "Swing entity (switch.*)",
@@ -194,6 +200,8 @@
         modes: "Which HVAC modes appear in the popup. Defaults to the entity's modes.",
         fan_entity: "A number.* percent entity for a draggable fan ring. Auto-discovered for Midea; falls back to named fan_modes.",
         show_fan: "Force the fan ring on or off. Auto shows it when a fan source resolves.",
+        show_presets: "Force the preset row on or off. Auto shows it when the entity advertises preset_modes.",
+        show_steppers: "Force the plus and minus buttons on or off. Auto shows them on a single-setpoint dial and hides them on a heat_cool dial, where two setpoints would make a bare plus ambiguous.",
         fan_animation: "The spinning clover animation.",
         fan_animation_speed: "Dynamic scales the spin with fan speed; constant is a fixed spin.",
         swing_entity: "Override the swing switch. Leave empty to auto-discover (Midea) or use climate swing_modes.",
@@ -217,6 +225,9 @@
       sound: "SONIDO",
       close: "Cerrar",
       unavailable: "NO DISPONIBLE",
+      preset: "Preajuste",
+      increase_temp: "Subir la temperatura",
+      decrease_temp: "Bajar la temperatura",
       auto: "AUTO",
       automatic: "Automatico",
       percent: "por ciento",
@@ -239,6 +250,7 @@
       hint_auto: "AUTO",
       "editor.section.appearance": "Apariencia",
       "editor.section.modes": "Modos",
+      "editor.section.presets": "Preajustes",
       "editor.section.fan": "Ventilador",
       "editor.section.features": "Funciones",
       "editor.section.extra_toggles": "Controles adicionales",
@@ -277,6 +289,8 @@
         modes: "Modos",
         fan_entity: "Entidad de velocidad del ventilador (number.*)",
         show_fan: "Mostrar anillo del ventilador",
+        show_presets: "Mostrar fila de preajustes",
+        show_steppers: "Mostrar botones mas / menos",
         fan_animation: "Animacion del ventilador",
         fan_animation_speed: "Velocidad de la animacion del ventilador",
         swing_entity: "Entidad de oscilacion (switch.*)",
@@ -310,6 +324,8 @@
         modes: "Que modos HVAC aparecen en el menu. Por defecto los modos de la entidad.",
         fan_entity: "Una entidad number.* de porcentaje para un anillo de ventilador arrastrable. Se autodetecta en Midea; si no, usa los fan_modes con nombre.",
         show_fan: "Forzar el anillo del ventilador encendido o apagado. Auto lo muestra cuando se resuelve una fuente de ventilador.",
+        show_presets: "Forzar la fila de preajustes encendida o apagada. Auto la muestra cuando la entidad expone preset_modes.",
+        show_steppers: "Forzar los botones mas y menos. Auto los muestra en un dial de un solo punto y los oculta en heat_cool, donde dos puntos harian ambiguo un mas solitario.",
         fan_animation: "La animacion giratoria del trebol.",
         fan_animation_speed: "Dynamic escala el giro con la velocidad del ventilador; constant es un giro fijo.",
         swing_entity: "Anula el interruptor de oscilacion. Dejar vacio para autodetectar (Midea) o usar los swing_modes del clima.",
@@ -446,6 +462,18 @@
   // release fires the tap/cycle instead. Sits between a deliberate hold and the
   // center disc's more-info HOLD_MS so the two gestures never feel the same.
   const SWING_HOLD_MS = 500;
+
+  // ---- setpoint steppers -------------------------------------------------
+  // Press-and-hold on a stepper repeats. The first repeat waits out a deliberate
+  // press so a single tap is never read as two, then ticks steadily. The write is
+  // trailing-debounced, so holding through six degrees sends ONE set_temperature
+  // instead of six, while the arc still tracks every tick optimistically.
+  const STEP_REPEAT_DELAY_MS = 420;
+  const STEP_REPEAT_MS = 130;
+  const STEP_COMMIT_MS = 450;
+  // Stepper geometry: radius 118 from the dial centre puts these inboard of the
+  // numeral ring (160) and clear of the big numerals, at y 256.
+  const STEP_R = 27, STEP_Y = 256, STEP_MINUS_X = 186, STEP_PLUS_X = 414;
 
   // ---- small helpers ------------------------------------------------------
   function el(tag, attrs, text) {
@@ -832,6 +860,11 @@
       if (this._swingHoldTimer) { clearTimeout(this._swingHoldTimer); this._swingHoldTimer = null; }
       this._swingPressActive = false;
       this._swingLongPressed = false;
+      // Stepper teardown: a card removed mid-hold must stop ticking, and must not
+      // fire a trailing set_temperature at an entity nobody is looking at any more.
+      this._stepPointerUp();
+      if (this._stepCommitT) { clearTimeout(this._stepCommitT); this._stepCommitT = null; }
+      this._stepPending = null;
       if (this._onSwingDocKeydown) document.removeEventListener("keydown", this._onSwingDocKeydown, true);
     }
 
@@ -1359,6 +1392,35 @@
       this._refs.caret.style.filter = `drop-shadow(0 0 4px ${this._glow(55)})`;
       this._refs.caret.style.display = "none";
       svg.appendChild(this._refs.caret);
+
+      // ---- SETPOINT STEPPERS (minus at the cold end, plus at the warm end) ----
+      // The dial is drag-first, but dragging is not available to everyone: a coarse
+      // pointer, a shaky hand or a wall tablet all want a discrete target. These are
+      // that alternative, sitting inboard of the numeral ring so they never collide
+      // with the ticks or the big numerals.
+      this._refs.steps = [];
+      [[-1, STEP_MINUS_X, "M-11,0 L11,0", "decrease"],
+       [1, STEP_PLUS_X, "M-11,0 L11,0 M0,-11 L0,11", "increase"]].forEach(([dir, cx, d, kind]) => {
+        const g = el("g", {
+          class: "ct-step ct-hit", transform: `translate(${cx},${STEP_Y})`,
+          role: "button", tabindex: "0", "aria-label": kind,
+        });
+        g.appendChild(el("circle", { class: "ct-step-bg", r: String(STEP_R) }));
+        g.appendChild(el("path", {
+          class: "ct-step-ic", d, fill: "none", "stroke-width": "2.6", "stroke-linecap": "round",
+        }));
+        g.addEventListener("pointerdown", (e) => this._stepPointerDown(e, dir));
+        g.addEventListener("pointerup", () => this._stepPointerUp());
+        g.addEventListener("pointercancel", () => this._stepPointerUp());
+        g.addEventListener("pointerleave", () => this._stepPointerUp());
+        g.addEventListener("keydown", (e) => {
+          if (e.key !== "Enter" && e.key !== " " && e.key !== "Spacebar") return;
+          e.preventDefault(); e.stopPropagation();
+          this._stepOnce(dir);
+        });
+        this._refs.steps.push({ g, dir, kind });
+        svg.appendChild(g);
+      });
 
       // ---- clover fan (lower-LEFT), spins with the FAN value ----
       const fanG = el("g", { class: "ct-clover nope", transform: "translate(212,322)" });
@@ -2823,9 +2885,119 @@
       if (this._refs.swingChip) { try { this._refs.swingChip.focus(); } catch (err) {} }
     }
 
+    // ============================================================================
+    // SETPOINT STEPPERS
+    // ============================================================================
+    // Tri-state like every other visibility flag. Auto shows the pair whenever the
+    // dial has ONE setpoint to move; a heat_cool dial has two, so a bare plus and
+    // minus would be ambiguous and the pair stays hidden there.
+    _steppersResolved() {
+      const cfg = this._config && this._config.show_steppers;
+      if (cfg === false) return false;
+      if (cfg === true) return !this._isHeatCool();
+      return !this._isHeatCool();
+    }
+    _stepPointerDown(e, dir) {
+      if (e.button && e.button !== 0) return;
+      const s = this._st(this._config.entity);
+      if (!s || s.state === "off" || s.state === "unavailable" || s.state === "unknown") return;
+      e.preventDefault(); e.stopPropagation(); // never let the center disc see this
+      try { e.currentTarget.setPointerCapture(e.pointerId); } catch (err) {}
+      this._stepOnce(dir);
+      this._stepPointerUp(); // clear any stale timers before arming new ones
+      this._stepDelayT = setTimeout(() => {
+        this._stepRepeatT = setInterval(() => this._stepOnce(dir), STEP_REPEAT_MS);
+      }, STEP_REPEAT_DELAY_MS);
+    }
+    _stepPointerUp() {
+      if (this._stepDelayT) { clearTimeout(this._stepDelayT); this._stepDelayT = null; }
+      if (this._stepRepeatT) { clearInterval(this._stepRepeatT); this._stepRepeatT = null; }
+    }
+    // One tick. Paints optimistically every time; the WRITE is trailing-debounced
+    // so a long hold produces a single set_temperature at the value you stopped on.
+    _stepOnce(dir) {
+      if (!this._hass) return;
+      const s = this._st(this._config.entity);
+      if (!s || s.state === "off" || s.state === "unavailable" || s.state === "unknown") return;
+      if (this._isHeatCool()) return;
+      const { lo, hi } = this._range();
+      const step = this._step();
+      const optActive = this._optimisticUntil && Date.now() < this._optimisticUntil && this._optimisticTarget != null;
+      const cur = optActive ? this._optimisticTarget : this._toDisplay(num((s.attributes || {}).temperature));
+      if (cur == null) return;
+      const next = clamp(Math.round((cur + dir * step) / step) * step, lo, hi);
+      if (next === cur) return; // already against the rail
+      this._optimisticTarget = next;
+      this._optimisticUntil = Date.now() + OPT_HOLD_MS;
+      this._paintTempArc(next);
+      this._stepPending = next;
+      if (this._stepCommitT) clearTimeout(this._stepCommitT);
+      this._stepCommitT = setTimeout(() => {
+        this._stepCommitT = null;
+        const v = this._stepPending;
+        this._stepPending = null;
+        if (v == null) return;
+        this._announce(this._fmtDisplay(v) + "° " + this._unitWord());
+        this._callTemp(v);
+      }, STEP_COMMIT_MS);
+    }
+
+    // ============================================================================
+    // PRESET MODES
+    // Driven entirely by the entity's own `preset_modes` list and written with
+    // climate.set_preset_mode, so this works on any integration that advertises
+    // presets (Midea eco / boost / sleep / comfort, Tado, ecobee, Nest, TRVs)
+    // with no per-brand knowledge in the card.
+    // ============================================================================
+    _presetModes() {
+      const s = this._st(this._config && this._config.entity);
+      const list = s && s.attributes && s.attributes.preset_modes;
+      return Array.isArray(list) ? list.filter((p) => typeof p === "string") : [];
+    }
+    // Tri-state like the feature chips: true forces the row, false hides it,
+    // unset / "auto" shows it only when the entity actually advertises presets.
+    _presetsResolved() {
+      const cfg = this._config && this._config.show_presets;
+      if (cfg === true) return true;
+      if (cfg === false) return false;
+      return this._presetModes().length > 0;
+    }
+    // Active preset, honoring a short optimistic hold so a tap lights instantly.
+    _presetActive() {
+      if (this._optimisticPresetUntil && Date.now() < this._optimisticPresetUntil) return this._optimisticPreset;
+      const s = this._st(this._config && this._config.entity);
+      return (s && s.attributes && s.attributes.preset_mode) || null;
+    }
+    // Display label: a preset_names override wins, else the entity's own value
+    // with underscores opened up and the first letter raised.
+    _presetName(p) {
+      const map = (this._config && this._config.preset_names) || {};
+      if (map && typeof map[p] === "string" && map[p].trim()) return map[p].trim();
+      const raw = String(p).replace(/_/g, " ");
+      return raw.charAt(0).toUpperCase() + raw.slice(1);
+    }
+    _setPreset(p) {
+      if (!this._hass) return;
+      if (!this._presetModes().some((x) => String(x) === String(p))) return; // never write a non-member
+      this._optimisticPreset = p;
+      this._optimisticPresetUntil = Date.now() + OPT_HOLD_MS;
+      if (this._popOpen) this._paintPop();
+      this._render();
+      this._svcSetPresetMode(p);
+      this._announce(this._t("preset") + " " + this._presetName(p));
+    }
+
     // ---- service-call signatures preserved for contract parity (failure-aware) ----
     _svcSetSwingMode(v) { this._svc("climate", "set_swing_mode", { entity_id: this._config.entity, swing_mode: v }, () => this._revertToggle("swing")); }
-    _svcSetPresetMode(v) { this._svc("climate", "set_preset_mode", { entity_id: this._config.entity, preset_mode: v }, () => this._render()); }
+    _svcSetPresetMode(v) { this._svc("climate", "set_preset_mode", { entity_id: this._config.entity, preset_mode: v }, () => this._revertPreset()); }
+    // Drop the optimistic preset so a rejected call snaps back to live state
+    // instead of leaving the wrong chip lit for the whole OPT_HOLD_MS window.
+    _revertPreset() {
+      this._optimisticPreset = null;
+      this._optimisticPresetUntil = 0;
+      if (this._popOpen) this._paintPop();
+      this._render();
+    }
     _svcSetFanMode(v) { this._svc("climate", "set_fan_mode", { entity_id: this._config.entity, fan_mode: v }, () => this._revertFan()); }
     _svcPower(on) { this._svc("climate", on ? "turn_on" : "turn_off", { entity_id: this._config.entity }, () => this._render()); }
 
@@ -2865,6 +3037,16 @@
         b.style.setProperty("--ct-lit", this._modeColor(m));
         sheet.appendChild(b);
       });
+      // PRESET ROW: one chip per member of the entity's own preset_modes, between
+      // the modes and the feature chips. Rebuilt in _paintPop when the entity's
+      // list changes, since presets can appear late or swap with the entity.
+      const prow = document.createElement("div");
+      prow.className = "ct-presets";
+      this._refs.presetRow = prow;
+      this._refs.presetBtns = {};
+      this._presetsBuiltFor = null;
+      sheet.appendChild(prow);
+
       // TOGGLES ROW (SWING / LED / SOUND), below the modes with a separator. Built
       // once; visibility + lit state are driven in _paintPop so an unresolved chip
       // simply hides (like the face swing chip).
@@ -2909,6 +3091,10 @@
           // Toggle chips flip a feature and KEEP the popup open; mode buttons close it.
           if (b.dataset.toggle) { if (this._featureAvail(b.dataset.toggle)) this._featureToggle(b.dataset.toggle); return; }
           if (b.dataset.xtoggle != null) { this._xTap(+b.dataset.xtoggle); return; }
+          // Preset chips set a preset and KEEP the popup open, like the toggles.
+          if (b.dataset.preset != null) { this._setPreset(b.dataset.preset); return; }
+          if (b.classList.contains("ct-popclose")) return; // has its own handler
+          if (b.dataset.mode == null) return;              // never write undefined
           this._selectMode(b.dataset.mode);
         };
         sheet.addEventListener("click", this._onPopClick);
@@ -2944,6 +3130,40 @@
         b.setAttribute("aria-pressed", active ? "true" : "false"); // a11y (issue #5)
         b.textContent = this._modeName(b.dataset.mode); // keep localized on a language switch (issue #19)
       });
+      // PRESET ROW: rebuild when the entity's own list changes, then light the one
+      // that is active. Hidden entirely when the entity advertises no presets.
+      if (this._refs.presetRow) {
+        const row = this._refs.presetRow;
+        const list = this._presetModes();
+        const sig = list.join(" ");
+        if (this._presetsBuiltFor !== sig) {
+          this._presetsBuiltFor = sig;
+          row.innerHTML = "";
+          this._refs.presetBtns = {};
+          list.forEach((p) => {
+            const b = document.createElement("button");
+            b.className = "ct-preset";
+            b.dataset.preset = p;
+            b.textContent = this._presetName(p);
+            row.appendChild(b);
+            this._refs.presetBtns[p] = b;
+          });
+        }
+        const show = this._presetsResolved() && list.length > 0;
+        row.style.display = show ? "" : "none";
+        if (show) {
+          const cur = this._presetActive();
+          list.forEach((p) => {
+            const b = this._refs.presetBtns[p];
+            if (!b) return;
+            b.textContent = this._presetName(p); // keep a renamed label live
+            const active = String(p) === String(cur);
+            b.classList.toggle("active", active);
+            b.setAttribute("aria-pressed", active ? "true" : "false");
+          });
+        }
+      }
+
       // TOGGLES ROW: hide an unresolved chip; else lit ".on" = feature on.
       if (this._refs.toggles) {
         TOGGLE_DEFS.forEach((t) => {
@@ -3324,6 +3544,7 @@
         this._refs.fanIconHit.style.display = "none";
         this._refs.swingChip.style.display = "none";
         this._refs.swingCap.style.display = "none";
+        if (this._refs.steps) this._refs.steps.forEach((x) => { x.g.style.display = "none"; });
         this._refs.svg.style.opacity = "0.5";
         // a11y: nothing is settable while unavailable -> take the fan slider out of
         // the tab order (the temp slider's key handler already no-ops here, issue #5).
@@ -3508,6 +3729,21 @@
         if (this._refs.fanGrab) { this._refs.fanGrab.setAttribute("tabindex", "-1"); this._refs.fanGrab.setAttribute("aria-hidden", "true"); }
       }
 
+      // ---- SETPOINT STEPPERS ----
+      // Dimmed and out of the tab order while the unit is off, exactly like the fan
+      // controls, since there is no setpoint to move until it runs.
+      if (this._refs.steps) {
+        const showSteps = this._steppersResolved();
+        this._refs.steps.forEach((x) => {
+          x.g.style.display = showSteps ? "" : "none";
+          x.g.style.opacity = off ? "0.35" : "1";
+          x.g.setAttribute("tabindex", showSteps && !off ? "0" : "-1");
+          x.g.setAttribute("aria-label",
+            this._t(x.kind === "increase" ? "increase_temp" : "decrease_temp"));
+          x.g.setAttribute("aria-disabled", off ? "true" : "false");
+        });
+      }
+
       // ---- face VERTICAL SWING chip ----
       if (this._featureResolved("swing")) {
         // Forced-visible with no backing source -> render an inert, dimmed OFF chip.
@@ -3659,6 +3895,20 @@ ha-card{ position:relative; display:block; overflow:visible; }
    attribute still paints, so there is no unstyled state. */
 .ct-track{ stroke: color-mix(in srgb, var(--secondary-text-color, #8c99a7) 24%, transparent); }
 
+/* Setpoint steppers: quiet until touched, so they never compete with the numerals
+   they sit beside. The ring picks up the active mode color through --ct-accent. */
+.ct-step{ cursor:pointer; transition:opacity .15s ease; }
+.ct-step-bg{
+  fill: color-mix(in srgb, var(--secondary-text-color, #8c99a7) 8%, transparent);
+  stroke: color-mix(in srgb, var(--ct-accent) 55%, transparent);
+  stroke-width:1.5;
+  transition:fill .15s ease;
+}
+.ct-step-ic{ stroke: var(--primary-text-color, rgba(234,235,238,.92)); }
+.ct-step:hover .ct-step-bg{ fill: color-mix(in srgb, var(--ct-accent) 18%, transparent); }
+.ct-step:active .ct-step-bg{ fill: color-mix(in srgb, var(--ct-accent) 30%, transparent); }
+@media (prefers-reduced-motion: reduce){ .ct-step, .ct-step-bg{ transition:none !important; } }
+
 /* The slab is a GLASS feature. On the default theme appearance it drew a second
    bordered, blurred panel inset inside ha-card (a card inside a card) and cost a
    backdrop-filter layer on wall tablets, so it now renders only for glass. */
@@ -3800,6 +4050,29 @@ ha-card[data-appearance="glass-light"] .ct-frost{
 }
 @media (max-width:480px){ .ct-sheet button{ min-width:88px; padding:14px 8px; font-size:13px; } }
 
+/* PRESET ROW: full-width strip between the modes and the feature chips. Pill
+   shaped so it never reads as another mode button, and it wraps on a phone. */
+.ct-presets{
+  grid-column:1 / -1;
+  display:flex; flex-wrap:wrap; gap:10px; justify-content:center;
+  margin-top:6px; padding-top:16px;
+  border-top:1px solid rgba(234,235,238,.12);
+}
+.ct-sheet button.ct-preset{
+  min-width:0; padding:10px 18px; border-radius:999px;
+  font-size:13px; letter-spacing:1.5px; line-height:1;
+  background:var(--secondary-background-color, rgba(30,40,52,.45));
+  color:var(--secondary-text-color, #8a98a6);
+  border:1px solid var(--divider-color, rgba(234,235,238,.14));
+}
+.ct-sheet button.ct-preset:hover{ border-color:color-mix(in srgb, var(--ct-accent) 45%, transparent); color:var(--primary-text-color, #c6d3df); }
+.ct-sheet button.ct-preset.active{
+  color:var(--ct-accent);
+  background:color-mix(in srgb, var(--ct-accent) 16%, transparent);
+  border:1.5px solid var(--ct-accent);
+  box-shadow:0 0 14px color-mix(in srgb, var(--ct-accent) 34%, transparent);
+}
+
 /* TOGGLES ROW: full-width strip under the modes, divider above it. */
 .ct-toggles{
   grid-column:1 / -1;
@@ -3890,7 +4163,7 @@ ha-card[data-appearance="glass-light"] .ct-frost{
   // treats unset / "auto" as auto). The localized option list is built per-call in
   // _schema; the field labels/helpers live in LOCALE.<lang>.editorLabels/Helpers
   // (resolved via editorMap), with English as the fallback (issue #19).
-  const TRISTATE_KEYS = ["show_fan", "show_swing", "show_led", "show_sound"];
+  const TRISTATE_KEYS = ["show_fan", "show_swing", "show_led", "show_sound", "show_presets", "show_steppers"];
 
   // snake_case / dotted name -> Title Case (label fallback).
   function prettifyName(name) {
@@ -3918,6 +4191,15 @@ ha-card[data-appearance="glass-light"] .ct-frost{
       const st = hass && config && config.entity && hass.states ? hass.states[config.entity] : null;
       return (st && st.attributes && st.attributes.hvac_modes)
         || ["off", "cool", "heat", "heat_cool", "dry", "fan_only", "auto"];
+    }
+    // The selected entity's own presets. No fallback list here: unlike hvac_modes
+    // there is no standard set, so an entity without presets simply gets no rename
+    // fields rather than fields for presets it will never have.
+    _presetModes(config) {
+      const hass = this._hass;
+      const st = hass && config && config.entity && hass.states ? hass.states[config.entity] : null;
+      const list = st && st.attributes && st.attributes.preset_modes;
+      return Array.isArray(list) ? list.filter((p) => typeof p === "string") : [];
     }
 
     // Build the ha-form schema. Re-derived on every change so the Modes multi-select
@@ -3965,6 +4247,7 @@ ha-card[data-appearance="glass-light"] .ct-frost{
             { name: "show_current", selector: { boolean: {} } },
             { name: "show_hints", selector: { boolean: {} } },
           ] },
+          { name: "show_steppers", selector: { select: { mode: "dropdown", options: autoTF } } },
           { type: "expandable", name: "mode_colors", title: this._t("editor.section.mode_colors"), icon: "mdi:format-color-fill",
             schema: MODE_KEYS.map((m) => ({ name: m, selector: { color_rgb: {} } })) },
         ] },
@@ -3973,6 +4256,14 @@ ha-card[data-appearance="glass-light"] .ct-frost{
           { name: "modes", selector: { select: { multiple: true, mode: "list", options: modeOptions } } },
           { type: "expandable", name: "", title: this._t("editor.section.mode_names"), icon: "mdi:rename-box",
             schema: hvac.map((m) => ({ name: "mn__" + m, selector: { text: {} }, _label: modeName(this._hass, m) || String(m).toUpperCase() })) },
+        ] },
+
+        { type: "expandable", name: "", title: this._t("editor.section.presets"), icon: "mdi:tune-variant", schema: [
+          { name: "show_presets", selector: { select: { mode: "dropdown", options: autoTF } } },
+          ...this._presetModes(config).map((p) => ({
+            name: "pn__" + p, selector: { text: {} },
+            _label: p.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase()),
+          })),
         ] },
 
         { type: "expandable", name: "", title: this._t("editor.section.fan"), icon: "mdi:fan", schema: [
@@ -4190,6 +4481,8 @@ ha-card[data-appearance="glass-light"] .ct-frost{
       const mnames = (config.mode_names && typeof config.mode_names === "object" && !Array.isArray(config.mode_names)) ? config.mode_names : {};
       for (const m of this._hvacModes(config)) data["mn__" + m] = (typeof mnames[m] === "string") ? mnames[m] : "";
       for (const t of normalizeExtra(config.extra_toggles)) data["xtn__" + t.entity] = t.name || "";
+      const pnames = (config.preset_names && typeof config.preset_names === "object" && !Array.isArray(config.preset_names)) ? config.preset_names : {};
+      for (const p of this._presetModes(config)) data["pn__" + p] = (typeof pnames[p] === "string") ? pnames[p] : "";
       return data;
     }
 
@@ -4201,10 +4494,22 @@ ha-card[data-appearance="glass-light"] .ct-frost{
 
       // Editor-only label fields: mn__<mode> -> mode_names, xtn__<entity> -> extra_toggles[].name.
       // Track PRESENCE (a field emitted empty means "clear this label", not "leave unchanged").
-      const modeNameOv = {}, xtNameOv = {};
+      const modeNameOv = {}, xtNameOv = {}, presetNameOv = {};
       for (const k of Object.keys(cfg)) {
         if (k.indexOf("mn__") === 0) { const v = cfg[k]; modeNameOv[k.slice(4)] = (typeof v === "string" ? v.trim() : ""); delete cfg[k]; }
         else if (k.indexOf("xtn__") === 0) { const v = cfg[k]; xtNameOv[k.slice(5)] = (typeof v === "string" ? v.trim() : ""); delete cfg[k]; }
+        else if (k.indexOf("pn__") === 0) { const v = cfg[k]; presetNameOv[k.slice(4)] = (typeof v === "string" ? v.trim() : ""); delete cfg[k]; }
+      }
+      {
+        const pn = {};
+        const prevPn = (cfg.preset_names && typeof cfg.preset_names === "object"
+          && !Array.isArray(cfg.preset_names)) ? cfg.preset_names : {};
+        for (const p of Object.keys(prevPn)) {
+          if (p in presetNameOv) continue; // had a field; the field is authoritative
+          if (typeof prevPn[p] === "string" && prevPn[p].trim()) pn[p] = prevPn[p].trim();
+        }
+        for (const p of Object.keys(presetNameOv)) if (presetNameOv[p]) pn[p] = presetNameOv[p];
+        if (Object.keys(pn).length) cfg.preset_names = pn; else delete cfg.preset_names;
       }
       // Carry over labels for modes that got NO field this render, then apply the
       // rendered fields on top. The seed only builds mn__ fields for the entity's

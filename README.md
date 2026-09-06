@@ -17,6 +17,7 @@ An instrument-cluster climate dial for Home Assistant that follows your theme.
 
 - **Two rings you drag.** The inner ring sets the target temperature, the outer ring sets the fan speed. No other climate card gives you a draggable fan ring.
 - **Glass mode popup.** Tap the center for a frosted mode picker with per-mode glyphs, plus swing, LED and sound chips.
+- **Presets and steppers.** Eco, boost, sleep and whatever else your unit advertises, as chips in the pop-up. Plus and minus buttons on the face for when dragging is not what you want.
 - **Zero YAML.** Every option below is in the visual editor. Add the card from the dashboard UI and click Edit.
 - **Follows your theme.** Light and dark, automatically, or force a translucent frosted-glass panel that frosts your wallpaper.
 
@@ -61,6 +62,8 @@ That is the whole minimum config. Requires Home Assistant 2024.1.0 or newer. HAC
 | `temperature_unit` | `auto` \| `F` \| `C` | `auto` | `auto` follows your Home Assistant unit system. |
 | `modes` | list | entity `hvac_modes` | Which HVAC modes appear in the popup. |
 | `fan_entity` | `number.*` | auto-discovered | Percent entity behind the fan ring. |
+| `show_presets` | `auto` \| `true` \| `false` | `auto` | Preset row in the pop-up. Auto shows it when the entity advertises `preset_modes`. |
+| `show_steppers` | `auto` \| `true` \| `false` | `auto` | Plus and minus buttons on the face. Auto shows them on a single-setpoint dial. |
 | `extra_toggles` | list | unset | Your own chips in the mode popup. See [Compatibility](#compatibility). |
 | `max_height` | CSS length | unset | Caps the card height, useful in a Sections grid cell. |
 
@@ -72,6 +75,7 @@ That is the whole minimum config. Requires Home Assistant 2024.1.0 or newer. HAC
 | `glass_opacity` | number `0`..`1` | per-variant | Panel solidity, `0` clear to `1` solid. Glass appearances only. |
 | `mode_colors` | map | built-in | Per-mode color overrides, for example `cool: "#4fc3f7"`. |
 | `mode_names` | map | unset | Rename mode buttons, for example `{ fan_only: Fan }`. |
+| `preset_names` | map | unset | Rename preset chips, for example `{ eco: iECO }`. The written value is unchanged. |
 | `font` | string | unset | Font family prepended to the default stack. |
 | `font_url` | string | unset | Stylesheet URL that loads `font`. Nothing is fetched by default. |
 | `min_temp` / `max_temp` | number | entity range | Dial bounds, for example `61` and `86` in Fahrenheit. |
@@ -116,6 +120,8 @@ The card drives any `climate.*` entity. Midea units get their extra hardware con
 | Temperature ring, mode popup, theming | Yes | Yes | Yes |
 | Dual setpoints in `heat_cool` | Yes, a two-tone comfort band and a `68 - 74` readout | Yes | Yes |
 | Fan ring | Yes, driving named `fan_modes` as discrete stops | Auto, a smooth percent ring from the `number.*_fan_speed` sibling | Point `fan_entity` at a percent `number.*` for the smooth ring |
+| Preset row (eco, boost, sleep, comfort) | Yes, from the entity's own `preset_modes` | Yes | Yes |
+| Plus / minus setpoint buttons | Yes | Yes | Yes |
 | Swing chip | Yes, from the entity's own `swing_modes`, with a long-press position picker | Auto, from the swing `switch` sibling | Set `swing_entity`, or use `extra_toggles` |
 | LED display and beep chips | Not exposed by the climate domain | Auto, from the `switch` siblings | Set `led_entity` and `sound_entity`, or use `extra_toggles` |
 | Anything else (anti-mildew, UV, eco, gentle wind) | Add it with `extra_toggles` | Add it with `extra_toggles` | Add it with `extra_toggles` |

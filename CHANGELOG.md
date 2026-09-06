@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-09-06
+
+### Added
+- **Preset row.** The mode pop-up now shows a chip for every member of the entity's own `preset_modes` and writes with `climate.set_preset_mode`. This is what surfaces eco, boost, sleep and comfort on Midea, and the equivalents on Tado, ecobee, Nest and thermostatic radiator valves, with no per-brand knowledge in the card. Control it with `show_presets` (`auto` shows the row whenever the entity advertises presets) and rename individual chips with `preset_names`, for example `{ eco: iECO }`. The written value is always the raw member, never the label.
+- **Plus and minus buttons.** A stepper sits either side of the setpoint numerals. Press and hold to repeat. The dial has always been drag-first, but dragging is not available to every hand or every pointer, so this is the discrete alternative that was missing. Control it with `show_steppers`; `auto` shows the pair on a single-setpoint dial and hides it on a `heat_cool` dial, where a bare plus could not say which of the two setpoints it would move.
+- Both new sections are in the visual editor, including a rename field per preset.
+- Tests for both, including one that holds the stepper through five degrees and asserts a single `set_temperature` is written rather than five.
+
+### Changed
+- A stepper burst is trailing-debounced. The arc tracks every tick immediately, but the write waits until you stop, so holding through six degrees is one service call instead of six.
+
 ## [1.5.1] - 2026-09-06
 
 ### Added
@@ -122,6 +133,7 @@ First public release of the Climate Cluster Card for Home Assistant.
 - Full GUI editor, no YAML required.
 - Auto-discovery of fan / swing / LED / sound sibling entities, tuned for Midea (`midea_ac_lan`).
 
+[1.6.0]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v1.6.0
 [1.5.1]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v1.5.1
 [1.5.0]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v1.5.0
 [1.4.0]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v1.4.0
