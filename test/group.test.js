@@ -145,10 +145,17 @@ test("group: an entity name carrying markup cannot break out of the card", () =>
   const evil = JSON.parse(JSON.stringify(states));
   evil["climate.living"].attributes.friendly_name = '<img src=x onerror=alert(1)>"';
   const el = makeGroup(baseConfig, makeHass(evil));
-  const html = el.shadowRoot.querySelector("ha-card").innerHTML;
-  assert.ok(!html.includes("<img src=x"), "the tag must be escaped, not rendered");
-  assert.ok(html.includes("&lt;img"), "escaped form is present");
-  assert.equal(el.shadowRoot.querySelectorAll("img").length, 0);
+  const root = el.shadowRoot;
+
+  // Assert on the DOM, not on innerHTML. The HTML serializer does not escape angle
+  // brackets inside attribute values, so a title="<img ...>" round-trips through
+  // innerHTML looking like a tag while being completely inert. What actually matters
+  // is that no element was created and the name landed as TEXT.
+  assert.equal(root.querySelectorAll("img").length, 0, "no element was created");
+  assert.equal(root.querySelectorAll("script").length, 0);
+  const span = root.querySelector(".cg-zone-name");
+  assert.equal(span.children.length, 0, "the name is a text node, not parsed markup");
+  assert.equal(span.textContent, '<img src=x onerror=alert(1)>"', "shown verbatim as text");
 });
 
 test("group: a dead zone shows as unavailable instead of a stale reading", () => {

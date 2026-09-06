@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1] - 2026-09-06
+
+### Fixed
+- The group card laid out badly in a normal dashboard column. The hero gauge drew inside a 600 by 392 canvas while only using a third of it, so it rendered small and floated off to one side, and the zone grid collapsed to a single column, which made a five-zone card over 1200 pixels tall. Both boxes are now tight around what they actually draw, the zone grid fits two columns in a normal column width, and the group buttons sit under the hero instead of stretching the card. The same card is now about a third of the height.
+- Zone labels sharing a prefix all truncated to the same stub ("Aire-Sala", "Aire-Ricky" and "Aire-Master" every one reading "AIRE-..."). A shared prefix is now dropped from the tile labels, so those read "Sala", "Ricky" and "Master". It only applies when every zone shares the prefix and every remainder is still at least three characters, so "Office 1" and "Office 2" are left alone rather than reduced to "1" and "2". The full name stays on the tooltip.
+- The hero setpoint numeral overlapped the line beneath it, and the zone humidity line sat on the arc ends. Both have room now.
+
 ## [2.0.0] - 2026-09-06
 
 ### Added
@@ -167,6 +174,7 @@ First public release of the Climate Cluster Card for Home Assistant.
 - Full GUI editor, no YAML required.
 - Auto-discovery of fan / swing / LED / sound sibling entities, tuned for Midea (`midea_ac_lan`).
 
+[2.0.1]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v2.0.1
 [2.0.0]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v2.0.0
 [1.8.0]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v1.8.0
 [1.7.0]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v1.7.0

@@ -26,7 +26,7 @@
   const NS = "http://www.w3.org/2000/svg";
 
   // ---- console version banner ---------------------------------------------
-  const VERSION = "2.0.0";
+  const VERSION = "2.0.1";
   console.info(
     "%c CLIMATE-CLUSTER-CARD %c v" + VERSION + " ",
     "color:#0b0f16;background:#4fc3f7;font-weight:700;border-radius:4px 0 0 4px;padding:2px 6px",
@@ -4872,12 +4872,19 @@ ha-card[data-appearance="glass-light"] .ct-frost{
   color:var(--primary-text-color); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .cg-count{ font-size:13px; font-weight:600; letter-spacing:2px; color:var(--secondary-text-color); flex:none; }
 
-.cg-body{ display:grid; grid-template-columns:minmax(190px,1fr) minmax(0,1.15fr); gap:12px; margin-top:10px; align-items:start; }
-@media (max-width:460px){ .cg-body{ grid-template-columns:1fr; } }
+/* Zero-size defs carrier: gradients only, never laid out. */
+.cg-defs{ position:absolute; width:0; height:0; overflow:hidden; }
+
+.cg-body{ display:grid; grid-template-columns:minmax(196px,0.95fr) minmax(0,1.05fr);
+  gap:14px; margin-top:10px; align-items:start; }
+@media (max-width:520px){ .cg-body{ grid-template-columns:1fr; } }
+/* Hero and the group buttons stack in the left column so the buttons fill the
+   space beside the zone grid instead of stretching the card taller. */
+.cg-left{ display:flex; flex-direction:column; gap:10px; min-width:0; }
 .cg-hero{ min-width:0; }
 .cg-hero-svg{ display:block; width:100%; height:auto; overflow:visible; }
 
-.cg-zones{ display:grid; grid-template-columns:repeat(auto-fill, minmax(126px, 1fr)); gap:8px; min-width:0; }
+.cg-zones{ display:grid; grid-template-columns:repeat(auto-fill, minmax(96px, 1fr)); gap:7px; min-width:0; }
 .cg-zone{ appearance:none; font:inherit; cursor:pointer; text-align:left; padding:8px 8px 4px;
   border-radius:12px; border:1px solid var(--divider-color, rgba(127,127,127,.25));
   background:color-mix(in srgb, var(--secondary-text-color, #8c99a7) 5%, transparent);
@@ -4889,9 +4896,11 @@ ha-card[data-appearance="glass-light"] .ct-frost{
 .cg-zone:hover{ background:color-mix(in srgb, var(--cg-mode, var(--primary-color)) 10%, transparent); }
 .cg-zone:focus-visible{ outline:2px solid var(--primary-color, #03a9f4); outline-offset:2px; }
 .cg-zone-head{ display:flex; align-items:baseline; justify-content:space-between; gap:6px; }
-.cg-zone-name{ font-size:12px; font-weight:600; letter-spacing:1.4px; text-transform:uppercase;
-  color:var(--secondary-text-color); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.cg-zone-mode{ font-size:10px; font-weight:600; letter-spacing:1px; flex:none;
+.cg-zone-name{ font-size:12.5px; font-weight:600; letter-spacing:.2px;
+  color:var(--secondary-text-color); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  flex:1 1 auto; min-width:0; }
+.cg-zone-mode{ font-size:9.5px; font-weight:700; letter-spacing:.6px; flex:0 0 auto;
+  max-width:42%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   color:var(--cg-mode, var(--secondary-text-color)); }
 .cg-zone.dead .cg-zone-mode, .cg-zone:not(.on) .cg-zone-mode{ color:var(--secondary-text-color); }
 .cg-zone-svg{ display:block; width:100%; height:auto; margin-top:2px; }
@@ -4905,16 +4914,17 @@ ha-card[data-appearance="glass-light"] .ct-frost{
 .cg-dim{ fill:var(--secondary-text-color); }
 .cg-hero-label{ font-size:13px; font-weight:600; letter-spacing:4px; fill:var(--secondary-text-color); }
 .cg-hero-now{ font-size:12px; letter-spacing:2.5px; fill:var(--primary-text-color); }
-.cg-hero-big{ font-size:58px; letter-spacing:2px; fill:var(--primary-text-color); }
+.cg-hero-big{ font-size:52px; letter-spacing:2px; fill:var(--primary-text-color); }
 .cg-hero-sub{ font-size:11px; font-weight:600; letter-spacing:2px; fill:var(--secondary-text-color); }
 .cg-zone-big{ font-size:26px; fill:var(--primary-text-color); }
 .cg-zone-now{ font-size:9.5px; letter-spacing:1.4px; fill:var(--primary-text-color); }
 text.cg-dim, tspan.cg-dim{ fill:var(--secondary-text-color); }
 
-.cg-actions{ display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; padding-top:10px;
+.cg-actions{ display:flex; flex-wrap:wrap; gap:7px; padding-top:10px;
   border-top:1px solid var(--divider-color, rgba(127,127,127,.2)); }
-.cg-act{ appearance:none; font:inherit; cursor:pointer; padding:9px 16px; border-radius:10px;
-  font-size:13px; font-weight:600; letter-spacing:2px; text-transform:uppercase;
+.cg-act{ appearance:none; font:inherit; cursor:pointer; padding:9px 13px; border-radius:10px;
+  flex:1 1 auto; min-width:0; white-space:nowrap; text-align:center;
+  font-size:12.5px; font-weight:600; letter-spacing:1.6px; text-transform:uppercase;
   background:var(--secondary-background-color, rgba(120,130,145,.14));
   color:var(--primary-text-color); border:1px solid var(--divider-color, rgba(127,127,127,.3));
   transition:border-color .15s ease; }
@@ -5035,6 +5045,26 @@ text.cg-dim, tspan.cg-dim{ fill:var(--secondary-text-color); }
       if (l != null && h != null) return (l + h) / 2;
       return null;
     }
+    // Zone names very often share a prefix ("Aire-Sala", "Aire-Ricky", "AC Office").
+    // The tiles are narrow, so that prefix eats the label and every zone truncates to
+    // the same useless stub. Strip it, but only when EVERY name has it and every
+    // remainder is still 3 characters or more, so "Office 1" / "Office 2" is left
+    // alone rather than reduced to "1" and "2".
+    _shortNames(names) {
+      if (names.length < 2) return names;
+      let p = names[0];
+      for (const n of names.slice(1)) {
+        let i = 0;
+        while (i < p.length && i < n.length && p[i].toLowerCase() === n[i].toLowerCase()) i++;
+        p = p.slice(0, i);
+        if (!p) return names;
+      }
+      p = p.replace(/[^\s\-_.]*$/, ""); // back off to a separator, never mid-word
+      if (p.length < 3) return names;
+      const out = names.map((n) => n.slice(p.length).replace(/^[\s\-_.]+/, ""));
+      return out.every((n) => n.length >= 3) ? out : names;
+    }
+
     _live(z) {
       const s = this._st(z.entity);
       const a = (s && s.attributes) || {};
@@ -5172,12 +5202,11 @@ text.cg-dim, tspan.cg-dim{ fill:var(--secondary-text-color); }
         ? (hero.z.on ? String(hero.z.state).toUpperCase().replace("_", " ") : this._t("off_word"))
         : (hero.kind === "average" ? `${hero.running} ${this._t("running")}` : "");
 
-      let s = `<svg viewBox="0 0 600 392" class="cg-hero-svg" role="img" aria-label="${escapeAttr(label)}">`;
-      s += '<defs>'
-        + '<linearGradient id="cgCold" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#2aa7d6"/><stop offset="1" stop-color="#7fe4ff"/></linearGradient>'
-        + '<linearGradient id="cgWarm" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFC98A"/><stop offset="1" stop-color="#F2933A"/></linearGradient>'
-        + '<filter id="cgGlow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="5"/></filter>'
-        + '</defs>';
+      // viewBox is TIGHT around what the hero actually draws. The gauge sits at
+      // 168/208 with radius 104, so its content runs x 57..279 and y 97..262. A
+      // full 600x392 box left the gauge floating in a third of its own canvas,
+      // which is why the card read as small and off-centre.
+      let s = `<svg viewBox="53 94 230 182" class="cg-hero-svg" role="img" aria-label="${escapeAttr(label)}">`;
 
       // tick scale, same proportions as the single dial
       let tk = "";
@@ -5217,8 +5246,8 @@ text.cg-dim, tspan.cg-dim{ fill:var(--secondary-text-color); }
         s += `<text x="${CXH}" y="${CYH - 26}" text-anchor="middle" class="cg-hero-now">`
           + `<tspan class="cg-dim">${escapeText(this._t("now"))} </tspan><tspan>${this._fmt(now)}&#176;</tspan></text>`;
       }
-      s += `<text x="${CXH}" y="${CYH + 16}" text-anchor="middle" dominant-baseline="central" class="cg-hero-big">${set == null ? "--" : this._fmt(set)}</text>`;
-      s += `<text x="${CXH}" y="${CYH + 48}" text-anchor="middle" class="cg-hero-sub">${escapeText(String(sub).toUpperCase())}</text>`;
+      s += `<text x="${CXH}" y="${CYH + 14}" text-anchor="middle" dominant-baseline="central" class="cg-hero-big">${set == null ? "--" : this._fmt(set)}</text>`;
+      s += `<text x="${CXH}" y="${CYH + 56}" text-anchor="middle" class="cg-hero-sub">${escapeText(String(sub).toUpperCase())}</text>`;
       return s + "</svg>";
     }
 
@@ -5226,7 +5255,9 @@ text.cg-dim, tspan.cg-dim{ fill:var(--secondary-text-color); }
       const { lo, hi } = this._range();
       const cx = 60, cy = 62, r = 30, w = 7;
       const t2a = (t) => G_A0 + G_SPAN * ((clamp(t, lo, hi) - lo) / (hi - lo));
-      let s = '<svg viewBox="0 0 120 92" class="cg-zone-svg" aria-hidden="true">';
+      // Tight box again: the gauge runs x 26..94 and y 28..82, and the clover sits
+      // on the right shelf. Anything looser and the tile pads itself with dead space.
+      let s = '<svg viewBox="24 26 94 64" class="cg-zone-svg" aria-hidden="true">';
       s += `<path d="${gArc(cx, cy, r, G_A0, G_A1)}" class="cg-track" stroke-width="${w}" fill="none" stroke-linecap="round"/>`;
       if (z.on && z.set != null) {
         const a = t2a(z.set);
@@ -5238,11 +5269,11 @@ text.cg-dim, tspan.cg-dim{ fill:var(--secondary-text-color); }
       }
       s += `<text x="${cx}" y="${cy - 4}" text-anchor="middle" dominant-baseline="central" class="cg-zone-big${z.on ? "" : " cg-dim"}">${z.dead ? "--" : (z.set == null ? "--" : this._fmt(z.set))}</text>`;
       if (z.now != null) {
-        s += `<text x="${cx}" y="${cy + 16}" text-anchor="middle" class="cg-zone-now">`
+        s += `<text x="${cx}" y="${cy + 21}" text-anchor="middle" class="cg-zone-now">`
           + `<tspan class="cg-dim">${escapeText(this._t("now"))} </tspan><tspan>${this._fmt(z.now)}&#176;</tspan></text>`;
       }
       if (z.on) {
-        s += `<g transform="translate(104,56) scale(.55)" class="cg-clover"><path d="${fanGlyph()}"/></g>`;
+        s += `<g transform="translate(102,50) scale(.5)" class="cg-clover"><path d="${fanGlyph()}"/></g>`;
       }
       return s + "</svg>";
     }
@@ -5269,51 +5300,60 @@ text.cg-dim, tspan.cg-dim{ fill:var(--secondary-text-color); }
       this._sig = sig;
 
       const zones = this._zones.map((z) => this._live(z));
+      const shortened = this._shortNames(zones.map((z) => z.name));
+      zones.forEach((z, i) => { z.short = shortened[i]; });
       const hero = this._heroPick(zones);
       const running = zones.filter((z) => z.on).length;
       const heroSet = hero.kind === "average" ? hero.set : (hero.kind === "zone" ? hero.z.set : null);
 
-      let html = '<div class="cg-head">'
+      // One hidden defs block for the whole card: the hero and every zone gauge
+      // share these gradients, so they are declared once rather than per-SVG.
+      let html = '<svg class="cg-defs" aria-hidden="true" focusable="false"><defs>'
+        + '<linearGradient id="cgCold" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#2aa7d6"/><stop offset="1" stop-color="#7fe4ff"/></linearGradient>'
+        + '<linearGradient id="cgWarm" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFC98A"/><stop offset="1" stop-color="#F2933A"/></linearGradient>'
+        + '<filter id="cgGlow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="5"/></filter>'
+        + "</defs></svg>";
+
+      html += '<div class="cg-head">'
         + `<span class="cg-title">${escapeText(this._config.name || "House")}</span>`
         + `<span class="cg-count">${running} / ${zones.length}</span>`
         + "</div>";
 
-      html += `<div class="cg-body"><div class="cg-hero">${this._heroSvg(hero, zones)}</div>`;
-      html += '<div class="cg-zones">';
+      // Hero and the group buttons share the left column, so the buttons fill the
+      // space under the gauge instead of stretching across the whole card.
+      html += `<div class="cg-body"><div class="cg-left"><div class="cg-hero">${this._heroSvg(hero, zones)}</div>`;
+      html += this._actionsHtml(heroSet);
+      html += '</div><div class="cg-zones">';
       for (const z of zones) {
         const cls = "cg-zone" + (z.on ? " on" : "") + (z.dead ? " dead" : "")
           + (this._focus === z.id ? " focused" : "");
         html += `<button type="button" class="${cls}" data-zone="${escapeAttr(z.id)}" `
           + `style="--cg-mode:${z.color}" aria-pressed="${this._focus === z.id ? "true" : "false"}">`
           + '<span class="cg-zone-head">'
-          + `<span class="cg-zone-name">${escapeText(z.name)}</span>`
+          + `<span class="cg-zone-name" title="${escapeAttr(z.name)}">${escapeText(z.short || z.name)}</span>`
           + `<span class="cg-zone-mode">${escapeText(z.dead ? this._t("unavailable") : (z.on ? String(z.state).toUpperCase().replace("_", " ") : "OFF"))}</span>`
           + "</span>"
           + this._zoneSvg(z)
           + "</button>";
       }
       html += "</div></div>";
-
-      const acts = this._config.group_actions === false ? [] : ["off", "setpoint", "preset"];
-      if (acts.length) {
-        html += '<div class="cg-actions">';
-        if (acts.includes("off")) {
-          html += `<button type="button" class="cg-act" data-act="off">${escapeText(this._t("all_off"))}</button>`;
-        }
-        if (acts.includes("setpoint") && heroSet != null) {
-          const target = Math.round(heroSet);
-          html += `<button type="button" class="cg-act" data-act="setpoint" data-arg="${target}">`
-            + `${escapeText(this._t("sync"))} ${target}&#176;</button>`;
-        }
-        if (acts.includes("preset")) {
-          for (const p of this._sharedPresets().slice(0, 3)) {
-            html += `<button type="button" class="cg-act" data-act="preset" data-arg="${escapeAttr(p)}">`
-              + `${escapeText(p.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase()))}</button>`;
-          }
-        }
-        html += "</div>";
-      }
       this._card.innerHTML = html;
+    }
+
+    _actionsHtml(heroSet) {
+      if (this._config.group_actions === false) return "";
+      let html = '<div class="cg-actions">'
+        + `<button type="button" class="cg-act" data-act="off">${escapeText(this._t("all_off"))}</button>`;
+      if (heroSet != null) {
+        const target = Math.round(heroSet);
+        html += `<button type="button" class="cg-act" data-act="setpoint" data-arg="${target}">`
+          + `${escapeText(this._t("sync"))} ${target}&#176;</button>`;
+      }
+      for (const p of this._sharedPresets().slice(0, 2)) {
+        html += `<button type="button" class="cg-act cg-act-preset" data-act="preset" data-arg="${escapeAttr(p)}">`
+          + `${escapeText(p.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase()))}</button>`;
+      }
+      return html + "</div>";
     }
   }
 
