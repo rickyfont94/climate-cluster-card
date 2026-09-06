@@ -64,6 +64,7 @@ That is the whole minimum config. Requires Home Assistant 2024.1.0 or newer. HAC
 | `fan_entity` | `number.*` | auto-discovered | Percent entity behind the fan ring. |
 | `show_presets` | `auto` \| `true` \| `false` | `auto` | Preset row in the pop-up. Auto shows it when the entity advertises `preset_modes`. |
 | `show_steppers` | `auto` \| `true` \| `false` | `auto` | Plus and minus buttons on the face. Auto shows them on a single-setpoint dial. |
+| `show_humidity` | `auto` \| `true` \| `false` | `auto` | Humidity line. Auto shows it when the entity reports `current_humidity`. |
 | `extra_toggles` | list | unset | Your own chips in the mode popup. See [Compatibility](#compatibility). |
 | `max_height` | CSS length | unset | Caps the card height, useful in a Sections grid cell. |
 
@@ -85,6 +86,8 @@ That is the whole minimum config. Requires Home Assistant 2024.1.0 or newer. HAC
 | `fan_animation_speed` | `dynamic` \| `constant` \| `off` | `dynamic` | Spin behavior. |
 | `show_fan` | `auto` \| `true` \| `false` | `auto` | Force the fan ring on or off. |
 | `swing_entity` / `led_entity` / `sound_entity` | `switch.*` | Midea sibling | Override the auto-discovered chip entity. |
+| `swing_h_entity` | `switch.*` | auto-discovered | Horizontal swing override. |
+| `show_swing_h` | `auto` \| `true` \| `false` | `auto` | Second swing chip. Auto shows it when a horizontal axis resolves. |
 | `show_swing` / `show_led` / `show_sound` | `auto` \| `true` \| `false` | `auto` | Force each chip on or off. |
 | `tap_action` | action | mode popup | Center tap. Leave unset to keep the mode popup. |
 | `hold_action` | action | `more-info` | Center press and hold. |
@@ -122,6 +125,8 @@ The card drives any `climate.*` entity. Midea units get their extra hardware con
 | Fan ring | Yes, driving named `fan_modes` as discrete stops | Auto, a smooth percent ring from the `number.*_fan_speed` sibling | Point `fan_entity` at a percent `number.*` for the smooth ring |
 | Preset row (eco, boost, sleep, comfort) | Yes, from the entity's own `preset_modes` | Yes | Yes |
 | Plus / minus setpoint buttons | Yes | Yes | Yes |
+| Horizontal swing | Yes, from `swing_horizontal_modes` | Yes, from the switch sibling | Set `swing_h_entity` |
+| Humidity readout | Yes, when `current_humidity` is reported | Yes | Yes |
 | Swing chip | Yes, from the entity's own `swing_modes`, with a long-press position picker | Auto, from the swing `switch` sibling | Set `swing_entity`, or use `extra_toggles` |
 | LED display and beep chips | Not exposed by the climate domain | Auto, from the `switch` siblings | Set `led_entity` and `sound_entity`, or use `extra_toggles` |
 | Anything else (anti-mildew, UV, eco, gentle wind) | Add it with `extra_toggles` | Add it with `extra_toggles` | Add it with `extra_toggles` |

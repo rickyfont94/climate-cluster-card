@@ -26,7 +26,7 @@
   const NS = "http://www.w3.org/2000/svg";
 
   // ---- console version banner ---------------------------------------------
-  const VERSION = "1.7.0";
+  const VERSION = "1.8.0";
   console.info(
     "%c CLIMATE-CLUSTER-CARD %c v" + VERSION + " ",
     "color:#0b0f16;background:#4fc3f7;font-weight:700;border-radius:4px 0 0 4px;padding:2px 6px",
@@ -102,6 +102,7 @@
       close: "Close",
       unavailable: "UNAVAILABLE",
       preset: "Preset",
+      swing_h: "SWING H",
       increase_temp: "Increase temperature",
       decrease_temp: "Decrease temperature",
       auto: "AUTO",
@@ -167,6 +168,9 @@
         __advanced: "Show all options",
         show_fan: "Show fan ring",
         show_presets: "Show preset row",
+        show_humidity: "Show humidity",
+        show_swing_h: "Show horizontal swing chip",
+        swing_h_entity: "Horizontal swing entity (switch.*)",
         show_steppers: "Show plus / minus buttons",
         fan_animation: "Fan animation",
         fan_animation_speed: "Fan animation speed",
@@ -203,6 +207,8 @@
         __advanced: "Modes, presets, fan, feature chips, layout and tap actions. Everything here has a sensible default, so you can leave it closed.",
         show_fan: "Force the fan ring on or off. Auto shows it when a fan source resolves.",
         show_presets: "Force the preset row on or off. Auto shows it when the entity advertises preset_modes.",
+        show_humidity: "Force the humidity line on or off. Auto shows it when the entity reports current_humidity.",
+        show_swing_h: "Force the horizontal swing chip on or off. Auto shows it when a horizontal axis resolves, from a switch entity or the entity's own swing_horizontal_modes.",
         show_steppers: "Force the plus and minus buttons on or off. Auto shows them on a single-setpoint dial and hides them on a heat_cool dial, where two setpoints would make a bare plus ambiguous.",
         fan_animation: "The spinning clover animation.",
         fan_animation_speed: "Dynamic scales the spin with fan speed; constant is a fixed spin.",
@@ -228,6 +234,7 @@
       close: "Cerrar",
       unavailable: "NO DISPONIBLE",
       preset: "Preajuste",
+      swing_h: "OSCILAR H",
       increase_temp: "Subir la temperatura",
       decrease_temp: "Bajar la temperatura",
       auto: "AUTO",
@@ -293,6 +300,9 @@
         __advanced: "Mostrar todas las opciones",
         show_fan: "Mostrar anillo del ventilador",
         show_presets: "Mostrar fila de preajustes",
+        show_humidity: "Mostrar humedad",
+        show_swing_h: "Mostrar chip de oscilacion horizontal",
+        swing_h_entity: "Entidad de oscilacion horizontal (switch.*)",
         show_steppers: "Mostrar botones mas / menos",
         fan_animation: "Animacion del ventilador",
         fan_animation_speed: "Velocidad de la animacion del ventilador",
@@ -329,6 +339,8 @@
         __advanced: "Modos, preajustes, ventilador, controles, diseno y acciones. Todo aqui tiene un valor por defecto razonable, asi que puedes dejarlo cerrado.",
         show_fan: "Forzar el anillo del ventilador encendido o apagado. Auto lo muestra cuando se resuelve una fuente de ventilador.",
         show_presets: "Forzar la fila de preajustes encendida o apagada. Auto la muestra cuando la entidad expone preset_modes.",
+        show_humidity: "Forzar la linea de humedad. Auto la muestra cuando la entidad reporta current_humidity.",
+        show_swing_h: "Forzar el chip de oscilacion horizontal. Auto lo muestra cuando se resuelve un eje horizontal.",
         show_steppers: "Forzar los botones mas y menos. Auto los muestra en un dial de un solo punto y los oculta en heat_cool, donde dos puntos harian ambiguo un mas solitario.",
         fan_animation: "La animacion giratoria del trebol.",
         fan_animation_speed: "Dynamic escala el giro con la velocidad del ventilador; constant es un giro fijo.",
@@ -1381,6 +1393,22 @@
       this._refs.nowCap.appendChild(this._refs.nowVal);
       svg.appendChild(this._refs.nowCap);
 
+      // RH xx, the fourth line of the centre stack. Only drawn when the entity
+      // reports current_humidity, so the stack never shifts for one that does not.
+      this._refs.rhCap = el("text", {
+        x: CX, y: 216, "text-anchor": "middle", class: "ct-rh nope",
+        "font-size": "15", "letter-spacing": "2.5",
+      });
+      this._refs.rhCap.style.fontWeight = "400";
+      const rhPrefix = el("tspan", { fill: "#8c99a7" }, "RH ");
+      rhPrefix.style.fill = "var(--secondary-text-color, #8c99a7)";
+      this._refs.rhLabel = rhPrefix;
+      this._refs.rhCap.appendChild(rhPrefix);
+      this._refs.rhVal = el("tspan", { fill: "rgba(234,235,238,.92)" }, "--%");
+      this._refs.rhCap.appendChild(this._refs.rhVal);
+      this._refs.rhCap.style.display = "none";
+      svg.appendChild(this._refs.rhCap);
+
       // big setpoint number (no degree).
       this._refs.bigNum = el("text", {
         x: CX, y: 266, "text-anchor": "middle", "dominant-baseline": "central", class: "ct-big nope",
@@ -1499,6 +1527,46 @@
       }, "SWING");
       this._refs.swingCap.style.fontWeight = "600";
       svg.appendChild(this._refs.swingCap);
+      // ---- HORIZONTAL SWING chip ----
+      // Built always, shown only when a horizontal axis resolves. When it does, the
+      // two chips split the lower-right shelf; when it does not, the vertical chip
+      // keeps the single centred position it has always had.
+      const swingHChip = el("g", {
+        class: "ct-swingh ct-hit", transform: "translate(432,322)",
+        role: "button", tabindex: "0", "aria-label": "Horizontal swing", "aria-pressed": "false",
+      });
+      this._refs.swingHChipBg = el("rect", {
+        x: -28, y: -22, width: 56, height: 44, rx: 12,
+        fill: "rgba(40,52,66,.30)", stroke: "rgba(234,235,238,.14)", "stroke-width": "1",
+      });
+      swingHChip.appendChild(this._refs.swingHChipBg);
+      this._refs.swingHIcon = el("path", {
+        d: "M -3 -5 L -9 0 L -3 5 M -9 0 L 9 0 M 3 -5 L 9 0 L 3 5",
+        fill: "none", stroke: "#6a7480", "stroke-width": "2", "stroke-linecap": "round", "stroke-linejoin": "round",
+      });
+      swingHChip.appendChild(this._refs.swingHIcon);
+      this._refs.swingHChip = swingHChip;
+      swingHChip.style.display = "none";
+      svg.appendChild(swingHChip);
+      this._refs.swingHCap = el("text", {
+        x: 432, y: 363, "text-anchor": "middle", class: "ct-swingcap nope",
+        fill: "rgba(234,235,238,.7)", "font-size": "13.5", "letter-spacing": "2", opacity: ".9",
+      }, "SWING H");
+      this._refs.swingHCap.style.fontWeight = "600";
+      this._refs.swingHCap.style.display = "none";
+      svg.appendChild(this._refs.swingHCap);
+      const swingHTap = (e) => {
+        if (e) { e.preventDefault(); e.stopPropagation(); }
+        const st = this._st(this._config.entity);
+        if (!st || st.state === "off" || st.state === "unavailable" || st.state === "unknown") return;
+        this._swingHToggle();
+      };
+      swingHChip.addEventListener("pointerup", swingHTap);
+      swingHChip.addEventListener("keydown", (e) => {
+        if (e.key !== "Enter" && e.key !== " " && e.key !== "Spacebar") return;
+        swingHTap(e);
+      });
+
       this._onSwingDown = (e) => this._swingPointerDown(e);
       this._onSwingUp = (e) => this._swingPointerUp(e);
       this._onSwingCancel = () => this._swingPointerCancel();
@@ -2064,6 +2132,24 @@
         const cLo = hcOpt ? this._optimisticLow : this._hcLow();
         const cHi = hcOpt ? this._optimisticHigh : this._hcHigh();
         if (cLo == null || cHi == null) return;
+        // Shift moves the LOW handle, plain keys move the HIGH one. Without this
+        // the cyan setpoint was reachable by pointer only, so a keyboard user could
+        // see a dual-setpoint dial and drive just half of it.
+        if (e.shiftKey) {
+          let nl = cLo;
+          if (k === "ArrowUp" || k === "ArrowRight") nl = cLo + step;
+          else if (k === "ArrowDown" || k === "ArrowLeft") nl = cLo - step;
+          else if (k === "PageUp") nl = cLo + big;
+          else if (k === "PageDown") nl = cLo - big;
+          else if (k === "Home") nl = lo;
+          else if (k === "End") nl = cHi - step;
+          else handled = false;
+          if (handled) {
+            e.preventDefault();
+            this._commitHeatCool(snap(nl, lo, cHi - step), cHi);
+          }
+          return;
+        }
         let nh = cHi;
         if (k === "ArrowUp" || k === "ArrowRight") nh = cHi + step;
         else if (k === "ArrowDown" || k === "ArrowLeft") nh = cHi - step;
@@ -2551,6 +2637,69 @@
     _ledRef() { return (this._config && this._config.led_entity) || this._siblings().screen || null; }
     _soundRef() { return (this._config && this._config.sound_entity) || this._siblings().sound || null; }
     // Swing resolution: switch (config/sibling) -> climate swing_modes -> null.
+    // Horizontal swing, resolved exactly like the vertical axis: explicit config,
+    // then a discovered sibling switch (Midea exposes one), then the entity's own
+    // swing_horizontal_modes (Home Assistant 2025.3 and later). Absent everywhere
+    // means no second chip, which is the common case.
+    _swingHMode() {
+      const cfg = this._config || {};
+      if (cfg.swing_h_entity && this._st(cfg.swing_h_entity)) return { kind: "switch", ref: cfg.swing_h_entity };
+      const sib = this._siblings();
+      if (sib.swing_h && this._st(sib.swing_h)) return { kind: "switch", ref: sib.swing_h };
+      const s = this._st(cfg.entity);
+      const sm = s && s.attributes && s.attributes.swing_horizontal_modes;
+      if (Array.isArray(sm) && sm.length) return { kind: "climate", ref: cfg.entity };
+      return { kind: null, ref: null };
+    }
+    _swingHResolved() {
+      const cfg = this._config && this._config.show_swing_h;
+      if (cfg === true) return true;
+      if (cfg === false) return false;
+      return !!this._swingHMode().kind;
+    }
+    _swingHModesList() {
+      const s = this._st(this._config && this._config.entity);
+      const l = s && s.attributes && s.attributes.swing_horizontal_modes;
+      return Array.isArray(l) ? l.filter((x) => typeof x === "string") : [];
+    }
+    _swingHIsOn() {
+      const m = this._swingHMode();
+      if (!m.kind) return false;
+      if (m.kind === "switch") {
+        const st = this._st(m.ref);
+        return !!(st && String(st.state).toLowerCase() === "on");
+      }
+      const s = this._st(m.ref);
+      const cur = s && s.attributes && s.attributes.swing_horizontal_mode;
+      return !!cur && String(cur).toLowerCase() !== "off";
+    }
+    // Same contract as the vertical chip: never write a value that is not a member
+    // of the entity's own list, and cycle when the list carries no off member.
+    _swingHToggle() {
+      const m = this._swingHMode();
+      if (!m.kind || !this._hass) return;
+      if (m.kind === "switch") {
+        this._svc("switch", this._swingHIsOn() ? "turn_off" : "turn_on", { entity_id: m.ref }, () => this._render());
+        this._render();
+        return;
+      }
+      const modes = this._swingHModesList();
+      if (!modes.length) return;
+      const s = this._st(m.ref);
+      const cur = s && s.attributes && s.attributes.swing_horizontal_mode;
+      const offMode = modes.find((x) => String(x).toLowerCase() === "off");
+      let next;
+      if (offMode) {
+        next = this._swingHIsOn() ? offMode : (modes.find((x) => x !== offMode) || offMode);
+      } else {
+        const i = modes.findIndex((x) => String(x) === String(cur));
+        next = modes[(i + 1) % modes.length] || modes[0];
+      }
+      this._svc("climate", "set_swing_horizontal_mode",
+        { entity_id: this._config.entity, swing_horizontal_mode: next }, () => this._render());
+      this._render();
+    }
+
     _swingMode() {
       const cfg = this._config || {};
       if (cfg.swing_entity && this._st(cfg.swing_entity)) return { kind: "switch", ref: cfg.swing_entity };
@@ -3549,6 +3698,9 @@
         this._refs.swingChip.style.display = "none";
         this._refs.swingCap.style.display = "none";
         if (this._refs.steps) this._refs.steps.forEach((x) => { x.g.style.display = "none"; });
+        if (this._refs.rhCap) this._refs.rhCap.style.display = "none";
+        if (this._refs.swingHChip) this._refs.swingHChip.style.display = "none";
+        if (this._refs.swingHCap) this._refs.swingHCap.style.display = "none";
         this._refs.svg.style.opacity = "0.5";
         // a11y: nothing is settable while unavailable -> take the fan slider out of
         // the tab order (the temp slider's key handler already no-ops here, issue #5).
@@ -3731,6 +3883,50 @@
         this._refs.fanFill.style.display = "none";
         // a11y: no fan source -> remove the fan slider from the tab order (issue #5).
         if (this._refs.fanGrab) { this._refs.fanGrab.setAttribute("tabindex", "-1"); this._refs.fanGrab.setAttribute("aria-hidden", "true"); }
+      }
+
+      // ---- HUMIDITY readout (fourth line of the centre stack) ----
+      {
+        const rh = num(attr.current_humidity);
+        const cfgRh = this._config.show_humidity;
+        const show = cfgRh === false ? false : (cfgRh === true ? true : rh != null);
+        if (this._refs.rhCap) {
+          this._refs.rhCap.style.display = show ? "" : "none";
+          this._refs.rhCap.style.opacity = off ? "0.35" : "1";
+          if (show && this._refs.rhVal) {
+            this._refs.rhVal.textContent = rh == null ? "--%" : Math.round(rh) + "%";
+          }
+        }
+      }
+
+      // ---- HORIZONTAL SWING chip, and the layout split it forces ----
+      {
+        const showH = this._swingHResolved();
+        const showV = this._featureResolved("swing");
+        // Two axes share the shelf; one keeps the original centred slot.
+        const vx = showH && showV ? 356 : 388;
+        const hx = 432;
+        if (this._refs.swingChip) this._refs.swingChip.setAttribute("transform", `translate(${vx},322)`);
+        if (this._refs.swingCap) this._refs.swingCap.setAttribute("x", String(vx));
+        if (this._refs.swingHChip) {
+          this._refs.swingHChip.style.display = showH ? "" : "none";
+          this._refs.swingHChip.setAttribute("transform", `translate(${hx},322)`);
+          this._refs.swingHChip.setAttribute("tabindex", showH && !off ? "0" : "-1");
+          const hOn = this._swingHIsOn();
+          this._refs.swingHChip.setAttribute("aria-pressed", hOn ? "true" : "false");
+          this._refs.swingHChip.style.opacity = off ? "0.35" : "1";
+          if (this._refs.swingHChipBg) {
+            this._refs.swingHChipBg.setAttribute("stroke", hOn ? accent : "rgba(234,235,238,.14)");
+            this._refs.swingHChipBg.setAttribute("fill", hOn
+              ? `color-mix(in srgb, ${accent} 16%, transparent)` : "rgba(40,52,66,.30)");
+          }
+          if (this._refs.swingHIcon) this._refs.swingHIcon.setAttribute("stroke", hOn ? accent : "#6a7480");
+        }
+        if (this._refs.swingHCap) {
+          this._refs.swingHCap.style.display = showH ? "" : "none";
+          this._refs.swingHCap.setAttribute("x", String(hx));
+          this._refs.swingHCap.textContent = this._t("swing_h");
+        }
       }
 
       // ---- SETPOINT STEPPERS ----
@@ -4167,7 +4363,7 @@ ha-card[data-appearance="glass-light"] .ct-frost{
   // treats unset / "auto" as auto). The localized option list is built per-call in
   // _schema; the field labels/helpers live in LOCALE.<lang>.editorLabels/Helpers
   // (resolved via editorMap), with English as the fallback (issue #19).
-  const TRISTATE_KEYS = ["show_fan", "show_swing", "show_led", "show_sound", "show_presets", "show_steppers"];
+  const TRISTATE_KEYS = ["show_fan", "show_swing", "show_led", "show_sound", "show_presets", "show_steppers", "show_humidity", "show_swing_h"];
 
   // snake_case / dotted name -> Title Case (label fallback).
   function prettifyName(name) {
@@ -4252,6 +4448,7 @@ ha-card[data-appearance="glass-light"] .ct-frost{
             { name: "show_hints", selector: { boolean: {} } },
           ] },
           { name: "show_steppers", selector: { select: { mode: "dropdown", options: autoTF } } },
+          { name: "show_humidity", selector: { select: { mode: "dropdown", options: autoTF } } },
           { type: "expandable", name: "mode_colors", title: this._t("editor.section.mode_colors"), icon: "mdi:format-color-fill",
             schema: MODE_KEYS.map((m) => ({ name: m, selector: { color_rgb: {} } })) },
         ] },
@@ -4294,6 +4491,8 @@ ha-card[data-appearance="glass-light"] .ct-frost{
         { type: "expandable", name: "", title: this._t("editor.section.features"), icon: "mdi:tune", schema: [
           { name: "swing_entity", selector: { entity: { domain: "switch" } } },
           { name: "show_swing", selector: { select: { mode: "dropdown", options: autoTF } } },
+          { name: "swing_h_entity", selector: { entity: { domain: "switch" } } },
+          { name: "show_swing_h", selector: { select: { mode: "dropdown", options: autoTF } } },
           { name: "led_entity", selector: { entity: { domain: "switch" } } },
           { name: "show_led", selector: { select: { mode: "dropdown", options: autoTF } } },
           { name: "sound_entity", selector: { entity: { domain: "switch" } } },

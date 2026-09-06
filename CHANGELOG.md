@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-09-06
+
+### Added
+- **Humidity readout.** A fourth line in the centre stack showing `current_humidity`, drawn only when the entity reports it, so the stack never shifts for one that does not. Control it with `show_humidity`.
+- **Horizontal swing.** A second chip driven by the entity's own `swing_horizontal_modes` with `climate.set_swing_horizontal_mode`, or by a `switch` sibling where the integration exposes one (Midea does). When both axes resolve the two chips split the lower-right shelf; with a single axis the original chip keeps its centred position. Control it with `show_swing_h` and `swing_h_entity`.
+- The horizontal write follows the same rule as vertical swing and fan: only ever a member of the entity's own list, with the entity's own capitalization, cycling when the list carries no off member.
+
+### Fixed
+- A keyboard user could only reach half of a `heat_cool` dial. Arrow, Page, Home and End moved the high setpoint and nothing moved the low one, so the cyan handle was pointer-only. Hold Shift to move the low handle. It can never be driven past the high one.
+
 ## [1.7.0] - 2026-09-06
 
 ### Changed
@@ -141,6 +151,7 @@ First public release of the Climate Cluster Card for Home Assistant.
 - Full GUI editor, no YAML required.
 - Auto-discovery of fan / swing / LED / sound sibling entities, tuned for Midea (`midea_ac_lan`).
 
+[1.8.0]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v1.8.0
 [1.7.0]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v1.7.0
 [1.6.0]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v1.6.0
 [1.5.1]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v1.5.1
