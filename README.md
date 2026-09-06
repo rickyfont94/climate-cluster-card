@@ -131,13 +131,19 @@ hero: average          # average | hottest | a named entity
 tap_zone: focus        # focus | more-info
 zone_rows: 2           # lay the zone tiles out in 2 rows; omit to reflow with the width
 action_rows: 1         # put the group buttons on one row
+appearance: glass-dark # theme | glass-dark | glass-light
+glass_color: "#0E1A24" # tint for the frosted panel
+accent: "#4ADD5F"      # used on the running count and the preset buttons
 ```
 
 `zone_rows` and `action_rows` take any whole number. Columns are worked out from the
 count, so five zones with `zone_rows: 2` gives you three across and two below. Leave
 either one out and that grid stays responsive.
 
-<img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/group-rows.png" alt="Group card with zone_rows 2" width="620">
+The group card takes the same `appearance`, `glass_color` and `accent` keys as the
+single dial, so both cards can wear one look on the same dashboard.
+
+<img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/group-rows.png" alt="Group card with the zones on one row" width="720">
 
 A preset button appears only when every zone advertises that preset, and Sync skips any `heat_cool` zone rather than guessing which of its two setpoints to move.
 
@@ -179,8 +185,8 @@ extra_toggles:
   <td><img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/theme-light.png" alt="Light theme" width="330"><br><b>Light theme</b></td>
   <td><img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/theme-dark.png" alt="Dark theme" width="330"><br><b>Dark theme</b></td>
 </tr><tr>
-  <td><img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/glass-aurora.png" alt="Aurora glass" width="330"><br><b>Frosted glass</b>, aurora tint</td>
-  <td><img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/glass-purple.png" alt="Purple glass" width="330"><br><b>Frosted glass</b>, purple tint</td>
+  <td><img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/glass-hibiscus.png" alt="Frosted glass, pink accent" width="330"><br><b>Frosted glass</b>, your own tint and accent</td>
+  <td><img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/glass-binnacle.png" alt="Frosted glass, green accent" width="330"><br><b>Frosted glass</b>, a second tint on the same card</td>
 </tr></table>
 
 </details>

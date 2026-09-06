@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-09-06
+
+### Added
+- The group card takes `appearance`, `glass_color`, `glass_opacity` and `accent`, the same four keys and the same rules as the single dial. Until now the frosted-glass look stopped at the dial, so a dashboard running both cards could not hold one look. The zone tiles and the group buttons read as glass too, rather than punching opaque holes in the panel.
+- `accent` on the group card colours the running count and the preset buttons, so a configured accent is visible at rest and not only on hover.
+
+### Fixed
+- A `glass_color` tinted the frosted panel but not the mode popup, which stayed the stock indigo. Both surfaces now derive from the same tint, with the sheet slightly more opaque so its text stays readable over the dial behind it.
+- `action_rows` could force four buttons into a track narrower than their labels, and the labels painted straight out of their own buttons and over each other. They truncate now, and a forced row gives the label more characters before it has to.
+- A pinned `zone_rows` left the zone strip much shorter than the hero column beside it, which read as a hole in the card. The strip is centred in the free space instead.
+
+### Changed
+- Screenshots and the demo animation reshot on the frosted glass, and the two tint samples replaced with a pink and a green accent on different wallpapers, so the README shows what `glass_color` and `accent` actually do rather than two similar dark panels.
+
 ## [2.1.1] - 2026-09-06
 
 ### Fixed

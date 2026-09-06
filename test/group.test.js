@@ -252,3 +252,104 @@ test("group: action_rows lays the group buttons out in rows too", () => {
   const n = el.shadowRoot.querySelectorAll(".cg-act").length;
   assert.match(bar.getAttribute("style") || "", new RegExp("repeat\\(" + n + ","));
 });
+
+test("group: no appearance set leaves the card on the plain theme, slab hidden", () => {
+  const el = makeGroup(baseConfig, makeHass(states));
+  const card = el.shadowRoot.querySelector("ha-card");
+  assert.equal(card.getAttribute("data-appearance"), null);
+  assert.ok(el.shadowRoot.querySelector(".cg-frost"), "the slab element still exists");
+  assert.equal(card.style.getPropertyValue("--cg-accent"), "");
+});
+
+test("group: glass appearance is applied to the ha-card, same contract as the dial", () => {
+  for (const [cfg, want] of [["glass", "glass-dark"], ["glass-dark", "glass-dark"], ["glass-light", "glass-light"]]) {
+    const el = makeGroup(Object.assign({}, baseConfig, { appearance: cfg }), makeHass(states));
+    assert.equal(el.shadowRoot.querySelector("ha-card").getAttribute("data-appearance"), want);
+  }
+});
+
+test("group: an unknown appearance falls back to the theme, it does not break the card", () => {
+  const el = makeGroup(Object.assign({}, baseConfig, { appearance: "chrome" }), makeHass(states));
+  assert.equal(el.shadowRoot.querySelector("ha-card").getAttribute("data-appearance"), null);
+  assert.equal(el.shadowRoot.querySelectorAll("[data-zone]").length, 3, "still renders");
+});
+
+test("group: glass tint and opacity land as custom properties", () => {
+  const el = makeGroup(Object.assign({}, baseConfig,
+    { appearance: "glass-dark", glass_color: "#0E1A24", glass_opacity: 0.5 }), makeHass(states));
+  const card = el.shadowRoot.querySelector("ha-card");
+  assert.equal(card.style.getPropertyValue("--ct-glass-rgb"), "14,26,36");
+  assert.equal(card.style.getPropertyValue("--ct-glass-alpha"), "0.5");
+});
+
+test("group: a bad glass opacity is dropped rather than written through", () => {
+  for (const bad of [2, -1, "half", null]) {
+    const el = makeGroup(Object.assign({}, baseConfig, { appearance: "glass-dark", glass_opacity: bad }), makeHass(states));
+    assert.equal(el.shadowRoot.querySelector("ha-card").style.getPropertyValue("--ct-glass-alpha"), "",
+      `glass_opacity ${JSON.stringify(bad)} must fall back to the variant default`);
+  }
+});
+
+test("group: accent drives the count badge and the preset buttons", () => {
+  const el = makeGroup(Object.assign({}, baseConfig, { accent: "#4ADD5F" }), makeHass(states));
+  assert.equal(el.shadowRoot.querySelector("ha-card").style.getPropertyValue("--cg-accent"), "#4ADD5F");
+});
+
+test("group: the frosted slab never swallows the content", () => {
+  // The slab is an absolutely positioned sibling of the content, and a positioned
+  // element paints above static blocks. If the content ever loses its own wrapper
+  // the whole card goes blank behind the glass, which no functional test would see.
+  const el = makeGroup(Object.assign({}, baseConfig, { appearance: "glass-dark" }), makeHass(states));
+  const card = el.shadowRoot.querySelector("ha-card");
+  const frost = card.querySelector(".cg-frost");
+  const inner = card.querySelector(".cg-inner");
+  assert.ok(frost && inner, "both children exist");
+  assert.ok(inner.querySelector(".cg-title"), "the content lives inside the wrapper");
+  assert.equal(frost.querySelector(".cg-title"), null, "and not inside the slab");
+  assert.ok(Array.prototype.indexOf.call(card.children, frost)
+    < Array.prototype.indexOf.call(card.children, inner), "slab is painted first");
+});
+
+test("group: a repaint keeps the slab, it is not wiped by the content rewrite", () => {
+  const el = makeGroup(Object.assign({}, baseConfig, { appearance: "glass-dark" }), makeHass(states));
+  const frost = el.shadowRoot.querySelector(".cg-frost");
+  const bumped = JSON.parse(JSON.stringify(states));
+  bumped["climate.living"].attributes.temperature = 75;
+  el.hass = makeHass(bumped);
+  assert.equal(el.shadowRoot.querySelector(".cg-frost"), frost, "same node survived the repaint");
+});
+
+test("group: an appearance-only config change is not swallowed by the dirty check", () => {
+  const hass = makeHass(states);
+  const el = makeGroup(baseConfig, hass);
+  assert.equal(el.shadowRoot.querySelector("ha-card").getAttribute("data-appearance"), null);
+  el.setConfig(Object.assign({}, baseConfig, { appearance: "glass-dark", accent: "#35D46E" }));
+  const card = el.shadowRoot.querySelector("ha-card");
+  assert.equal(card.getAttribute("data-appearance"), "glass-dark");
+  assert.equal(card.style.getPropertyValue("--cg-accent"), "#35D46E");
+});
+
+test("group: an action button that cannot fit its track truncates instead of spilling", () => {
+  // action_rows can force four buttons into one narrow track. Without overflow
+  // handling the labels paint outside their own buttons and over each other, which
+  // a render caught and no functional assertion would. happy-dom does no layout, so
+  // this guards the declaration that prevents it.
+  const el = makeGroup(Object.assign({}, baseConfig, { action_rows: 1 }), makeHass(states));
+  const css = el.shadowRoot.querySelector("style").textContent;
+  const rule = css.slice(css.indexOf(".cg-act{"), css.indexOf(".cg-act:hover"));
+  assert.match(rule, /overflow:hidden/);
+  assert.match(rule, /text-overflow:ellipsis/);
+});
+
+test("group: pinned zone rows make the tiles fill the column height", () => {
+  const el = makeGroup(Object.assign({}, baseConfig, { zone_rows: 1 }), makeHass(states));
+  assert.ok(el.shadowRoot.querySelector(".cg-zones").classList.contains("cg-zones-fill"));
+
+  const loose = makeGroup(baseConfig, makeHass(states));
+  assert.ok(!loose.shadowRoot.querySelector(".cg-zones").classList.contains("cg-zones-fill"),
+    "the responsive grid is left alone");
+
+  const silly = makeGroup(Object.assign({}, baseConfig, { zone_rows: "abc" }), makeHass(states));
+  assert.ok(!silly.shadowRoot.querySelector(".cg-zones").classList.contains("cg-zones-fill"),
+    "a rejected row count must not switch the fill mode on either");
+});

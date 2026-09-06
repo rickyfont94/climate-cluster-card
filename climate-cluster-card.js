@@ -26,7 +26,7 @@
   const NS = "http://www.w3.org/2000/svg";
 
   // ---- console version banner ---------------------------------------------
-  const VERSION = "2.1.1";
+  const VERSION = "2.2.0";
   console.info(
     "%c CLIMATE-CLUSTER-CARD %c v" + VERSION + " ",
     "color:#0b0f16;background:#4fc3f7;font-weight:700;border-radius:4px 0 0 4px;padding:2px 6px",
@@ -4233,6 +4233,18 @@ ha-card[data-appearance="glass-light"] .ct-frost{
     0 18px 50px rgba(40,50,90,.22);
 }
 
+/* The mode popup sheet is a descendant of .ct-card, so it reads the card-background
+   custom property, which the two variant blocks above pin to the DEFAULT tint. That
+   left a custom glass_color tinting the slab while the sheet stayed the stock
+   indigo. Deriving the sheet surface from the same rgb/alpha pair keeps them one
+   material. Placed after both variants deliberately: equal specificity, later wins.
+   The sheet sits slightly more opaque than the slab so its text stays readable over
+   whatever the dial behind it happens to be. */
+ha-card[data-appearance^="glass"] .ct-card{
+  --ha-card-background: rgba(var(--ct-glass-rgb, 20,24,46), calc(var(--ct-glass-alpha, .66) + .14));
+  --card-background-color: rgba(var(--ct-glass-rgb, 20,24,46), calc(var(--ct-glass-alpha, .66) + .14));
+}
+
 @keyframes ctfanspin{ to{ transform:rotate(360deg); } }
 
 /* Mode popup: position:fixed glass overlay (no transformed/filtered ancestor). */
@@ -4900,12 +4912,19 @@ ha-card[data-appearance="glass-light"] .ct-frost{
   // two arc gradients, which are the instrument's identity and are shared with the
   // single dial.
   const GROUP_CSS = `
-.cg-card{ display:block; padding:14px 16px 16px; font-family:${FONT_STACK}; }
+.cg-card{ display:block; position:relative; padding:14px 16px 16px; font-family:${FONT_STACK}; }
+/* Content wrapper. The frosted slab is an absolutely positioned SIBLING, and a
+   positioned element paints above static blocks, so without a positioned wrapper
+   of its own the slab would sit on top of every zone tile and the title. */
+.cg-inner{ position:relative; z-index:1; }
 .cg-head{ display:flex; align-items:baseline; justify-content:space-between; gap:12px;
   padding-bottom:8px; border-bottom:1px solid var(--divider-color, rgba(127,127,127,.2)); }
 .cg-title{ font-size:22px; font-weight:600; letter-spacing:3px; text-transform:uppercase;
   color:var(--primary-text-color); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.cg-count{ font-size:13px; font-weight:600; letter-spacing:2px; color:var(--secondary-text-color); flex:none; }
+/* The running count is the one always-on accent mark on this card, so an accent
+   set in config is visible at rest and not only on hover. */
+.cg-count{ font-size:13px; font-weight:600; letter-spacing:2px; flex:none;
+  color:var(--cg-accent, var(--secondary-text-color)); }
 
 /* Zero-size defs carrier: gradients only, never laid out. */
 .cg-defs{ position:absolute; width:0; height:0; overflow:hidden; }
@@ -4957,19 +4976,112 @@ ha-card[data-appearance="glass-light"] .ct-frost{
 .cg-zone-now{ font-size:9.5px; letter-spacing:1.4px; fill:var(--primary-text-color); }
 text.cg-dim, tspan.cg-dim{ fill:var(--secondary-text-color); }
 
+/* Pinned rows: a one-row strip beside a tall hero column left a void under the
+   zone tiles. Centring the strip in the free space reads as a deliberate layout,
+   where stretching the tiles instead just made five very tall boxes with a small
+   gauge adrift in each. align-self is what does the work here, because .cg-body
+   pins its children to the top with align-items:start, so without it the grid box
+   is only as tall as its own content and align-content has nothing to distribute.
+   When the tiles are the taller column there is no free space and this is inert. */
+.cg-zones-fill{ align-content:center; align-self:stretch; }
+
 .cg-actions-grid{ display:grid !important; }
-.cg-actions-grid .cg-act{ flex:none; }
+.cg-actions-grid .cg-act{ flex:none; padding-left:6px; padding-right:6px; letter-spacing:1px; }
 .cg-actions{ display:flex; flex-wrap:wrap; gap:7px; padding-top:10px;
   border-top:1px solid var(--divider-color, rgba(127,127,127,.2)); }
+/* overflow/ellipsis is not decoration: action_rows can force four buttons into one
+   narrow track, and without it the labels paint straight out of their own buttons
+   and over each other. Truncating is the honest failure for a row count the card
+   was asked for and cannot fit. */
 .cg-act{ appearance:none; font:inherit; cursor:pointer; padding:9px 13px; border-radius:10px;
   flex:1 1 auto; min-width:0; white-space:nowrap; text-align:center;
+  overflow:hidden; text-overflow:ellipsis;
   font-size:12.5px; font-weight:600; letter-spacing:1.6px; text-transform:uppercase;
   background:var(--secondary-background-color, rgba(120,130,145,.14));
   color:var(--primary-text-color); border:1px solid var(--divider-color, rgba(127,127,127,.3));
   transition:border-color .15s ease; }
-.cg-act:hover{ border-color:var(--primary-color, #03a9f4); }
-.cg-act:focus-visible{ outline:2px solid var(--primary-color, #03a9f4); outline-offset:2px; }
+.cg-act:hover{ border-color:var(--cg-accent, var(--primary-color, #03a9f4)); }
+.cg-act:focus-visible{ outline:2px solid var(--cg-accent, var(--primary-color, #03a9f4)); outline-offset:2px; }
+/* Preset buttons are the optional row, so they carry the accent at rest and the
+   two structural actions (all-off, sync) stay neutral. */
+.cg-act-preset{
+  color:var(--cg-accent, var(--primary-text-color));
+  border-color:color-mix(in srgb, var(--cg-accent, var(--primary-color, #03a9f4)) 42%, transparent);
+  background:color-mix(in srgb, var(--cg-accent, var(--primary-color, #03a9f4)) 9%, transparent);
+}
 @media (prefers-reduced-motion: reduce){ .cg-zone, .cg-act{ transition:none !important; } }
+
+/* ----------------------------------------------------------------------------
+   GLASS appearance (config: appearance: glass-dark | glass-light), the same
+   contract and the same tint variables as the single dial, so a dashboard running
+   both cards keeps one look. The attribute sits on <ha-card> so glass mode can
+   hide the themed card chrome, retint the neutral text custom properties locally,
+   and paint .cg-frost as a full-bleed translucent slab. Default appearance
+   ("theme") sets no attribute and the slab stays hidden, so nothing changes for
+   anyone who never asked for glass.
+   ---------------------------------------------------------------------------- */
+.cg-frost{ display:none; }
+ha-card[data-appearance^="glass"]{ background:transparent; border:none; box-shadow:none; }
+ha-card[data-appearance^="glass"] .cg-frost{
+  display:block; position:absolute; z-index:0; inset:0; border-radius:14px; pointer-events:none;
+  background:
+    radial-gradient(125% 110% at 50% -10%, var(--ct-glass-sheen, transparent), transparent 72%),
+    rgba(var(--ct-glass-rgb, 20,24,46), var(--ct-glass-alpha, .66));
+  backdrop-filter:blur(16px) saturate(1.25);
+  -webkit-backdrop-filter:blur(16px) saturate(1.25);
+}
+/* Zone tiles read as glass too, or they punch five opaque holes in the slab. */
+ha-card[data-appearance^="glass"] .cg-zone{
+  background:rgba(255,255,255,.05);
+  backdrop-filter:blur(4px);
+  -webkit-backdrop-filter:blur(4px);
+}
+ha-card[data-appearance^="glass"] .cg-act{ background:rgba(255,255,255,.06); }
+ha-card[data-appearance="glass-light"] .cg-zone,
+ha-card[data-appearance="glass-light"] .cg-act{ background:rgba(255,255,255,.42); }
+
+ha-card[data-appearance="glass-dark"] .cg-inner{
+  --primary-text-color:rgba(236,239,247,.98);
+  --secondary-text-color:rgba(202,212,234,.80);
+  --divider-color:rgba(150,170,255,.22);
+  --ha-card-background:rgba(20,24,46,.72);
+  --card-background-color:rgba(20,24,46,.72);
+}
+ha-card[data-appearance="glass-dark"]{
+  --ct-glass-rgb:20,24,46; --ct-glass-alpha:.66; --ct-glass-sheen:rgba(150,165,235,.18);
+}
+ha-card[data-appearance="glass-dark"] .cg-frost{
+  border:1px solid rgba(150,170,255,.24);
+  box-shadow:
+    inset 0 2px 14px rgba(170,185,255,.14),
+    inset 0 -16px 38px rgba(0,0,0,.34),
+    0 18px 52px rgba(0,0,0,.42);
+}
+
+ha-card[data-appearance="glass-light"] .cg-inner{
+  --primary-text-color:rgba(28,33,48,.96);
+  --secondary-text-color:rgba(58,66,86,.82);
+  --divider-color:rgba(40,52,90,.20);
+  --ha-card-background:rgba(244,247,253,.60);
+  --card-background-color:rgba(244,247,253,.60);
+}
+ha-card[data-appearance="glass-light"]{
+  --ct-glass-rgb:244,247,253; --ct-glass-alpha:.60; --ct-glass-sheen:rgba(255,255,255,.55);
+}
+ha-card[data-appearance="glass-light"] .cg-frost{
+  border:1px solid rgba(255,255,255,.55);
+  box-shadow:
+    inset 0 2px 14px rgba(255,255,255,.70),
+    inset 0 -16px 38px rgba(40,52,90,.10),
+    0 18px 52px rgba(20,28,50,.22);
+}
+
+/* Same derivation as the single dial: whatever glass_color is set to must reach
+   every surface that reads the card-background property, not only the slab. */
+ha-card[data-appearance^="glass"] .cg-inner{
+  --ha-card-background: rgba(var(--ct-glass-rgb, 20,24,46), calc(var(--ct-glass-alpha, .66) + .14));
+  --card-background-color: rgba(var(--ct-glass-rgb, 20,24,46), calc(var(--ct-glass-alpha, .66) + .14));
+}
 `;
 
   // ============================================================================
@@ -5017,7 +5129,37 @@ text.cg-dim, tspan.cg-dim{ fill:var(--secondary-text-color); }
       this._zones = ents;
       this._focus = null;
       this._sig = null;
-      if (this._built) this._render();
+
+      // Same appearance contract as the single dial, resolved with the same rules,
+      // so one dashboard can run both cards on one look. "glass" is the legacy
+      // spelling of the dark variant; anything unknown falls back to "theme".
+      const ap = this._config.appearance;
+      this._appearance = (ap === "glass" || ap === "glass-dark") ? "glass-dark"
+        : ap === "glass-light" ? "glass-light" : "theme";
+      const gc = colorToRgb(this._config.glass_color);
+      this._glassColorRgb = gc ? gc.join(",") : null;
+      const go = this._config.glass_opacity;
+      this._glassOpacity = (typeof go === "number" && isFinite(go) && go >= 0 && go <= 1) ? go : null;
+      this._accent = toColor(this._config.accent) || null;
+
+      if (this._built) { this._applyAppearance(); this._render(); }
+    }
+
+    // Appearance is a config concern, not a state concern, so it is applied outside
+    // the signature-gated _render. Otherwise an appearance-only config change would
+    // be swallowed by the dirty check.
+    _applyAppearance() {
+      const card = this._card;
+      if (!card) return;
+      if (this._appearance === "glass-dark" || this._appearance === "glass-light") {
+        card.setAttribute("data-appearance", this._appearance);
+      } else card.removeAttribute("data-appearance");
+      if (this._glassColorRgb) card.style.setProperty("--ct-glass-rgb", this._glassColorRgb);
+      else card.style.removeProperty("--ct-glass-rgb");
+      if (this._glassOpacity != null) card.style.setProperty("--ct-glass-alpha", String(this._glassOpacity));
+      else card.style.removeProperty("--ct-glass-alpha");
+      if (this._accent) card.style.setProperty("--cg-accent", this._accent);
+      else card.style.removeProperty("--cg-accent");
     }
 
     set hass(hass) {
@@ -5174,9 +5316,21 @@ text.cg-dim, tspan.cg-dim{ fill:var(--secondary-text-color); }
       const card = document.createElement("ha-card");
       card.className = "cg-card";
       this._card = card;
+      // Frosted slab and content are separate children: _render rewrites the
+      // content wholesale, and the slab must survive that. It is also the reason
+      // the content lives in its own positioned wrapper, since an absolutely
+      // positioned sibling paints above static blocks and would hide the text.
+      const frost = document.createElement("div");
+      frost.className = "cg-frost";
+      card.appendChild(frost);
+      const inner = document.createElement("div");
+      inner.className = "cg-inner";
+      card.appendChild(inner);
+      this._inner = inner;
       root.appendChild(card);
       card.addEventListener("click", (e) => this._onClick(e));
       this._built = true;
+      this._applyAppearance();
     }
 
     _onClick(e) {
@@ -5373,7 +5527,11 @@ text.cg-dim, tspan.cg-dim{ fill:var(--secondary-text-color); }
       // space under the gauge instead of stretching across the whole card.
       html += `<div class="cg-body"><div class="cg-left"><div class="cg-hero">${this._heroSvg(hero, zones)}</div>`;
       html += this._actionsHtml(heroSet);
-      html += `</div><div class="cg-zones"${this._gridStyle("zone_rows", zones.length)}>`;
+      // A forced row count can leave the zone strip much shorter than the hero
+      // column beside it, which reads as a hole in the card rather than a layout.
+      // When rows are pinned the tiles fill the height instead.
+      const zGrid = this._gridStyle("zone_rows", zones.length);
+      html += `</div><div class="cg-zones${zGrid ? " cg-zones-fill" : ""}"${zGrid}>`;
       for (const z of zones) {
         const cls = "cg-zone" + (z.on ? " on" : "") + (z.dead ? " dead" : "")
           + (this._focus === z.id ? " focused" : "");
@@ -5387,7 +5545,7 @@ text.cg-dim, tspan.cg-dim{ fill:var(--secondary-text-color); }
           + "</button>";
       }
       html += "</div></div>";
-      this._card.innerHTML = html;
+      this._inner.innerHTML = html;
     }
 
     _actionsHtml(heroSet) {
