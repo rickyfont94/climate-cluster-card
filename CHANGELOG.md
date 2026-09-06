@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-09-06
+
+### Changed
+- **The visual editor opens quiet.** Adding the card used to confront you with seven section headers and two levels of nesting before you had picked an entity. Now the first screen is the entity, the name, one Appearance group and a single "Show all options" switch: four rows instead of nine. Everything is still there and nothing is renamed, it is one switch away. Measured in the test suite so it stays that way.
+
+### Added
+- Tests for the editor itself: the first-screen row count, that every option is still reachable with the switch on, that the preset rename fields track the entity's real presets, and that the disclosure flag is display state that never reaches your saved YAML.
+
 ## [1.6.0] - 2026-09-06
 
 ### Added
@@ -133,6 +141,7 @@ First public release of the Climate Cluster Card for Home Assistant.
 - Full GUI editor, no YAML required.
 - Auto-discovery of fan / swing / LED / sound sibling entities, tuned for Midea (`midea_ac_lan`).
 
+[1.7.0]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v1.7.0
 [1.6.0]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v1.6.0
 [1.5.1]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v1.5.1
 [1.5.0]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v1.5.0

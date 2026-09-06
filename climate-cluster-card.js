@@ -26,7 +26,7 @@
   const NS = "http://www.w3.org/2000/svg";
 
   // ---- console version banner ---------------------------------------------
-  const VERSION = "1.6.0";
+  const VERSION = "1.7.0";
   console.info(
     "%c CLIMATE-CLUSTER-CARD %c v" + VERSION + " ",
     "color:#0b0f16;background:#4fc3f7;font-weight:700;border-radius:4px 0 0 4px;padding:2px 6px",
@@ -164,6 +164,7 @@
         show_current: "Show current temperature",
         modes: "Modes",
         fan_entity: "Fan speed entity (number.*)",
+        __advanced: "Show all options",
         show_fan: "Show fan ring",
         show_presets: "Show preset row",
         show_steppers: "Show plus / minus buttons",
@@ -199,6 +200,7 @@
         show_current: "The NOW reading and current-temperature marker.",
         modes: "Which HVAC modes appear in the popup. Defaults to the entity's modes.",
         fan_entity: "A number.* percent entity for a draggable fan ring. Auto-discovered for Midea; falls back to named fan_modes.",
+        __advanced: "Modes, presets, fan, feature chips, layout and tap actions. Everything here has a sensible default, so you can leave it closed.",
         show_fan: "Force the fan ring on or off. Auto shows it when a fan source resolves.",
         show_presets: "Force the preset row on or off. Auto shows it when the entity advertises preset_modes.",
         show_steppers: "Force the plus and minus buttons on or off. Auto shows them on a single-setpoint dial and hides them on a heat_cool dial, where two setpoints would make a bare plus ambiguous.",
@@ -288,6 +290,7 @@
         show_current: "Mostrar temperatura actual",
         modes: "Modos",
         fan_entity: "Entidad de velocidad del ventilador (number.*)",
+        __advanced: "Mostrar todas las opciones",
         show_fan: "Mostrar anillo del ventilador",
         show_presets: "Mostrar fila de preajustes",
         show_steppers: "Mostrar botones mas / menos",
@@ -323,6 +326,7 @@
         show_current: "La lectura AHORA y el marcador de temperatura actual.",
         modes: "Que modos HVAC aparecen en el menu. Por defecto los modos de la entidad.",
         fan_entity: "Una entidad number.* de porcentaje para un anillo de ventilador arrastrable. Se autodetecta en Midea; si no, usa los fan_modes con nombre.",
+        __advanced: "Modos, preajustes, ventilador, controles, diseno y acciones. Todo aqui tiene un valor por defecto razonable, asi que puedes dejarlo cerrado.",
         show_fan: "Forzar el anillo del ventilador encendido o apagado. Auto lo muestra cuando se resuelve una fuente de ventilador.",
         show_presets: "Forzar la fila de preajustes encendida o apagada. Auto la muestra cuando la entidad expone preset_modes.",
         show_steppers: "Forzar los botones mas y menos. Auto los muestra en un dial de un solo punto y los oculta en heat_cool, donde dos puntos harian ambiguo un mas solitario.",
@@ -4252,6 +4256,14 @@ ha-card[data-appearance="glass-light"] .ct-frost{
             schema: MODE_KEYS.map((m) => ({ name: m, selector: { color_rgb: {} } })) },
         ] },
 
+        // Progressive disclosure. A first-time user's only real decision is which
+        // entity, so everything below the fold is gated behind one switch. The flag
+        // is editor state, never written to the card config (stripped in
+        // _valueChanged), so a YAML author never sees it and it cannot drift.
+        { name: "__advanced", selector: { boolean: {} } },
+
+        ...(this._showAdvanced ? [
+
         { type: "expandable", name: "", title: this._t("editor.section.modes"), icon: "mdi:thermostat", schema: [
           { name: "modes", selector: { select: { multiple: true, mode: "list", options: modeOptions } } },
           { type: "expandable", name: "", title: this._t("editor.section.mode_names"), icon: "mdi:rename-box",
@@ -4309,6 +4321,8 @@ ha-card[data-appearance="glass-light"] .ct-frost{
           { name: "hold_action", selector: { ui_action: { default_action: "more-info" } } },
           { name: "double_tap_action", selector: { ui_action: { default_action: "none" } } },
         ] },
+
+        ] : []),
       ];
     }
 
@@ -4430,6 +4444,7 @@ ha-card[data-appearance="glass-light"] .ct-frost{
     _computeFormData(config) {
       const data = Object.assign({}, config);
 
+      data.__advanced = !!this._showAdvanced; // editor-only, stripped on save
       data.accent = colorToRgb(config.accent) || DEFAULT_ACCENT_RGB.slice();
 
       const srcMc = (config.mode_colors && typeof config.mode_colors === "object"
@@ -4494,6 +4509,18 @@ ha-card[data-appearance="glass-light"] .ct-frost{
 
       // Editor-only label fields: mn__<mode> -> mode_names, xtn__<entity> -> extra_toggles[].name.
       // Track PRESENCE (a field emitted empty means "clear this label", not "leave unchanged").
+      // Editor-only disclosure flag: never a config key. Flipping it changes the
+      // SCHEMA, not the card, so re-render the form and stop before dispatching a
+      // config-changed that would carry nothing new.
+      if ("__advanced" in cfg) {
+        const want = !!cfg.__advanced;
+        delete cfg.__advanced;
+        if (want !== !!this._showAdvanced) {
+          this._showAdvanced = want;
+          this._update();
+          return;
+        }
+      }
       const modeNameOv = {}, xtNameOv = {}, presetNameOv = {};
       for (const k of Object.keys(cfg)) {
         if (k.indexOf("mn__") === 0) { const v = cfg[k]; modeNameOv[k.slice(4)] = (typeof v === "string" ? v.trim() : ""); delete cfg[k]; }
