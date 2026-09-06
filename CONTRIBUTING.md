@@ -34,7 +34,7 @@ Releases are cut by the maintainer. Before tagging, update **every** place that 
 
 1. `VERSION` constant in `climate-cluster-card.js` (so the console banner matches the release).
 2. `CHANGELOG.md` - add a `## [X.Y.Z] - YYYY-MM-DD` section and the matching link reference at the bottom of the file.
-3. `README.md` - update the "What's new in vX.Y.Z" heading, its Contents anchor (`#whats-new-in-vXYZ`), and the bullet list so they describe the new release.
+3. `README.md` - only when the release changes an option, the install steps, or the compatibility table. The README carries no per-version sections, so a routine release leaves it alone.
 4. Any other version reference (issue templates, docs, screenshots).
 
 Then tag the commit and push:

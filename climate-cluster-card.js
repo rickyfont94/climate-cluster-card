@@ -26,7 +26,7 @@
   const NS = "http://www.w3.org/2000/svg";
 
   // ---- console version banner ---------------------------------------------
-  const VERSION = "1.4.0";
+  const VERSION = "1.5.0";
   console.info(
     "%c CLIMATE-CLUSTER-CARD %c v" + VERSION + " ",
     "color:#0b0f16;background:#4fc3f7;font-weight:700;border-radius:4px 0 0 4px;padding:2px 6px",
@@ -1226,7 +1226,7 @@
 
       // ---- FAN ARC (outer, thin) ----
       this._refs.fanTrack = el("path", {
-        class: "nope", fill: "none", stroke: "rgba(20,30,40,.55)", "stroke-width": "7", "stroke-linecap": "round",
+        class: "nope ct-track", fill: "none", stroke: "rgba(20,30,40,.55)", "stroke-width": "7", "stroke-linecap": "round",
         d: arcPath(CX, CY, R_FAN, START_ANG, END_ANG),
       });
       svg.appendChild(this._refs.fanTrack);
@@ -1238,7 +1238,7 @@
 
       // ---- TEMP ARC (inner, thick) ----
       this._refs.track = el("path", {
-        class: "nope", fill: "none", stroke: "rgba(27,39,51,.65)", "stroke-width": "16", "stroke-linecap": "round",
+        class: "nope ct-track", fill: "none", stroke: "rgba(27,39,51,.65)", "stroke-width": "16", "stroke-linecap": "round",
         d: arcPath(CX, CY, R_TEMP, START_ANG, END_ANG),
       });
       svg.appendChild(this._refs.track);
@@ -2253,9 +2253,17 @@
       this._announce(this._t("fan") + " " + this._fanModeName(name));
       this._svcSetFanMode(name);
     }
-    // Set the climate fan_mode to "auto" + paint optimistically.
+    // Set the climate fan_mode to the entity's own AUTO member + paint optimistically.
     _callFanAuto() {
       if (!this._hass) return;
+      // Send the member the entity actually advertises, with its own casing. A
+      // hardcoded "auto" is not a member of a list that spells it "Auto", so HA
+      // rejects the call and the clover tap silently does nothing. An entity that
+      // advertises no fan_modes at all keeps the legacy literal (nothing to match).
+      const s = this._st(this._config.entity);
+      const fm = (s && s.attributes && s.attributes.fan_modes) || [];
+      const autoMode = fm.length ? fm.find((m) => String(m).toLowerCase() === "auto") : "auto";
+      if (!autoMode) { this._render(); return; } // list exists but carries no auto member
       this._optimisticFanUntil = 0; // drop any stale optimism so AUTO paints
       this._optimisticFanPct = null;
       this._optimisticFanName = null;
@@ -2264,7 +2272,7 @@
       // No optimistic value to revert here (AUTO drops optimism above); on
       // failure just repaint live state so the ring snaps back to reality.
       this._svc("climate", "set_fan_mode",
-        { entity_id: this._config.entity, fan_mode: "auto" },
+        { entity_id: this._config.entity, fan_mode: autoMode },
         () => this._render());
     }
 
@@ -3235,8 +3243,11 @@
       // theme's --accent-color, else the signature cyan. Resolved to a CONCRETE
       // color (not a var() string) so every SVG consumer below keeps working, and
       // recomputed each render so it tracks live light/dark theme switches.
+      // Unset accent follows --primary-color, NOT --accent-color. The default HA
+      // theme paints --accent-color orange, which put a warm fan handle, caret and
+      // chip on a cool blue dial for anyone who had not set an accent by hand.
       const cfgA = toColor(this._config.accent);
-      this._accent = cfgA || getComputedStyle(this).getPropertyValue("--accent-color").trim() || DEFAULT_ACCENT;
+      this._accent = cfgA || getComputedStyle(this).getPropertyValue("--primary-color").trim() || DEFAULT_ACCENT;
 
       // UI accent var (popup / chips inherit it through the DOM).
       card.style.setProperty("--ct-accent", this._accent);
@@ -3386,7 +3397,11 @@
       const namedModes = this._fanNamedModes();
       const fanAvail = !!(useNum || namedModes.length);
       const cfgShowFan = this._config.show_fan;
-      const haveFan = cfgShowFan === true ? fanAvail
+      // Tri-state, matching the swing / LED / sound chips (issue #17): true forces
+      // the ring visible, false forces it hidden, unset/"auto" shows it only when a
+      // source exists. `true` previously resolved to fanAvail, so Show and Auto were
+      // identical and only Hide did anything, against what the editor promised.
+      const haveFan = cfgShowFan === true ? true
                     : cfgShowFan === false ? false
                     : fanAvail;
       if (haveFan) {
@@ -3580,6 +3595,17 @@ ha-card{ position:relative; display:block; overflow:visible; }
 
 /* Frosted-glass slab: dark translucent fill, 1px hairline outline, 14px radius. Its OWN
    backdrop-blur div BEHIND the svg, full-card inset; backdrop-filter kept for glass. */
+/* Unlit ring tracks follow the theme. The build attributes carry dark literals that
+   read as heavy bars on a light card; this overrides them (CSS beats a presentation
+   attribute). If color-mix is unsupported the declaration drops and the original
+   attribute still paints, so there is no unstyled state. */
+.ct-track{ stroke: color-mix(in srgb, var(--secondary-text-color, #8c99a7) 24%, transparent); }
+
+/* The slab is a GLASS feature. On the default theme appearance it drew a second
+   bordered, blurred panel inset inside ha-card (a card inside a card) and cost a
+   backdrop-filter layer on wall tablets, so it now renders only for glass. */
+.ct-frost{ display:none; }
+ha-card[data-appearance^="glass"] .ct-frost{ display:block; }
 .ct-frost{
   position:absolute; z-index:1; inset:6px; border-radius:14px;
   background:var(--ha-card-background, var(--card-background-color, rgba(18,22,30,.62)));
@@ -3887,7 +3913,7 @@ ha-card[data-appearance="glass-light"] .ct-frost{
         ] },
 
         { type: "expandable", name: "", title: this._t("editor.section.extra_toggles"), icon: "mdi:toggle-switch-variant", schema: [
-          { name: "extra_toggles", selector: { entity: { multiple: true, domain: ["switch", "input_boolean", "select"] } } },
+          { name: "extra_toggles", selector: { entity: { multiple: true, domain: ["switch", "input_boolean", "select", "input_select"] } } },
           ...normalizeExtra(config.extra_toggles).map((t) => {
             const st = this._hass && this._hass.states && this._hass.states[t.entity];
             const fn = st && st.attributes && st.attributes.friendly_name;
@@ -4095,7 +4121,19 @@ ha-card[data-appearance="glass-light"] .ct-frost{
         if (k.indexOf("mn__") === 0) { const v = cfg[k]; modeNameOv[k.slice(4)] = (typeof v === "string" ? v.trim() : ""); delete cfg[k]; }
         else if (k.indexOf("xtn__") === 0) { const v = cfg[k]; xtNameOv[k.slice(5)] = (typeof v === "string" ? v.trim() : ""); delete cfg[k]; }
       }
+      // Carry over labels for modes that got NO field this render, then apply the
+      // rendered fields on top. The seed only builds mn__ fields for the entity's
+      // CURRENT hvac_modes, so rebuilding the map purely from the fields silently
+      // destroyed any label belonging to a mode the entity does not expose right now
+      // (a narrow hvac_modes list, or a swap to a different entity). A field that IS
+      // rendered and comes back empty still clears its label, as before.
       const mn = {};
+      const prevMn = (cfg.mode_names && typeof cfg.mode_names === "object"
+        && !Array.isArray(cfg.mode_names)) ? cfg.mode_names : {};
+      for (const m of Object.keys(prevMn)) {
+        if (m in modeNameOv) continue; // had a field; the field is authoritative
+        if (typeof prevMn[m] === "string" && prevMn[m].trim()) mn[m] = prevMn[m].trim();
+      }
       for (const m of Object.keys(modeNameOv)) if (modeNameOv[m]) mn[m] = modeNameOv[m];
       if (Object.keys(mn).length) cfg.mode_names = mn; else delete cfg.mode_names;
 
@@ -4199,8 +4237,16 @@ ha-card[data-appearance="glass-light"] .ct-frost{
   window.customCards.push({
     type: "climate-cluster-card",
     name: "Climate Cluster Card",
-    description: "Wide-arc instrument-cluster dial for any climate entity: two-ring temperature/fan gauge, glass mode popup, optional swing/LED/sound toggles. Midea sibling auto-discovery.",
+    description: "Wide-arc instrument-cluster dial for any climate entity: two-ring temperature/fan gauge, glass mode popup, optional swing/LED/sound toggles and your own chips.",
     preview: true,
     documentationURL: "https://github.com/rickyfont94/climate-cluster-card",
+    // Entity-first card picker: Home Assistant asks every registered card for a
+    // suggestion when you add a card by entity. Without this the card only ever
+    // shows up in the by-name list. Returns an array of { config } entries; the
+    // frontend wraps the call in a try/catch, so a throw here is not fatal.
+    getEntitySuggestion: (hass, entityId) =>
+      (typeof entityId === "string" && entityId.indexOf("climate.") === 0)
+        ? [{ config: { type: "custom:climate-cluster-card", entity: entityId } }]
+        : [],
   });
 })();

@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-09-06
+
+### Added
+- The card now appears in Home Assistant's entity-first card picker. Adding a card by picking a climate entity offers Climate Cluster Card directly, instead of only finding it by name in the card list.
+- `extra_toggles` accepts `input_select` entities in the visual editor. They already worked at runtime, but the picker only offered `switch`, `input_boolean` and `select`, so an `input_select` could only be added by editing YAML.
+- Regression tests for the fan AUTO write path, including a guard that the Midea payload is unchanged.
+- The test suite now runs in CI on every push and pull request.
+
+### Fixed
+- The fan AUTO control sent a hardcoded lowercase `auto`. On a unit whose fan list spells it differently, for example MELCloud and Mitsubishi with `["Auto", "1".."5"]`, that value is not a member of the list, so Home Assistant rejected the call and tapping the clover did nothing. The card now sends the entity's own member with its own casing, and makes no call at all when the list carries no auto member. Units that advertise a lowercase `auto`, Midea included, are byte-identical to before.
+- `show_fan: true` did nothing. Show behaved exactly like Auto, so only Hide had any effect, despite the editor offering to force the ring on. It now forces the ring visible, matching how the swing, LED and sound chips have behaved since 1.1.0.
+- Custom mode labels were silently destroyed. The editor only builds a label field for the modes an entity currently exposes, then rebuilt `mode_names` from just those fields, so any label belonging to a mode the entity does not expose right now was dropped on the first edit. Labels without a field are now preserved.
+- The default accent followed `--accent-color`, which the stock Home Assistant theme paints orange. A dial left on its defaults rendered a warm fan handle, caret and chip against a cool blue arc. The accent now follows `--primary-color`. An explicit `accent` is unaffected.
+- The unlit ring tracks were hardcoded dark values, so on a light theme they read as heavy bars instead of a quiet track. They now derive from the theme text color.
+- The frosted slab drew on every appearance, painting a second bordered, blurred panel inside the card even when `appearance` was left on `theme`. It now renders only for the glass appearances, which also removes one backdrop-filter layer for everyone else.
+
+### Changed
+- README rewritten and shortened from 461 lines to 178, with installation in the first screen, a per-brand compatibility table, and the per-version release notes left to this changelog.
+
 ## [1.4.0] - 2026-07-01
 
 ### Added
@@ -88,6 +107,7 @@ First public release of the Climate Cluster Card for Home Assistant.
 - Full GUI editor, no YAML required.
 - Auto-discovery of fan / swing / LED / sound sibling entities, tuned for Midea (`midea_ac_lan`).
 
+[1.5.0]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v1.5.0
 [1.4.0]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v1.4.0
 [1.3.1]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v1.3.1
 [1.3.0]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v1.3.0

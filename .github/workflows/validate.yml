@@ -33,3 +33,22 @@ jobs:
 
       - name: Syntax check climate-cluster-card.js
         run: node --check climate-cluster-card.js
+
+  test:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dev dependencies
+        run: npm ci
+
+      - name: Run the fixture suite
+        run: npm test
