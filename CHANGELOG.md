@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Every screenshot and the demo animation reshot at 3x device scale, so they stay sharp on a retina display instead of softening the moment GitHub scales them.
 - The frosted-glass screenshots were taken over a nearly flat backdrop, which gave the panel's blur nothing to blur and made the glass read as a plain dark box. They are reshot over a layered backdrop with light and colour moving across it, which is what the card actually looks like on a real wallpaper.
-- The demo animation is now an animated WebP with a GIF kept as the fallback. A smooth two-tone arc sweep is the worst case for a 256-colour palette and the GIF was visibly banded; the WebP carries the same frames at twice the width for about a fifteenth of the bytes.
+- The demo animation is no longer a GIF. A smooth two-tone arc gradient sweeping across a frosted panel is the worst case for a 256-colour palette: dithered it speckles, undithered it bands into visible steps, and both were measured against these exact frames. It ships as an animated WebP with an APNG fallback, both truecolour, at twice the width the README renders it at.
 
 ## [2.2.0] - 2026-09-06
 

@@ -11,7 +11,7 @@ An instrument-cluster climate dial for Home Assistant that follows your theme.
 
 <picture>
   <source srcset="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/demo.webp" type="image/webp">
-  <img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/demo.gif" alt="Climate Cluster Card demo" width="470">
+  <img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/demo.png" alt="Climate Cluster Card demo" width="470">
 </picture>
 
 </div>
