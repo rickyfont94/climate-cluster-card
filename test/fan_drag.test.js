@@ -229,7 +229,8 @@ test("fan ring: ALWAYS drawn, in every mode that can carry a fan", () => {
     const c = mCard(hvac, "auto", 102);
     assert.ok(c._refs.faceFan.innerHTML.length > 200,
       hvac + ": the ring is the control you grab, it cannot be missing");
-    assert.equal(ringEnd(c), 470, hvac + ": with no speed set it reads full, not empty");
+    assert.match(c._refs.faceFan.innerHTML, /stroke-width/,
+      hvac + ": with no speed set it is still a drawn ring, not an empty group");
     assert.equal(railText(c), "AUTO", hvac + ": and the WORD carries the distinction");
   }
 });
@@ -250,4 +251,30 @@ test("fan: the spinning glyph is off by default and comes back on request", () =
   assert.equal(off._refs.clover.style.display, "none");
   const on = mCard("cool", "high", 80, { fan_clover: true });
   assert.notEqual(on._refs.clover.style.display, "none");
+});
+
+test("fan marker: no value means no marker, in every ring style", () => {
+  // The marker marks a value. On this hardware hvac auto refuses fan commands, so a
+  // marker parked at the far end there points at a speed the unit will not accept.
+  for (const style of ["silk", "breeze", "original"]) {
+    const unset = mCard("auto", "auto", 102, { fan_style: style });
+    assert.ok(unset._refs.faceFan.innerHTML.length > 200, style + ": the ring is still drawn");
+    assert.equal(ringEnd(unset), null, style + ": and carries no marker");
+
+    const set = mCard("cool", "high", 80, { fan_style: style });
+    assert.equal(ringEnd(set), 426, style + ": a real speed still gets its marker");
+  }
+});
+
+test("fan glyph: seated against the status word, whatever its length", () => {
+  // CIRCULATING is half again as wide as IDLE, so a glyph at a fixed x sat clear of
+  // one and straight through the other.
+  const x = (c) => {
+    const t = /translate\(([-0-9.]+)/.exec(c._refs.clover.getAttribute("transform") || "");
+    return t ? Math.round(parseFloat(t[1])) : null;
+  };
+  const short = mCard("cool", "high", 80, { fan_clover: true });
+  const long = mCard("fan_only", "high", 80, { fan_clover: true });
+  assert.ok(x(short) !== null && x(long) !== null, "both are placed");
+  assert.ok(x(long) <= x(short), "a longer status word pushes the glyph further left");
 });

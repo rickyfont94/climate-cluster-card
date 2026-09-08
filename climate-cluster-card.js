@@ -910,16 +910,16 @@
   /* style 0: original. What the released card actually draws: one smooth gradient
      arc, no dashes and no motion. The handoff's dash style adds travelling dashes,
      which has never shipped, so it cannot be offered as the unchanged option. */
-  function fanPlain(fanPct, mode) {
+  function fanPlain(fanPct, mode, noHandle) {
     var end = fanAngle(fanPct), out = fanTrack();
     out += '<path d="' + arcPath(RF, A0, end) + '" fill="none" stroke="url(#aFanGrad)" ' +
       'stroke-width="7" stroke-linecap="round"' +
       (fanPct == null ? ' opacity=".45"' : '') + '></path>';
-    return out + fanHandle(fanPct);
+    return out + fanHandle(noHandle ? null : fanPct);
   }
 
   /* style 1: dash, what ships today */
-  function fanDash(fanPct, mode) {
+  function fanDash(fanPct, mode, noHandle) {
     var ink = MODES[mode].ink, end = fanAngle(fanPct), out = fanTrack();
     if (fanPct == null) {
       out += '<path d="' + arcPath(RF, A0, A0 + SPAN) + '" fill="none" stroke="' + rgba(ink, .26) +
@@ -933,7 +933,7 @@
           '" stroke-width="7" stroke-linecap="butt" stroke-dasharray="3 11" opacity=".55" ' +
           'style="animation:creep ' + dur.toFixed(2) + 's linear infinite"></path>';
     }
-    return out + fanHandle(fanPct);
+    return out + fanHandle(noHandle ? null : fanPct);
   }
 
   /* a sine wrapped around the ring, sampled every 4 degrees */
@@ -957,7 +957,7 @@
     { r: RF + 6, amp: 2.8, wave: 22, dash: '14 10', w: 1.5, lit: .26, dim: .13, k: 1.45 }
   ];
 
-  function fanBreeze(fanPct, mode) {
+  function fanBreeze(fanPct, mode, noHandle) {
     var set = fanPct != null, end = fanAngle(fanPct), base = fanPeriod(fanPct);
     var stroke = set ? MODES[mode].light : rgba(MODES[mode].ink, .9);
     var out = fanTrack();
@@ -967,7 +967,7 @@
         'stroke-dasharray="' + v.dash + '" opacity="' + (set ? v.lit : v.dim) + '" ' +
         'style="animation:drift ' + (base * v.k).toFixed(2) + 's linear infinite"></path>';
     });
-    return out + fanHandle(fanPct);
+    return out + fanHandle(noHandle ? null : fanPct);
   }
 
   /* style 3: silk. Short tapered puffs that TRAVEL. One band is not one ribbon across
@@ -1013,7 +1013,7 @@
     return frames;
   }
 
-  function fanSilk(fanPct, mode) {
+  function fanSilk(fanPct, mode, noHandle) {
     var set = fanPct != null, end = fanAngle(fanPct), base = fanPeriod(fanPct);
     var out = '<path d="' + arcPath(RF, A0, A0 + SPAN) + '" fill="none" ' +
       'stroke="rgba(154,175,210,.07)" stroke-width="6" stroke-linecap="round"></path>';
@@ -1030,7 +1030,7 @@
           'calcMode="linear" repeatCount="indefinite"></animate></path>';
       }
     });
-    return out + fanHandle(fanPct);
+    return out + fanHandle(noHandle ? null : fanPct);
   }
 
   var SILK_DEFS =
@@ -1644,6 +1644,11 @@
      dark card means there is nothing to aim at. The rail carries the word AUTO, so
      the distinction is still on screen, in the place that is made of words. */
   const FACE_RING = (pct) => (pct == null ? 100 : pct);
+  /* The MARKER is the other half of that. It marks a value, so with no value there is
+     nothing for it to mark, and on this hardware hvac auto refuses fan commands
+     outright: a marker at the far end there points at a speed the unit will not take.
+     fanHandle already drew nothing for a null value; handing the styles 100 for the
+     ARC brought it back, so the styles take the two apart. */
 
   const HERO_MAX_W = 166;              // clear span between the two steppers, less air
 
@@ -5044,7 +5049,7 @@
       this._faceFanKey = null;
       if (this._config.show_fan !== false) {
         const draw = FACE.FAN_STYLES[st.fanStyle] || FACE.FAN_STYLES.original;
-        this._refs.faceFan.innerHTML = draw(FACE_RING(pct), st.mode);
+        this._refs.faceFan.innerHTML = draw(FACE_RING(pct), st.mode, pct == null);
       }
       // the rail's FAN cell is the same reading in words
       if (this._refs.faceRail) {
@@ -5089,7 +5094,8 @@
       if (this._faceFanKey !== fanKey) {
         this._faceFanKey = fanKey;
         this._refs.faceFan.innerHTML = wantFan
-          ? (FACE.FAN_STYLES[st.fanStyle] || FACE.FAN_STYLES.original)(FACE_RING(st.fanPct), st.mode)
+          ? (FACE.FAN_STYLES[st.fanStyle] || FACE.FAN_STYLES.original)(
+              FACE_RING(st.fanPct), st.mode, st.fanPct == null)
           : "";
       }
       this._paintFaceMoving(setA, roomA, st);
@@ -5135,6 +5141,26 @@
       if (!b || !b.width || b.width <= HERO_MAX_W) return;
       const size = Math.max(52, Math.floor(104 * (HERO_MAX_W / b.width)));
       t.setAttribute("font-size", String(size));
+    }
+
+    /* The status word is centred and its LENGTH changes with it: CIRCULATING is half
+       again as wide as IDLE, so a glyph parked at a fixed x sat clear of one and
+       straight through the other. Seat it against the MEASURED left edge instead, and
+       drop it entirely when there is no room, because a glyph half on the band reads
+       worse than one that is simply absent. */
+    _placeClover() {
+      const g = this._refs.clover;
+      if (!g || !this._config || this._config.fan_clover !== true) return;
+      const host = this._refs.faceCenter;
+      const grp = host && host.querySelector("g");
+      if (!grp) return;
+      let box;
+      try { box = grp.getBBox(); } catch (e) { return; }
+      if (!box || !box.width) return;
+      const t = /translate\(([-0-9.]+)/.exec(grp.getAttribute("transform") || "");
+      const x = (t ? parseFloat(t[1]) : 0) + box.x - 18;
+      g.style.display = x < 150 ? "none" : "";
+      g.setAttribute("transform", "translate(" + x.toFixed(1) + ",303)");
     }
 
     _fixStatusLine() {
@@ -5231,6 +5257,7 @@
         + FACE.statusLine(st.mode, st.action, st.preset);
       this._fitHero();
       this._fixStatusLine();
+      this._placeClover();
       this._declutterScale();
     }
 
