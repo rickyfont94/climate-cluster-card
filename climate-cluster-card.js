@@ -595,13 +595,18 @@
      digits sit left of the string centre by half the degree glyph. */
   function roomLabel(room, roomAngle) {
     var v = P(173, roomAngle);
-    /* The caption rides the SAME radial as the value, 14 units inboard. The handoff
-       offsets it a flat +15 in screen space, which reads correctly at the top of the
-       arc and swings it sideways into the band near either end. Deliberate deviation. */
-    var c = P(159, roomAngle);
-    return '<text x="' + f(v[0]) + '" y="' + f(v[1]) + '" text-anchor="middle" ' +
-        'dominant-baseline="central" font-size="21" style="fill:var(--ct-face-ink, #eceff7)">' + room + '\u00b0</text>' +
-      '<text x="' + f(c[0]) + '" y="' + f(c[1]) + '" text-anchor="middle" ' +
+    /* The caption sits straight below the value in SCREEN space rather than further
+       along the radial. Riding the radial pulls it toward the centre of the dial, so
+       anywhere off twelve o'clock the two stop reading as one stacked pair: the
+       caption drifts left of the digits on the right half of the arc and right of them
+       on the left half.
+
+       The degree sign is its own tspan so the card can measure it and centre the
+       caption under the DIGITS. Centring under the whole string leaves the caption
+       half a degree glyph left of where the eye puts the number. */
+    return '<text class="ct-roomtxt" x="' + f(v[0]) + '" y="' + f(v[1]) + '" text-anchor="middle" ' +
+        'dominant-baseline="central" font-size="21" style="fill:var(--ct-face-ink, #eceff7)">' + room + '<tspan class="ct-deg">\u00b0</tspan></text>' +
+      '<text class="ct-roomtxt" x="' + f(v[0]) + '" y="' + f(v[1] + 15) + '" text-anchor="middle" ' +
         'dominant-baseline="central" font-size="9.5" font-weight="600" letter-spacing="1.6" ' +
         'style="fill:var(--ct-face-sub, rgba(200,215,235,.55))">ROOM</text>';
   }
@@ -4308,6 +4313,23 @@
        every Celsius user on a 0.5 step. The steppers sit at x 186 and 414 with
        r 27, so the clear span between them is 174; leave a little air and measure
        rather than guess, because the width depends on the theme font. */
+    /* ROOM reads as the caption of the number above it, so it has to sit under the
+       DIGITS. The value is centred as "79 degrees", which puts the digits half a
+       degree glyph left of the string centre, and the caption inherits that offset.
+       The glyph is its own tspan purely so this can measure it instead of guessing a
+       width that changes with the theme font. */
+    _centreRoomCaption() {
+      const host = this._refs.faceRoom;
+      if (!host) return;
+      const deg = host.querySelector(".ct-deg");
+      const cap = host.querySelectorAll("text")[1];
+      if (!deg || !cap) return;
+      let w;
+      try { w = deg.getComputedTextLength(); } catch (e) { return; }   // not laid out yet
+      if (!w) return;
+      cap.setAttribute("x", (parseFloat(cap.getAttribute("x")) - w / 2).toFixed(1));
+    }
+
     _fitHero() {
       const host = this._refs.faceCenter;
       if (!host) return;
@@ -4408,6 +4430,7 @@
         ? FACE.deltaSegment(setA, roomA, st.room - st.set) : "";
       this._refs.faceRoom.innerHTML = wantCur
         ? FACE.roomPin(roomA) + FACE.roomLabel(st.room, roomA) : "";
+      if (wantCur) this._centreRoomCaption();
       this._refs.faceNeedle.innerHTML = FACE.needle(setA);
       this._refs.faceCenter.innerHTML = FACE.modeWord(st.mode) + FACE.bigNumeral(st.set)
         + FACE.statusLine(st.mode, st.action, st.preset);
@@ -5077,6 +5100,11 @@ ha-card{ position:relative; display:block; overflow:visible; }
   transition:fill .15s ease;
 }
 .ct-step-ic{ stroke: var(--primary-text-color, rgba(234,235,238,.92)); }
+/* The room reading follows the pin, so at either end of the range it sits ON the
+   band rather than over the dark middle. Same card-coloured knockout the gesture
+   hints use: invisible where the ground is already the card, and the only thing
+   that keeps the pair readable over a saturated arc. */
+.ct-roomtxt{ paint-order:stroke; stroke:var(--ct-hint-knockout, var(--ha-card-background, var(--card-background-color, #16181d))); stroke-width:3px; stroke-linejoin:round; }
 .ct-step:hover .ct-step-bg{ fill: color-mix(in srgb, var(--ct-accent) 18%, transparent); }
 .ct-step:active .ct-step-bg{ fill: color-mix(in srgb, var(--ct-accent) 30%, transparent); }
 @media (prefers-reduced-motion: reduce){ .ct-step, .ct-step-bg{ transition:none !important; } }
