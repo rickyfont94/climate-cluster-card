@@ -788,8 +788,11 @@
       MODES[mode].word + '</text>';
   }
 
+  /* CARD ADDITION: the class. The card needs to find this node to fit it to the
+     width and to route a tap on it, and it was doing the first of those by counting
+     text children, which is one reordering away from resizing the wrong word. */
   function bigNumeral(set) {
-    return '<text x="300" y="272" text-anchor="middle" font-size="104" ' +
+    return '<text class="ct-face-big" x="300" y="272" text-anchor="middle" font-size="104" ' +
       'style="fill:var(--ct-face-hero, #f7f9fc)">' + set + '</text>';
   }
 
@@ -2550,7 +2553,7 @@
         const tgt = e.target;
         // CENTER disc tap: record the start so touchend can open the mode popup directly.
         // Independent of on/off state (the mode can be changed while the entity is off).
-        if (tgt === this._refs.centerHit) {
+        if (this._isCenterTarget(tgt)) {
           this._touchOnCenter = true;
           this._centerTouchStart = { x: t.clientX, y: t.clientY };
           this._setPress(true);
@@ -2737,6 +2740,13 @@
       // swallow the taps that used to reach them. One delegated handler, since the
       // markup is regenerated as a string and per-node listeners would not survive.
       this._refs.face.addEventListener("click", (ev) => this._onFaceClick(ev));
+      /* The numeral is regenerated as a string on every paint, so it cannot hold its
+         own listener. Touch is handled by the svg guards above; this is the mouse and
+         pen path, and it goes into the SAME handler the disc uses so hold and
+         double-tap behave identically wherever on the number you press. */
+      this._refs.face.addEventListener("pointerdown", (ev) => {
+        if (this._isCenterTarget(ev.target)) this._centerPointerDown(ev);
+      });
 
       // ---- FAN HANDLE (glass chevron; tip at +Y so rotate(ang) faces inward) ----
       // overflow:hidden on .ct-svg is the hard backstop so the chevron never bleeds.
@@ -3999,6 +4009,22 @@
     // defers the single tap when a double_tap_action is configured (no tap latency
     // otherwise). The default tap still opens the mode popup; default hold = more-info.
     // ============================================================================
+    /* What counts as a tap on the centre.
+
+       The disc is r62, 124 across in face units. The numeral is 104pt: measured in a
+       browser it renders 117 by 125, so its box is BIGGER than the disc and every
+       corner of the digits falls outside. Five of six points on "74" hit the <text>
+       node, which carries no handler and does not let the event through, so the
+       biggest thing on the card looked tappable and was dead everywhere except its
+       exact middle. Widening the disc is not the fix: it was cut to r62 precisely so
+       it would stop swallowing the rail cells and the steppers. The numeral answers
+       for itself instead. */
+    _isCenterTarget(n) {
+      if (!n) return false;
+      if (n === this._refs.centerHit) return true;
+      return !!(n.classList && n.classList.contains("ct-face-big"));
+    }
+
     _centerPointerDown(e) {
       if (this._popOpen || this._ringArmed) return;
       if (e.button && e.button !== 0) return;
@@ -5457,7 +5483,7 @@
     _fitHero() {
       const host = this._refs.faceCenter;
       if (!host) return;
-      const t = host.querySelectorAll("text")[1];   // modeWord, hero, status
+      const t = host.querySelector(".ct-face-big");
       if (!t) return;
       let b;
       try { b = t.getBBox(); } catch (e) { return; }   // not laid out yet
@@ -6363,6 +6389,10 @@ ha-card[data-appearance^="glass"] .ct-card{
   --ha-card-background: rgba(var(--ct-glass-rgb, 20,24,46), calc(var(--ct-glass-alpha, .66) + .14));
   --card-background-color: rgba(var(--ct-glass-rgb, 20,24,46), calc(var(--ct-glass-alpha, .66) + .14));
 }
+
+/* The setpoint opens the mode sheet, so it says so. The disc under it is
+   transparent and carries the same cursor. */
+.ct-face-big{ cursor:pointer; }
 
 @keyframes ctfanspin{ to{ transform:rotate(360deg); } }
 

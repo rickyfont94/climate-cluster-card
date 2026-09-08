@@ -105,6 +105,13 @@ every key that shipped before this release still reads the same way.
   finger happened to be over, when the finger was never lifted at all. And a unit
   that went unavailable in the middle of a drag was still written to on release. All
   three now abandon the gesture and put the face back on what the unit reports.
+- Tapping the big number did nothing unless you hit its exact middle. The centre disc
+  is 124 across in face units and the new numeral renders 117 by 125, so its box is
+  bigger than the disc and every corner of the digits falls outside it; the <text>
+  node then takes the tap and drops it. Measured in a browser: five of six points on
+  "74" were dead, by mouse and by touch. The numeral now answers as the centre itself,
+  through the same handler as the disc, so hold and double-tap behave identically
+  wherever on the number you press. Twelve of twelve points now open the sheet.
 - On a unit with named fan speeds the marker sat one stop ahead of the finger. The
   card held two ideas of where a stop sits on the ring: the settled reading, and the
   percentage the rail prints under FAN, put stop i at (i + 1) / n, while the PICK put
