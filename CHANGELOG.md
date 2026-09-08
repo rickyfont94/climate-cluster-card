@@ -5,6 +5,95 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] - 2026-09-08
+
+Both cards get a new face. Nothing you already have configured changes meaning, and
+every key that shipped before this release still reads the same way.
+
+### Added
+- **A new dial face.** The temperature ring, the fan ring, the numbered scale, the
+  status line and the row of buttons under it are all redrawn from one geometry, so
+  they line up with each other instead of each being placed by hand. `heat_cool`
+  keeps the old face, because the new one draws a single setpoint and that mode has
+  two.
+- **`fan_style`**: `silk` (the default from this release), `breeze`, or `original`.
+  `original` is the plain gradient arc every installed card draws today, so the look
+  you have now is still one setting away.
+- **`fan_clover`**: brings back the small spinning fan glyph from the original face,
+  beside the status line. Off by default. `fan_animation` and `fan_animation_speed`
+  still drive that glyph and now only do anything when it is on.
+- **`rail`**: names the buttons under the dial and their order, from `fan`, `swing`,
+  `led`, `sound` and `extra:0` .. `extra:2`. It is a separate key from `show_fan` /
+  `show_swing` / `show_led` / `show_sound` on purpose, because those four gate the
+  popup chips as well, so folding them into an ordering key would have silently
+  rewritten popup config for anyone already using them.
+- **The group card is a zone card.** One house gauge carrying the coldest and warmest
+  room on its ring, with a live tile per room under it. It is the default layout from
+  this release; the gauge-per-room grid is still there as `layout: classic`.
+- **The group card has a visual editor.** Home Assistant showed "Visual editor not
+  supported" for it until now, so the only way to configure it was YAML.
+- **A per-room sheet.** Tapping a room's number opens its modes, presets, fan, swing
+  and its own plus and minus. It is the same object the single dial opens, not a
+  second plainer copy of it.
+- **`orientation`** on the group card: `auto`, `horizontal` or `vertical`. Automatic
+  puts the gauge beside the rooms when the card is wide enough and stacks them when
+  it is not, measured on the card rather than on the browser window.
+- **`actions`** on the group card names the bottom bar's buttons and their order, the
+  same idea and the same spelling as `rail` on the dial. Presets are offered from
+  what the selected rooms actually advertise.
+- **The house gauge is draggable** and moves every room that can take a setpoint.
+
+### Fixed
+- The face shipped its colours as dark literals baked into the markup, so on a light
+  theme it drew light-grey text on a light background. Both cards now resolve their
+  ink from your theme, and measure the resolved ground rather than asking the browser
+  for a light or dark preference that Home Assistant does not publish.
+- `show_scale`, `show_current` and `mode_colors` were silently ignored by the new
+  face. All three are read again.
+- The fan ring did not move under the finger, and the marker snapped back to its old
+  position mid-drag while the finger was still down.
+- The fan ring vanished in any mode the card had decided was "auto", including after
+  switching out of auto into cool. It is drawn in every mode where the speed can be
+  set, and the marker is hidden (rather than the whole ring) when it cannot.
+- A fan command the unit will not accept is no longer sent and then shown as if it
+  had landed. Measured against the hardware: in hvac `auto` these units refuse both
+  `set_fan_mode` and `number.set_value` while still accepting `set_temperature`.
+- The mode popup and the room sheet painted behind the rest of the dashboard.
+- The room sheet's controls did nothing at all. The sheet is a sibling of the tile
+  grid rather than a descendant of one tile, so every lookup that walked up to the
+  tile found no room and bailed out silently.
+- Controlling a single room had a long delay and dropped taps, because every state
+  push rebuilt the whole card and destroyed the open sheet under your finger.
+- **All on** did nothing on a card opened while the house was already off. It now
+  asks each unit to turn itself on, falls back to that unit's own first non-off mode,
+  and puts a room it watched turn off back the way it was.
+- **Sync all** matched the temperature but not the mode, so five rooms at 72 with one
+  drying and one circulating counted as synced. It moves the mode to whichever mode
+  most of the running rooms are in, and leaves a room somebody turned off alone.
+- Every room read IDLE in fan, dry, auto, and in cool once it reached its setpoint.
+  The card asked "is the room warmer than the setpoint", which is only ever true of
+  cooling. It reads `hvac_action` when the unit reports one.
+- The group card's step was half a degree; one press now moves a whole degree unless
+  `temp_step` says otherwise.
+- The group card crashed rather than rendered on a `heat_cool` room, an unavailable
+  room, a room with no reading, and a house with every room offline. A room name
+  carrying markup landed as markup.
+- `comfort` and `eco` appeared to do nothing. Measured: these units refuse a preset
+  in `fan_only` and accept it in `cool`, and `comfort` reads back as `none` because
+  on this hardware comfort IS the absence of a preset.
+- A stray letter appeared beside the status word when a preset the card did not know
+  was set, because an unknown preset fell back to its own first letter.
+- DRY and AUTO were drawn in the same colour. DRY takes the card's teal.
+- The ROOM caption sat at an angle beside the reading instead of under it, and the
+  group card's two ring labels sat at whatever height their rooms happened to fall
+  at rather than sharing a baseline.
+- The spinning glyph collided with the longer status words.
+- The room dot did not breathe, while the dial's status dot did. Both now run from
+  one keyframe so they cannot drift to two rates that look almost the same.
+
+### Removed
+- The handoff face's dashed fan ring. `fan_style` was never able to select it.
+
 ## [2.2.1] - 2026-09-06
 
 ### Changed
