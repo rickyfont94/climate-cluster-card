@@ -951,6 +951,553 @@
     "clover", "fanPct", "fanName", "swingChip", "swingHChip", "swingCap",
     "swingHCap", "hints"];
 
+  /* ---------------------------------------------------------------------------
+     ZONE: handoff_zone_card/zone-card.js, pasted whole and wrapped so its own P,
+     f, clamp, arcPath, A0 and SPAN cannot collide with the ones this file already
+     has under different signatures. Same treatment the dial face gets, and for the
+     same reason: the module is the geometry, the card is the wiring.
+
+     Every deviation from the handoff is marked CARD ADDITION in place, and each one
+     is a state a real house produces that the module threw on rather than drew.
+     ------------------------------------------------------------------------- */
+  const ZONE = (function () {
+  /* Zone card geometry and markup for climate-cluster-group-card, direction B,
+     "one shared scale, hero kept".
+
+     Pure functions, no dependencies, no build step. Every function returns a string
+     ready to drop into the card. The hero is SVG; the tiles, footer and sheet are HTML.
+
+     Hero coordinate system: viewBox "44 71 256 206", centre (168, 208), arc radius 104,
+     band stroke 13. Zero degrees is twelve o'clock, angles increase clockwise, the arc
+     starts at 250 and spans 220. The viewBox is centred on the ARC, not on the drawing,
+     which is what lets a tile stand exactly as tall as the arc. Do not re-centre it. */
+
+  var HX = 168, HY = 208, HR = 104, HW = 13, A0 = 250, SPAN = 220;
+
+  function P(r, a, cx, cy) {
+    var t = (a - 90) * Math.PI / 180;
+    return [(cx === undefined ? HX : cx) + r * Math.cos(t),
+            (cy === undefined ? HY : cy) + r * Math.sin(t)];
+  }
+  function f(n) { return Math.round(n * 10) / 10; }
+  function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
+  function arcPath(r, a0, a1) {
+    if (a1 <= a0 + 0.01) a1 = a0 + 0.01;
+    var p = P(r, a0), q = P(r, a1);
+    return 'M' + f(p[0]) + ' ' + f(p[1]) + 'A' + r + ' ' + r + ' 0 ' +
+           ((a1 - a0) > 180 ? 1 : 0) + ' 1 ' + f(q[0]) + ' ' + f(q[1]);
+  }
+  function angleOf(v, min, max) { return A0 + SPAN * (clamp(v, min, max) - min) / (max - min); }
+
+  /* ------------------------------------------------------------------ modes ---- */
+  /* Same table as the single dial. Mode ink is used for the tile dot, the tile tint,
+     the tile action word and the COMFORT glyph. Nothing else. */
+
+  var MODES = {
+    cool:     { ink: '#5CD6FF', light: '#bfeeff', word: 'COOL',     status: 'COOLING' },
+    heat:     { ink: '#F2933A', light: '#FFD3A1', word: 'HEAT',     status: 'HEATING' },
+    dry:      { ink: '#2fe0c4', light: 'rgb(161,241,228)', word: 'DRY', status: 'DRYING' },
+    fan_only: { ink: '#9FB3C8', light: '#D5E1EC', word: 'FAN ONLY', status: 'CIRCULATING' },
+    off:      { ink: '#6A7480', light: '#9AA5B1', word: 'OFF',      status: 'IDLE' },
+    auto:     { ink: 'rgb(255,220,90)', light: 'rgb(255,239,181)', word: 'AUTO', status: 'BALANCING' },
+    /* CARD ADDITIONS. Three rows the module has none for, and every one is a state a
+       real house produces. MODES[z.mode] is dereferenced unguarded, so a missing row
+       is not a degraded tile, it is the whole card gone. heat_cool shares AUTO's ink
+       because it is the same intent with a different word; unavailable and unknown
+       wear the off grey. DRY and AUTO also take the colours THIS CARD has always
+       drawn: the module's mint auto is green, which its own rules forbid, and its
+       amber dry became indistinguishable from that once auto was corrected. */
+    heat_cool:   { ink: 'rgb(255,220,90)', light: 'rgb(255,239,181)', word: 'HEAT COOL', status: 'BALANCING' },
+    unavailable: { ink: '#6A7480', light: '#9AA5B1', word: 'OFFLINE', status: 'OFFLINE' },
+    unknown:     { ink: '#6A7480', light: '#9AA5B1', word: 'UNKNOWN', status: 'OFFLINE' }
+  };
+  var MODE_ORDER = ['off', 'auto', 'cool', 'heat', 'dry', 'fan_only'];
+
+  /* presets carry their own colour so they read the same in any mode. Only COMFORT
+     borrows the mode ink. PREMAP is the setpoint each preset implies; in the card call
+     climate.set_preset_mode and let the device report its own setpoint back. */
+  var PRESETS = ['NONE', 'COMFORT', 'ECO', 'BOOST', 'SLEEP'];
+  var PREMAP = { COMFORT: 74, BOOST: 72, SLEEP: 76, ECO: 78 };
+
+  function rgba(hex, a) {
+    var h = hex.replace('#', '');
+    if (h.length === 3) h = h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+    var n = parseInt(h, 16);
+    return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
+  }
+
+  /* --------------------------------------------------------------- derive ---- */
+  /* A zone is { name, room, set, mode, preset, fan, swing, led, sound }.
+     Everything the card shows is computed from the zone list. Nothing is a literal:
+     an earlier build hardcoded "5 ON" and a 76.4 room average, and both went stale. */
+
+  function derive(s) {
+    var zones = s.zones, live = [], on = 0, cooling = 0, i, z;
+    /* CARD ADDITION: a zone that is not reporting is not a reading. The module pooled
+       every non-off zone, so one unavailable AC put undefined into the room list, and
+       Math.min returned NaN, and rooms.indexOf(NaN) returned -1, and pool[-1].name
+       threw. An offline room cannot set the house's coldest end any more than an off
+       one can. */
+    var real = zones.filter(function (x) { return !x.dead && x.room != null && x.set != null; });
+    for (i = 0; i < real.length; i++) {
+      z = real[i];
+      if (z.mode !== 'off') { on++; live.push(z); if (z.room > z.set) cooling++; }
+    }
+    var pool = live.length ? live : real;
+    /* every zone offline is a real state and it has to render, so hand the rest of the
+       card a coherent zero rather than a NaN. */
+    if (!pool.length) {
+      var base = s.min == null ? 61 : s.min;
+      var fb = { name: '', room: base, set: base };
+      return { on: 0, cooling: 0, roomMin: base, roomMax: base, roomAvg: base,
+        target: s.target == null ? base : s.target, coldestSet: base,
+        warmest: fb, coldestRoom: fb, lo: base - 1, hi: base + 1, spread: 0,
+        min: base, max: s.max == null ? 86 : s.max };
+    }
+    var rooms = pool.map(function (x) { return x.room; });
+    var roomMin = Math.min.apply(null, rooms), roomMax = Math.max.apply(null, rooms);
+    var warmest = pool[rooms.indexOf(roomMax)], coldestRoom = pool[rooms.indexOf(roomMin)];
+    var sum = 0;
+    for (i = 0; i < pool.length; i++) sum += pool[i].room;
+    /* whole degrees everywhere. A tenth is below what these units report reliably and it
+       makes the pin read as a more precise instrument than it is. */
+    var roomAvg = Math.round(sum / pool.length);
+    var coldestSet = Math.min.apply(null, real.map(function (x) { return x.set; }));
+    /* the hero is the house TARGET, not an average: an average is the one number in the
+       house nobody set and no room is at. It defaults to the coldest zone setpoint, it
+       is draggable, and it is what Sync all writes. */
+    var target = s.target == null ? coldestSet : s.target;
+
+    /* one shared window for every strip, derived from the data so dot position is
+       absolute across tiles and bar length is deviation */
+    var lo = Infinity, hi = -Infinity;
+    for (i = 0; i < real.length; i++) {
+      lo = Math.min(lo, real[i].room, real[i].set);
+      hi = Math.max(hi, real[i].room, real[i].set);
+    }
+    lo = Math.floor(Math.min(lo, target) - 1);
+    hi = Math.ceil(Math.max(hi, target) + 1);
+
+    return { on: on, cooling: cooling, roomMin: roomMin, roomMax: roomMax,
+      roomAvg: roomAvg, target: target, coldestSet: coldestSet,
+      warmest: warmest, coldestRoom: coldestRoom, lo: lo, hi: hi,
+      spread: roomMax - roomMin,
+      min: s.min == null ? 61 : s.min, max: s.max == null ? 86 : s.max };
+  }
+
+  /* ----------------------------------------------------------------- hero ---- */
+
+  var HERO_DEFS =
+    '<linearGradient id="mCold" x1="0" y1="1" x2="1" y2="0">' +
+      '<stop offset="0" stop-color="#2aa7d6"></stop>' +
+      '<stop offset="1" stop-color="#7fe4ff"></stop></linearGradient>' +
+    '<linearGradient id="mWarm" x1="0" y1="0" x2="1" y2="1">' +
+      '<stop offset="0" stop-color="#FFC98A"></stop>' +
+      '<stop offset="1" stop-color="#F2933A"></stop></linearGradient>' +
+    '<filter id="mGlow" x="-60%" y="-60%" width="220%" height="220%">' +
+      '<feGaussianBlur stdDeviation="5"></feGaussianBlur></filter>' +
+    '<filter id="mPinSh" x="-160%" y="-160%" width="420%" height="420%">' +
+      '<feDropShadow dx="0" dy="0.7" stdDeviation="0.7" flood-color="#04080f" ' +
+      'flood-opacity=".9"></feDropShadow></filter>';
+
+  /* the arc's outer height as a share of the hero viewBox. The tile row uses this as
+     its height with align-self:center, so a tile is exactly as tall as the arc rather
+     than as tall as the drawing that contains it. Derived, so changing HR or HW moves
+     the tiles with it. */
+  function arcRatio() {
+    var half = HW / 2 + 4;
+    var top = HY - HR - half;
+    var bottom = HY + HR * Math.sin(160 * Math.PI / 180) + half;
+    return ((bottom - top) / 206 * 100).toFixed(2) + '%';
+  }
+
+  function heroTicks(min, max) {
+    var minor = '', major = '', v, a, len, p, q, seg;
+    for (v = min; v <= max + 1e-6; v++) {
+      a = angleOf(v, min, max);
+      len = v % 5 === 0 ? 7 : 3.5;
+      p = P(HR - 11 - len, a); q = P(93, a);
+      seg = 'M' + f(p[0]) + ' ' + f(p[1]) + 'L' + f(q[0]) + ' ' + f(q[1]);
+      if (v % 5 === 0) major += seg; else minor += seg;
+    }
+    return '<path d="' + minor + '" fill="none" stroke="rgba(154,165,177,.45)" ' +
+             'stroke-width="1.2" stroke-linecap="round"></path>' +
+           '<path d="' + major + '" fill="none" stroke="#9aa5b1" ' +
+             'stroke-width="2" stroke-linecap="round"></path>';
+  }
+
+  /* identity needle, same silhouette and colours as the single dial, scaled to the
+     hero's smaller band. Never varies by mode. */
+  function heroNeedle(a) {
+    var s = P(HR, a);
+    return '<g transform="translate(' + f(s[0]) + ',' + f(s[1]) + ') rotate(' + f(a) + ') scale(0.62)">' +
+      '<path d="M 0 20 Q 7.4 13 9.6 3.4 Q 10.9 -6 5.6 -12.6 Q 2.9 -15.3 0 -13.3 ' +
+        'Q -2.9 -15.3 -5.6 -12.6 Q -10.9 -6 -9.6 3.4 Q -7.4 13 0 20 Z" fill="#5CD6FF" ' +
+        'stroke="#bfeeff" stroke-width="1.2" stroke-opacity=".6" stroke-linejoin="round"></path>' +
+      '<path d="M 0 12 Q 4 7 5 0 Q 5.4 -6 2.6 -9.6 Q 1.2 -11 0 -10 Q -1.2 -11 -2.6 -9.6 ' +
+        'Q -5.4 -6 -5 0 Q -4 7 0 12 Z" fill="rgba(255,255,255,.35)"></path></g>';
+  }
+
+  /* the average room temperature, as a faceted pin on the scale plus its own reading.
+     The caption says AVG ROOM, not ROOM: without it the value reads as a second target. */
+  function heroPin(roomAvg, a) {
+    var s = P(HR, a), v = P(86, a);
+    var outline = 'M 0 10.6 L 4.7 -1.1 L 4.7 -6.6 L -4.7 -6.6 L -4.7 -1.1 Z';
+    return '<g transform="translate(' + f(s[0]) + ',' + f(s[1]) + ') rotate(' + f(a) + ') scale(0.62)" ' +
+        'filter="url(#mPinSh)" shape-rendering="geometricPrecision">' +
+      '<path d="M 0 10.6 L -4.7 -1.1 L -4.7 -6.6 L 0 -6.6 Z" fill="#ffffff"></path>' +
+      '<path d="M 0 10.6 L 4.7 -1.1 L 4.7 -6.6 L 0 -6.6 Z" fill="#9db0c8"></path>' +
+      '<path d="' + outline + '" fill="none" stroke="rgba(4,8,14,.92)" stroke-width="0.9" ' +
+        'stroke-linejoin="miter" vector-effect="non-scaling-stroke"></path></g>' +
+      '<text x="' + f(v[0]) + '" y="' + f(v[1]) + '" text-anchor="middle" ' +
+        'dominant-baseline="central" font-size="13" fill="#e1e5ea">' + roomAvg + '\u00b0</text>' +
+      '<text x="' + f(v[0] - 2.2) + '" y="' + f(v[1] + 15) + '" text-anchor="middle" ' +
+        'dominant-baseline="central" font-size="9" font-weight="600" letter-spacing="1.2" ' +
+        'fill="rgba(200,215,235,.55)">AVG ROOM</text>';
+  }
+
+  /* CARD ADDITION. A label seated on the spread ring at `a`, pushed clear of it and
+     anchored so the text runs away from the dial rather than across it. */
+  function ringLabel(text, a, ink) {
+    var p = P(130, a), left = ((a % 360) + 360) % 360 > 180;
+    /* Grow AWAY from the dial by preference, because that is the empty side. Near
+       either end of the range the ring end swings low and outward runs the label off
+       the card, so it flips and grows back across the arc instead; the knockout is
+       what keeps it readable when it does. The width is estimated rather than
+       measured because this returns a string, and 5.6 per character at 9.5px with
+       this tracking is close enough to decide which way is safe. */
+    var w = String(text).length * 5.6;
+    var anchor = left ? 'end' : 'start';
+    if (left && p[0] - w < 48) anchor = 'start';
+    if (!left && p[0] + w > 296) anchor = 'end';
+    return '<text class="cg-ringlab" x="' + f(p[0]) + '" y="' + f(p[1]) + '" text-anchor="' +
+      anchor + '" dominant-baseline="central" font-size="9.5" ' +
+      'font-weight="600" letter-spacing="1.2" fill="' + ink + '">' + text + '</text>';
+  }
+
+  function hero(s, d) {
+    d = d || derive(s);
+    var ta = angleOf(d.target, d.min, d.max), pa = angleOf(d.roomAvg, d.min, d.max);
+    var lo = angleOf(d.roomMin, d.min, d.max), hi = angleOf(d.roomMax, d.min, d.max);
+    return '<svg viewBox="44 71 256 206" style="display:block; width:100%; height:auto; ' +
+        'overflow:visible; font-family:Rajdhani,sans-serif;" role="img" ' +
+        'aria-label="House target ' + d.target + ', average room ' + d.roomAvg +
+        ', ' + d.cooling + ' of ' + d.on + ' cooling">' +
+      '<defs>' + HERO_DEFS + '</defs>' +
+      heroTicks(d.min, d.max) +
+      '<path d="' + arcPath(HR, A0, A0 + SPAN) + '" fill="none" stroke="rgba(154,165,177,.14)" ' +
+        'stroke-width="' + HW + '" stroke-linecap="round"></path>' +
+      '<path d="' + arcPath(HR, A0, ta) + '" fill="none" stroke="#5CD6FF" stroke-width="' + HW +
+        '" stroke-linecap="round" opacity=".35" filter="url(#mGlow)"></path>' +
+      '<path d="' + arcPath(HR, A0, ta) + '" fill="none" stroke="url(#mCold)" stroke-width="' +
+        HW + '" stroke-linecap="round"></path>' +
+      '<path d="' + arcPath(HR, ta, A0 + SPAN) + '" fill="none" stroke="url(#mWarm)" ' +
+        'stroke-width="' + HW + '" stroke-linecap="round"></path>' +
+      /* drag band: the hero sets the house target */
+      '<path d="' + arcPath(HR, A0, A0 + SPAN) + '" fill="none" stroke="rgba(0,0,0,0)" ' +
+        'stroke-width="34" stroke-linecap="round" data-act="house" ' +
+        'style="cursor:ew-resize; touch-action:none"></path>' +
+      /* spread ring: coldest room to hottest room, both ends named */
+      '<path d="' + arcPath(118, lo, hi) + '" fill="none" stroke="rgba(225,231,237,.20)" ' +
+        'stroke-width="4" stroke-linecap="round"></path>' +
+      /* CARD ADDITION: the handoff seats these two at fixed points, correct only for
+         a five zone house with a moderate spread, and its own README says the honest
+         version seats each on its ring end's radial. They do now, anchored away from
+         the dial so a long room name grows outward instead of across the band. */
+      ringLabel(String(d.coldestRoom.name || '').toUpperCase() + ' ' + d.roomMin, lo, '#8b95a2') +
+      ringLabel(String(d.warmest.name || '').toUpperCase() + ' ' + d.roomMax, hi, '#27d3ff') +
+      heroNeedle(ta) +
+      heroPin(d.roomAvg, pa) +
+      '<text x="168" y="164" text-anchor="middle" font-size="13" font-weight="600" ' +
+        'letter-spacing="4" fill="#9aa5b1">TARGET</text>' +
+      /* the digits stay on the gauge axis and the degree sits outside them, so adding
+         the symbol does not push the number off centre */
+      '<text x="168" y="213" text-anchor="middle" dominant-baseline="central" ' +
+        'font-size="52" letter-spacing="2" fill="#f2f5f8">' + d.target + '</text>' +
+      '<text x="200" y="200" text-anchor="start" dominant-baseline="central" ' +
+        'font-size="20" fill="#9aa5b1">\u00b0</text>' +
+      '<text x="168" y="264" text-anchor="middle" font-size="11" font-weight="600" ' +
+        'letter-spacing="2" fill="#9aa5b1">SPREAD ' + d.spread + '\u00b0 \u00b7 ' +
+        String(d.warmest.name || '').toUpperCase() + ' WARMEST</text>' +
+      '</svg>';
+  }
+
+  /* ----------------------------------------------------------------- tile ---- */
+
+  /* the shared strip. Track 6 to 134 in a 140 wide box, the same window on every tile:
+     the tick is this zone's target, the dot is the room, the dotted hairline is the
+     house target, and the bar between them is coloured by what the unit is doing. */
+  var DASH = '--';   // CARD ADDITION: the reading the shipped card gives a dead zone
+  var EMPTY_STRIP = '<svg viewBox="0 0 140 16" style="display:block; width:100%; height:auto;" ' +
+    'aria-hidden="true"><line x1="6" y1="9" x2="134" y2="9" stroke="rgba(225,231,237,.10)" ' +
+    'stroke-width="4" stroke-linecap="round"></line></svg>';
+
+  function strip(z, d) {
+    var span = (d.hi - d.lo) || 1;
+    var x = function (v) { return f(6 + (clamp(v, d.lo, d.hi) - d.lo) / span * 128); };
+    var on = z.mode !== 'off' && z.room > z.set;
+    var m = MODES[z.mode] || MODES.unavailable;
+    return '<svg viewBox="0 0 140 16" style="display:block; width:100%; height:auto;" aria-hidden="true">' +
+      '<line x1="6" y1="9" x2="134" y2="9" stroke="rgba(225,231,237,.10)" stroke-width="4" ' +
+        'stroke-linecap="round"></line>' +
+      '<line x1="' + x(d.target) + '" y1="3" x2="' + x(d.target) + '" y2="15" ' +
+        'stroke="rgba(225,231,237,.16)" stroke-width="1" stroke-dasharray="2 2"></line>' +
+      '<line x1="' + x(Math.min(z.set, z.room)) + '" y1="9" x2="' + x(Math.max(z.set, z.room)) +
+        '" y2="9" stroke="' + (on ? m.ink : 'rgba(225,231,237,.28)') + '" stroke-width="4" ' +
+        'stroke-linecap="round"></line>' +
+      '<line x1="' + x(z.set) + '" y1="2.5" x2="' + x(z.set) + '" y2="15.5" stroke="#e1e5ea" ' +
+        'stroke-width="1.6" stroke-linecap="round"></line>' +
+      '<circle cx="' + x(z.room) + '" cy="9" r="4.2" fill="' + m.ink + '" stroke="#1b222c" ' +
+        'stroke-width="1.4"></circle></svg>';
+  }
+
+  /* HTML sized preset glyph, same shapes, colours and timings as the dial's */
+  function presetIcon(name, modeInk) {
+    if (!name || name === 'NONE') return '';
+    var open = '<svg width="15" height="15" viewBox="-8 -8 16 16" style="display:block; ' +
+      'overflow:visible; flex:0 0 auto">';
+    var seq = function (dl) { return 'style="animation:wink 1.9s ease-in-out ' + dl + 's infinite"'; };
+    if (name === 'ECO') {
+      return open + '<g transform="scale(0.8)">' +
+        '<path d="M -5 6 Q 8 1 5 -8 Q -8 -3 -5 6 Z" fill="#5FD69A" opacity=".95"></path>' +
+        '<path d="M -4 5 L 4 -6" stroke="#0b1017" stroke-width="1.1" opacity=".5"></path></g></svg>';
+    }
+    if (name === 'SLEEP') {
+      var z = [[-7, 5, 6.5, 0], [-2.5, 2, 8.5, 0.34], [2, -2, 10.5, 0.68]], o = open, i;
+      for (i = 0; i < 3; i++) {
+        o += '<text x="' + z[i][0] + '" y="' + z[i][1] + '" font-size="' + z[i][2] +
+          '" font-weight="700" fill="#B388FF" ' + seq(z[i][3]) + '>z</text>';
+      }
+      return o + '</svg>';
+    }
+    if (name === 'BOOST') {
+      var dy = [5, 0.4, -4.2], dl = [0, 0.26, 0.52], b = open, k;
+      for (k = 0; k < 3; k++) {
+        b += '<path d="M -5 ' + dy[k] + ' L 0 ' + (dy[k] - 4.6) + ' L 5 ' + dy[k] + '" fill="none" ' +
+          'stroke="#FF8A3D" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" ' +
+          seq(dl[k]) + '></path>';
+      }
+      return b + '</svg>';
+    }
+    if (name === 'COMFORT') {
+      return open + '<circle cx="0" cy="0" r="5" fill="none" stroke="' + modeInk +
+        '" stroke-width="1.6"></circle><circle cx="0" cy="0" r="1.9" fill="' + modeInk +
+        '"></circle></svg>';
+    }
+    return open + '<text x="0" y="4" text-anchor="middle" font-size="10" font-weight="700" ' +
+      'fill="' + modeInk + '">' + String(name).charAt(0) + '</text></svg>';
+  }
+
+  function fanBars(pct) {
+    /* CARD ADDITION: HA reports a fan MODE, and "auto" is the absence of a value, not
+       a speed. Printing it as a number invents a reading the unit never gave. */
+    var auto = pct == null;
+    var filled = auto ? 0 : pct <= 33 ? 1 : pct <= 66 ? 2 : 3, h = [4, 6.5, 9], out = '', i;
+    for (i = 0; i < 3; i++) {
+      out += '<span style="width:2.5px; height:' + h[i] + 'px; background:' +
+        (i < filled ? '#c3cbd4' : 'rgba(195,203,212,.26)') + ';"></span>';
+    }
+    return '<span style="display:flex; align-items:center; gap:3px" title="Fan speed">' +
+      '<span style="display:flex; align-items:flex-end; gap:1.5px; height:9px;">' + out + '</span>' +
+      '<span style="font:600 10.5px/1 ui-monospace,monospace; color:#8b95a2;">' +
+      (auto ? 'AUTO' : pct + '%') + '</span></span>';
+  }
+
+  /* glass pane tinted by its own mode, never filled with a fixed cyan */
+  function tile(z, i, d) {
+    /* CARD ADDITION: an unknown mode falls back rather than throwing, and a zone with
+       no reading shows the dash the shipped card shows rather than the word NaN. */
+    var m = MODES[z.mode] || MODES.unavailable, off = z.mode === 'off';
+    var nore = z.dead || z.room == null || z.set == null;
+    var on = !off && !nore && z.room > z.set, delta = nore ? 0 : z.room - z.set;
+    var act = nore ? m.status : (off ? 'OFF' : (on ? m.status : 'IDLE'));
+    var actInk = off || nore || !on ? '#6f7a88' : m.ink;
+    var btn = 'appearance:none; cursor:pointer; height:30px; border-radius:8px; ' +
+      'border:1px solid rgba(225,231,237,.20); background:rgba(225,231,237,.05); ' +
+      'color:#e1e5ea; font:400 16px/1 Rajdhani,sans-serif; padding:0;';
+    return '<div data-zone="' + i + '" style="border:1px solid ' +
+        (off ? 'rgba(255,255,255,.09)' : rgba(m.ink, .30)) + '; border-radius:13px; background:' +
+        (off ? 'linear-gradient(158deg, rgba(255,255,255,.07), rgba(255,255,255,.02))'
+             : 'linear-gradient(158deg, ' + rgba(m.ink, .14) + ', rgba(255,255,255,.025))') +
+        '; backdrop-filter:blur(14px) saturate(130%); -webkit-backdrop-filter:blur(14px) saturate(130%); ' +
+        'box-shadow:inset 0 1px 0 rgba(255,255,255,.14); padding:9px 9px 8px; display:flex; ' +
+        'flex-direction:column; justify-content:space-between; gap:5px;">' +
+      '<div style="display:flex; align-items:center; justify-content:center; gap:7px;">' +
+        '<span style="width:7px; height:7px; border-radius:50%; background:' + m.ink +
+          '; box-shadow:0 0 9px ' + rgba(m.ink, .85) + ';"></span>' +
+        '<span style="font:600 14px/1 Rajdhani,sans-serif; letter-spacing:.14em; ' +
+          'text-transform:uppercase; color:#f2f5f8;">' + z.name + '</span></div>' +
+      /* the numeral is the ROOM, the fact you walked over to check, and tapping it
+         opens this zone's sheet */
+      '<div data-act="sheet" style="display:flex; align-items:baseline; justify-content:center; ' +
+        'gap:2px; cursor:pointer">' +
+        '<span style="font:400 34px/.82 Rajdhani,sans-serif; color:#f6f8fa;">' +
+          (nore ? DASH : z.room) + '</span>' +
+        '<span style="font:400 14px/1 Rajdhani,sans-serif; color:#8b95a2;">\u00b0</span></div>' +
+      '<div style="display:grid; grid-template-columns:34px minmax(0,1fr) 34px; gap:5px; ' +
+        'align-items:center;">' +
+        '<button type="button" aria-label="lower" data-act="dec" style="' + btn + '">\u2212</button>' +
+        '<span style="text-align:center; font:600 10px/1 ui-monospace,monospace; ' +
+          'letter-spacing:.08em; color:#8b95a2;">' + (nore ? DASH : z.set) +
+          (nore ? '' : '<span style="color:' + (delta >= 5 ? '#7fe4ff' : on ? m.ink : '#8b95a2') +
+            '"> ' + (delta >= 0 ? '+' : '') + delta + '</span>') + '</span>' +
+        '<button type="button" aria-label="raise" data-act="inc" style="' + btn + '">+</button></div>' +
+      (nore ? EMPTY_STRIP : strip(z, d)) +
+      '<div style="display:flex; align-items:center; justify-content:center; gap:8px; padding-top:1px;">' +
+        '<span style="font:600 10.5px/1 ui-monospace,monospace; letter-spacing:.06em; color:' +
+          actInk + ';">' + act + '</span>' +
+        presetIcon(z.preset, m.ink) +
+        fanBars(z.fan) + '</div></div>';
+  }
+
+  /* ---------------------------------------------------------------- footer ---- */
+  /* A LIST, not four fixed buttons. Off and sync are always there; the rest are the
+     presets every zone supports, which is what _sharedPresets does in the card.
+     Setpoints come from PREMAP, never inline. */
+
+  function sharedPresets(zones) {
+    return PRESETS.filter(function (p) {
+      if (p === 'NONE' || PREMAP[p] == null) return false;
+      return zones.every(function (z) {
+        return !z.presets || z.presets.indexOf(p) >= 0;
+      });
+    });
+  }
+
+  function groupActions(s, d, ui) {
+    var acts = [];
+    /* the button reads the house rather than announcing one intent: with every zone off
+       it turns them back on, and turning a running house off is destructive, so it arms
+       first and commits on the second tap */
+    if (d.on === 0) acts.push({ id: 'allon', label: 'All on' });
+    else if (ui && ui.confirmOff) acts.push({ id: 'confirm', label: 'Tap to confirm', warn: true });
+    else acts.push({ id: 'alloff', label: 'All off' });
+    acts.push({ id: 'sync', label: 'Sync all' });
+    sharedPresets(s.zones).slice(0, 2).forEach(function (p) {
+      acts.push({ id: 'preset:' + p, label: p, lit: true });
+    });
+    return acts;
+  }
+
+  function footer(acts) {
+    return '<div data-act="footer" style="display:flex; flex-wrap:wrap; justify-content:center; ' +
+        'gap:10px; margin-top:10px; padding-top:10px; ' +
+        'border-top:1px solid rgba(225,231,237,.12);">' +
+      acts.map(function (a) {
+        var border = a.warn ? '#F2933A' : a.lit ? 'rgba(39,211,255,.42)' : 'rgba(255,255,255,.16)';
+        var bg = a.warn ? 'rgba(242,147,58,.16)' : a.lit ? 'rgba(39,211,255,.09)'
+          : 'linear-gradient(158deg, rgba(255,255,255,.10), rgba(255,255,255,.03))';
+        var ink = a.warn ? '#FFD3A1' : a.lit ? '#7fe4ff' : '#e1e5ea';
+        return '<button type="button" data-gact="' + a.id + '" style="appearance:none; ' +
+          'cursor:pointer; min-height:40px; padding:0 30px; border-radius:10px; ' +
+          'font:600 12.5px/1 Rajdhani,sans-serif; letter-spacing:.16em; text-transform:uppercase; ' +
+          'border:1px solid ' + border + '; background:' + bg + '; color:' + ink + '; ' +
+          'box-shadow:inset 0 1px 0 rgba(255,255,255,.16);">' + a.label + '</button>';
+      }).join('') + '</div>';
+  }
+
+  /* ----------------------------------------------------------------- sheet ---- */
+  /* The single dial's sheet, scoped to one room. Same paddings, grids, radii and type,
+     so the two cards present one object. 474 wide floating panel, centred, over a light
+     dim: at 1140 a full bleed overlay reads as a wall rather than a window. */
+
+  function sheet(z, i) {
+    if (!z) return '';
+    var m = MODES[z.mode];
+    var pill = function (sel) {
+      return 'border:1px solid ' + (sel ? '#27d3ff' : 'rgba(154,175,210,.22)') + '; background:' +
+        (sel ? 'rgba(39,211,255,.14)' : 'rgba(154,175,210,.06)') + '; color:' +
+        (sel ? '#bfeeff' : '#cfd8e6') + ';';
+    };
+    var modes = MODE_ORDER.filter(function (k) {
+      return !z.modes || z.modes.indexOf(k) >= 0;
+    }).map(function (k) {
+      var sel = z.mode === k, mm = MODES[k];
+      return '<button type="button" data-zmode="' + k + '" style="min-height:44px; ' +
+        'border-radius:10px; cursor:pointer; font:600 14px/1 Rajdhani,sans-serif; ' +
+        'letter-spacing:.1em; border:1.5px solid ' + (sel ? mm.ink : 'rgba(154,175,210,.22)') +
+        '; background:' + (sel ? rgba(mm.ink, .16) : 'rgba(154,175,210,.07)') + '; color:' +
+        (sel ? mm.light : '#cfd8e6') + ';">' + mm.word + '</button>';
+    }).join('');
+    var pres = PRESETS.map(function (p) {
+      return '<button type="button" data-zpre="' + p + '" style="min-height:32px; padding:0 13px; ' +
+        'border-radius:16px; cursor:pointer; font:600 11.5px/1 Rajdhani,sans-serif; ' +
+        'letter-spacing:.1em; ' + pill((z.preset || 'NONE') === p) + '">' + p + '</button>';
+    }).join('');
+    /* BOOST is already a preset, so a BOOST MODE toggle was the same capability twice.
+       The toggle row is real device switches only. */
+    var togs = [['swing', 'SWING', z.swing], ['led', 'LED', z.led], ['sound', 'SOUND', z.sound]]
+      .map(function (g) {
+        return '<button type="button" data-ztog="' + g[0] + '" style="min-height:40px; ' +
+          'border-radius:10px; cursor:pointer; font:600 11px/1.2 Rajdhani,sans-serif; ' +
+          'letter-spacing:.08em; ' + pill(g[2]) + '">' + g[1] + '</button>';
+      }).join('');
+
+    return '<div data-act="backdrop" style="position:absolute; inset:0; z-index:8; ' +
+        'border-radius:16px; background:rgba(4,7,12,.34); backdrop-filter:blur(2px); ' +
+        '-webkit-backdrop-filter:blur(2px); display:flex; align-items:center; ' +
+        'justify-content:center; font-family:Rajdhani,sans-serif;">' +
+      '<div data-act="panel" style="position:relative; box-sizing:border-box; width:474px; ' +
+        'max-width:100%; display:flex; flex-direction:column; gap:10px; padding:16px 16px 18px; ' +
+        'border-radius:13px; background:rgba(7,10,16,.88); border:1px solid rgba(255,255,255,.10); ' +
+        'box-shadow:0 26px 64px rgba(0,0,0,.55);">' +
+        '<button type="button" aria-label="close" data-act="close" style="position:absolute; ' +
+          'top:12px; right:12px; width:30px; height:30px; border-radius:50%; cursor:pointer; ' +
+          'border:1px solid rgba(200,215,235,.28); background:rgba(20,26,36,.9); color:#dfe4ea; ' +
+          'font:400 17px/1 Rajdhani,sans-serif;">\u00d7</button>' +
+        '<div style="text-align:center; font:600 22px/1 Rajdhani,sans-serif; letter-spacing:1.4px; ' +
+          'color:rgba(236,239,247,.5); padding:0 0 2px;">' + (z.title || z.name) + '</div>' +
+        '<div style="display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px;">' +
+          modes + '</div>' +
+        '<div style="height:1px; background:rgba(200,215,235,.14);"></div>' +
+        '<div style="display:flex; flex-wrap:wrap; gap:7px; justify-content:center;">' + pres + '</div>' +
+        '<div style="display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px;">' +
+          togs + '</div></div></div>';
+  }
+
+  /* ------------------------------------------------------------ whole card ---- */
+  /* s  = { name, zones:[...], target, min, max }
+     ui = { confirmOff, sheetIndex }  transient interface state, not device state */
+
+  function card(s, ui) {
+    var d = derive(s);
+    ui = ui || {};
+    return '<div style="position:relative; border-radius:16px; ' +
+        'border:1px solid rgba(255,255,255,.13); background:linear-gradient(158deg, ' +
+        'rgba(255,255,255,.11), rgba(255,255,255,.035) 42%, rgba(255,255,255,.015)); ' +
+        'backdrop-filter:blur(20px) saturate(140%); -webkit-backdrop-filter:blur(20px) saturate(140%); ' +
+        'box-shadow:inset 0 1px 0 rgba(255,255,255,.20), inset 0 -1px 0 rgba(255,255,255,.05), ' +
+        '0 26px 64px rgba(0,0,0,.5); padding:12px 18px; font-family:Rajdhani,sans-serif;">' +
+      '<div style="display:flex; align-items:baseline; justify-content:space-between; gap:14px; ' +
+        'padding-bottom:6px; border-bottom:1px solid rgba(225,231,237,.12);">' +
+        '<span style="font:600 22px/1 Rajdhani,sans-serif; letter-spacing:.08em; ' +
+          'text-transform:uppercase; color:#f2f5f8;">' + (s.name || 'House') + '</span>' +
+        '<span style="display:flex; align-items:center; gap:8px; ' +
+          'font:600 12px/1 ui-monospace,monospace; letter-spacing:.07em;">' +
+          '<span style="color:#27d3ff;">' + d.cooling + ' COOLING</span>' +
+          '<span style="color:#546070;">/</span>' +
+          '<span style="color:#8b95a2;">' + d.on + ' ON</span></span></div>' +
+      '<div style="display:grid; grid-template-columns:236px minmax(0,1fr); gap:18px; ' +
+        'align-items:stretch; margin-top:10px;">' +
+        hero(s, d) +
+        '<div style="display:grid; grid-template-columns:repeat(' + s.zones.length +
+          ',minmax(0,1fr)); gap:10px; min-width:0; align-self:center; height:' + arcRatio() + ';">' +
+          s.zones.map(function (z, i) { return tile(z, i, d); }).join('') + '</div></div>' +
+      footer(groupActions(s, d, ui)) +
+      (ui.sheetIndex == null ? '' : sheet(s.zones[ui.sheetIndex], ui.sheetIndex)) +
+      '</div>';
+  }
+
+  var KEYFRAMES =
+    '@keyframes wink { 0%, 100% { opacity: .10 } 18%, 44% { opacity: 1 } }';
+
+    return { card: card, hero: hero, tile: tile, strip: strip, sheet: sheet,
+      footer: footer, groupActions: groupActions, sharedPresets: sharedPresets,
+      presetIcon: presetIcon, fanBars: fanBars, derive: derive, arcRatio: arcRatio,
+      MODES: MODES, MODE_ORDER: MODE_ORDER, PRESETS: PRESETS, PREMAP: PREMAP,
+      KEYFRAMES: KEYFRAMES, HERO_DEFS: HERO_DEFS, angleOf: angleOf, arcPath: arcPath, P: P };
+  })();
+
   const HERO_MAX_W = 166;              // clear span between the two steppers, less air
 
   const CX = 300, CY = 284;            // _cx / _cy
@@ -6095,6 +6642,27 @@ ha-card[data-appearance^="glass"] .cg-inner{
     return `M ${p[0].toFixed(1)} ${p[1].toFixed(1)} A ${r} ${r} 0 ${(a1 - a0) > 180 ? 1 : 0} 1 ${q[0].toFixed(1)} ${q[1].toFixed(1)}`;
   }
 
+  /* The zone tiles carry the preset glyphs, which are the module's one animation.
+     One rule, injected once, guarded for reduced motion like every other. */
+  const GROUP_CSS_ZONE = GROUP_CSS + `
+${ZONE.KEYFRAMES}
+@media (prefers-reduced-motion: reduce){
+  .cg-zonecard [style*='animation']{ animation:none !important; }
+}
+/* The two spread-ring labels follow their own ring end, so near either end of the
+   range they land on the band rather than beside it. Card-coloured knockout, the
+   same one the single dial gives its room reading. */
+.cg-ringlab{ paint-order:stroke; stroke:var(--ha-card-background, var(--card-background-color, #16181d));
+  stroke-width:3px; stroke-linejoin:round; }
+/* The module sizes itself for a wide card. Below this the hero column and the tile
+   row cannot both hold their minimums, so the hero goes full width and the tiles
+   wrap under it rather than compressing to slivers. */
+@media (max-width:760px){
+  .cg-zonecard-body{ grid-template-columns:1fr !important; }
+  .cg-zonecard-body > div:last-child{ height:auto !important; align-self:auto !important; }
+}
+`;
+
   class ClimateClusterGroupCard extends HTMLElement {
     constructor() {
       super();
@@ -6170,9 +6738,22 @@ ha-card[data-appearance^="glass"] .cg-inner{
         const s = this._hass.states[z.entity];
         if (!s) { parts.push(z.entity + ":-"); continue; }
         const a = s.attributes || {};
+        // fan_mode and swing_mode reach the screen on the zone layout, and the
+        // sheet's toggles are separate switch entities, so all of them have to be
+        // in the signature or the card shows a stale chip until something else
+        // happens to change. The transient sheet and confirm state go in too: they
+        // are the only thing that moves on a tap that writes nothing.
         parts.push([z.entity, s.state, a.temperature, a.current_temperature,
-          a.target_temp_low, a.target_temp_high, a.hvac_action, a.preset_mode].join("|"));
+          a.target_temp_low, a.target_temp_high, a.hvac_action, a.preset_mode,
+          a.fan_mode, a.swing_mode].join("|"));
+        const sib = this._zoneSiblings(z.entity);
+        for (const k in sib) {
+          const t = sib[k] && this._hass.states[sib[k]];
+          parts.push(k + ":" + (t ? t.state : "-"));
+        }
       }
+      const ui = this._zui || {};
+      parts.push("ui:" + (ui.sheetIndex == null ? "-" : ui.sheetIndex) + ":" + (ui.confirmOff ? 1 : 0));
       return parts.join(";");
     }
 
@@ -6298,7 +6879,7 @@ ha-card[data-appearance^="glass"] .cg-inner{
       const root = this.shadowRoot || this.attachShadow({ mode: "open" });
       root.innerHTML = "";
       const style = document.createElement("style");
-      style.textContent = GROUP_CSS;
+      style.textContent = GROUP_CSS_ZONE;
       root.appendChild(style);
       const card = document.createElement("ha-card");
       card.className = "cg-card";
@@ -6321,6 +6902,13 @@ ha-card[data-appearance^="glass"] .cg-inner{
     }
 
     _onClick(e) {
+      if (this._config.layout !== "classic") {
+        // The zone layout owns every control on the card. A tap it does not claim
+        // falls through to nothing rather than to the classic focus behaviour, whose
+        // data-zone means an entity id here and an index there.
+        if (e.target && e.target.closest) this._zoneAct(e.target);
+        return;
+      }
       const zoneEl = e.target && e.target.closest ? e.target.closest("[data-zone]") : null;
       if (zoneEl) {
         const id = zoneEl.dataset.zone;
@@ -6478,10 +7066,244 @@ ha-card[data-appearance^="glass"] .cg-inner{
         all_off: { en: "All off", es: "Apagar todo" },
         sync: { en: "Sync all", es: "Igualar todo" },
         unavailable: { en: "Unavailable", es: "No disponible" },
+        cooling: { en: "COOLING", es: "ENFRIANDO" },
       };
       const lang = langOf(this._hass);
       const row = M[k] || {};
       return row[lang] || row.en || k;
+    }
+
+
+    // ==========================================================================
+    // ZONE LAYOUT  (handoff_zone_card). The shipped grid of mini gauges is still
+    // here behind `layout: "classic"`, because a look is a preference and taking
+    // one away is not a release note anybody wants to read.
+    // ==========================================================================
+
+    // The sheet's toggles are separate switch entities on the same device, the way
+    // the single dial finds them. Cached per entity id: this runs inside the
+    // signature, which runs on every hass write in the house.
+    _zoneSiblings(id) {
+      this._sibCache = this._sibCache || {};
+      if (this._sibCache[id]) return this._sibCache[id];
+      const hass = this._hass;
+      const out = {};
+      const reg = hass && hass.entities;
+      const main = reg ? reg[id] : null;
+      const devId = main ? main.device_id : null;
+      if (devId && reg) {
+        for (const eid in reg) {
+          const ent = reg[eid];
+          if (!ent || ent.device_id !== devId) continue;
+          if (eid.indexOf("switch.") !== 0) continue;
+          if (!out.led && eid.indexOf("_screen_display") !== -1) out.led = eid;
+          else if (!out.sound && eid.indexOf("_prompt_tone") !== -1) out.sound = eid;
+          else if (!out.swing && eid.indexOf("_swing_vertical") !== -1) out.swing = eid;
+        }
+      }
+      this._sibCache[id] = out;
+      return out;
+    }
+
+    // fan_mode is a NAME, not a percentage. Position in the entity's own list, with
+    // auto meaning the absence of a value rather than a speed.
+    _zoneFanPct(a) {
+      const fm = a.fan_mode;
+      if (!fm || String(fm).toLowerCase() === "auto") return null;
+      const list = Array.isArray(a.fan_modes)
+        ? a.fan_modes.filter((x) => String(x).toLowerCase() !== "auto") : [];
+      if (!list.length) return null;
+      const i = list.findIndex((x) => String(x).toLowerCase() === String(fm).toLowerCase());
+      if (i < 0) return null;
+      return clamp(Math.round(((i + 1) / list.length) * 100), 1, 100);
+    }
+
+    /* Every string that reaches the module is escaped HERE, at the boundary. The
+       module concatenates names straight into markup, so a friendly_name carrying a
+       quote or an angle bracket would otherwise break the card, and a crafted one
+       would inject. Escaping at the edge means the module stays verbatim. */
+    _zoneModel() {
+      const r = this._range();
+      /* Every zone here is called "Aire <Room>". Without this the shared prefix eats
+         the width of a tile five times over and every name reads as the part they all
+         have in common, which is the exact failure _shortNames exists to prevent. */
+      const raw = this._zones.map((z) => {
+        const a0 = (this._st(z.entity) || {}).attributes || {};
+        return z.name || a0.friendly_name || z.entity;
+      });
+      const short = this._shortNames(raw);
+      const zones = this._zones.map((z, zi) => {
+        const st = this._st(z.entity);
+        const a = (st && st.attributes) || {};
+        const dead = !st || st.state === "unavailable" || st.state === "unknown";
+        const sib = this._zoneSiblings(z.entity);
+        const sw = (key) => {
+          const t = sib[key] && this._hass.states[sib[key]];
+          return t ? t.state === "on" : false;
+        };
+        const rawName = z.name || a.friendly_name || z.entity;
+        return {
+          id: z.entity,
+          name: escapeText(short[zi] || rawName),
+          title: escapeText(rawName),
+          room: dead ? null : num(a.current_temperature),
+          set: dead ? null : this._setpoint(st),
+          mode: dead ? "unavailable" : st.state,
+          preset: this._zonePreset(a),
+          fan: this._zoneFanPct(a),
+          swing: sib.swing ? sw("swing") : (a.swing_mode != null &&
+            String(a.swing_mode).toLowerCase() !== "off"),
+          led: sw("led"),
+          sound: sw("sound"),
+          dead,
+          // the sheet only offers what this unit actually advertises
+          modes: Array.isArray(a.hvac_modes) && a.hvac_modes.length ? a.hvac_modes.slice() : null,
+          presets: Array.isArray(a.preset_modes) && a.preset_modes.length
+            ? a.preset_modes.map((p) => String(p).toUpperCase()) : null,
+        };
+      });
+      return {
+        name: escapeText(this._config.name || "House"),
+        zones,
+        target: this._zoneTarget,
+        min: r.lo, max: r.hi,
+      };
+    }
+
+    // "" unless the entity advertises this preset, so a value reported mid-change
+    // never paints a glyph, exactly as on the single dial.
+    _zonePreset(a) {
+      const p = a.preset_mode;
+      if (p == null || p === "") return "";
+      const list = Array.isArray(a.preset_modes) ? a.preset_modes : [];
+      return list.some((x) => String(x).toLowerCase() === String(p).toLowerCase())
+        ? String(p).toUpperCase() : "";
+    }
+
+    _renderZoneCard() {
+      const model = this._zoneModel();
+      const d = ZONE.derive(model);
+      const ui = this._zui || (this._zui = {});
+      // The module hard-codes one column per zone. That is right for five and
+      // unreadable for nine, and it also drops zone_rows, which is a shipped key.
+      const forced = this._gridStyle("zone_rows", model.zones.length);
+      const cols = forced
+        ? forced.replace(/^ style="/, "").replace(/"$/, "")
+        : "grid-template-columns:repeat(" + model.zones.length + ",minmax(0,1fr))";
+
+      let html = '<div class="cg-zonecard" style="position:relative; font-family:' + FONT_STACK + ';">';
+      html += '<div style="display:flex; align-items:baseline; justify-content:space-between;'
+        + ' gap:14px; padding-bottom:6px; border-bottom:1px solid rgba(225,231,237,.12);">'
+        + '<span style="font:600 22px/1 inherit; letter-spacing:.08em; text-transform:uppercase;'
+        + ' color:var(--primary-text-color, #f2f5f8);">' + model.name + '</span>'
+        // the shipped card's N / M survives: d.on alone cannot tell 4 of 5 from 4 of 9,
+        // and the total is the reading that shows a zone has fallen out of the config.
+        + '<span style="display:flex; align-items:center; gap:8px;'
+        + ' font:600 12px/1 ui-monospace,monospace; letter-spacing:.07em;">'
+        + '<span style="color:var(--cg-accent, #27d3ff);">' + d.cooling + ' ' + this._t("cooling") + '</span>'
+        + '<span style="color:#546070;">·</span>'
+        + '<span style="color:var(--secondary-text-color, #8b95a2);">' + d.on + ' / '
+        + model.zones.length + '</span></span></div>';
+
+      html += '<div class="cg-zonecard-body" style="display:grid;'
+        + ' grid-template-columns:236px minmax(0,1fr); gap:18px; align-items:stretch;'
+        + ' margin-top:10px;">' + ZONE.hero(model, d)
+        + '<div style="display:grid; ' + cols + '; gap:10px; min-width:0;'
+        + ' align-self:center; height:' + ZONE.arcRatio() + ';">'
+        + model.zones.map((z, i) => ZONE.tile(z, i, d)).join("") + "</div></div>";
+
+      if (this._config.group_actions !== false) {
+        html += ZONE.footer(ZONE.groupActions(model, d, ui));
+      }
+      if (ui.sheetIndex != null && model.zones[ui.sheetIndex]) {
+        html += ZONE.sheet(model.zones[ui.sheetIndex], ui.sheetIndex);
+      }
+      html += "</div>";
+      this._inner.innerHTML = html;
+    }
+
+    // A tap that only moves interface state still has to repaint, and the signature
+    // gate would otherwise swallow it.
+    _zoneRepaint() { this._sig = null; this._render(); }
+
+    _zoneAct(el) {
+      const model = this._zoneModel();
+      const ui = this._zui || (this._zui = {});
+      const zoneEl = el.closest("[data-zone]");
+      const idx = zoneEl ? parseInt(zoneEl.dataset.zone, 10) : -1;
+      const z = idx >= 0 ? model.zones[idx] : null;
+      const act = el.closest("[data-act]");
+      const g = el.closest("[data-gact]");
+      const zm = el.closest("[data-zmode]");
+      const zp = el.closest("[data-zpre]");
+      const zt = el.closest("[data-ztog]");
+
+      if (zm && z) { this._call("climate", "set_hvac_mode", { entity_id: z.id, hvac_mode: zm.dataset.zmode }); return true; }
+      if (zp && z) {
+        const p = zp.dataset.zpre;
+        // PREMAP is the setpoint each preset IMPLIES. Write the preset and let the
+        // device report its own setpoint back rather than guessing it here.
+        const real = (this._st(z.id).attributes.preset_modes || [])
+          .find((x) => String(x).toUpperCase() === p);
+        if (real) this._call("climate", "set_preset_mode", { entity_id: z.id, preset_mode: real });
+        return true;
+      }
+      if (zt && z) {
+        const kind = zt.dataset.ztog;
+        const sib = this._zoneSiblings(z.id);
+        if (sib[kind]) {
+          this._call("switch", z[kind] ? "turn_off" : "turn_on", { entity_id: sib[kind] });
+        } else if (kind === "swing") {
+          const a = this._st(z.id).attributes || {};
+          const list = Array.isArray(a.swing_modes) ? a.swing_modes : [];
+          const want = z.swing ? "off" : (list.find((x) => String(x).toLowerCase() !== "off") || "on");
+          if (list.length) this._call("climate", "set_swing_mode", { entity_id: z.id, swing_mode: want });
+        }
+        return true;
+      }
+      if (act) {
+        const a = act.dataset.act;
+        if (a === "sheet" && idx >= 0) { this._zui.sheetIndex = idx; this._zoneRepaint(); return true; }
+        if (a === "close" || a === "backdrop") { this._zui.sheetIndex = null; this._zoneRepaint(); return true; }
+        if (a === "panel" || a === "footer" || a === "house") return true; // swallow, never close
+        if ((a === "inc" || a === "dec") && z && z.set != null) {
+          const step = num((this._st(z.id).attributes || {}).target_temp_step) || 1;
+          const v = z.set + (a === "inc" ? step : -step);
+          this._call("climate", "set_temperature", { entity_id: z.id, temperature: v });
+          return true;
+        }
+      }
+      if (g) {
+        const id = g.dataset.gact;
+        if (id === "alloff") { this._zui.confirmOff = true; this._zoneRepaint(); return true; }
+        if (id === "confirm") {
+          this._zui.confirmOff = false;
+          this._groupAction("off");
+          this._zoneRepaint();
+          return true;
+        }
+        if (id === "allon") {
+          // No blanket cool. Each zone goes back to a mode it advertises, preferring
+          // the one it was last seen in; without that there is nothing honest to pick
+          // and the zone is left alone rather than guessed at.
+          const prev = this._zonePrev || {};
+          model.zones.forEach((z) => {
+            const want = prev[z.id];
+            if (want) this._call("climate", "set_hvac_mode", { entity_id: z.id, hvac_mode: want });
+          });
+          return true;
+        }
+        if (id === "sync") {
+          const d = ZONE.derive(model);
+          this._groupAction("setpoint", String(Math.round(d.target)));
+          return true;
+        }
+        if (id.indexOf("preset:") === 0) {
+          this._groupAction("preset", id.slice(7).toLowerCase());
+          return true;
+        }
+      }
+      return false;
     }
 
     _render() {
@@ -6489,6 +7311,17 @@ ha-card[data-appearance^="glass"] .cg-inner{
       const sig = this._signature();
       if (sig === this._sig) return; // nothing this card shows has changed
       this._sig = sig;
+
+      // Remember the last real mode of every zone, so All on can put the house back
+      // the way it was instead of turning everything to cool.
+      this._zonePrev = this._zonePrev || {};
+      for (const z of this._zones) {
+        const st = this._st(z.entity);
+        if (st && st.state !== "off" && st.state !== "unavailable" && st.state !== "unknown") {
+          this._zonePrev[z.entity] = st.state;
+        }
+      }
+      if (this._config.layout !== "classic") { this._renderZoneCard(); return; }
 
       const zones = this._zones.map((z) => this._live(z));
       const shortened = this._shortNames(zones.map((z) => z.name));

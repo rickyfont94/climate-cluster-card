@@ -48,6 +48,10 @@ function makeGroup(config, hass) {
   return el;
 }
 const baseConfig = { type: "custom:climate-cluster-group-card", entities: ["climate.living", "climate.bedroom", "climate.guest"] };
+// The zone layout is the default from 2.3.0. The grid of mini gauges still ships,
+// behind `layout: "classic"`, so the tests that assert its DOM ask for it by name
+// rather than being deleted: it is a look a user may have chosen on purpose.
+const classicConfig = Object.assign({}, baseConfig, { layout: "classic" });
 
 test("group: refuses a config with no climate entities", () => {
   assert.throws(() => makeGroup({ entities: [] }), /at least one climate entity/);
@@ -62,7 +66,7 @@ test("group: accepts bare ids and objects, and ignores non-climate entries", () 
 });
 
 test("group: the hero average uses only zones that report a setpoint", () => {
-  const el = makeGroup(baseConfig, makeHass(states));
+  const el = makeGroup(classicConfig, makeHass(states));
   const zones = el._zones.map((z) => el._live(z));
   const hero = el._heroPick(zones);
   assert.equal(hero.kind, "average");
@@ -72,7 +76,7 @@ test("group: the hero average uses only zones that report a setpoint", () => {
 });
 
 test("group: tapping a zone focuses it into the hero, tapping again returns", () => {
-  const el = makeGroup(baseConfig, makeHass(states));
+  const el = makeGroup(classicConfig, makeHass(states));
   el._focus = "climate.bedroom";
   const zones = el._zones.map((z) => el._live(z));
   const hero = el._heroPick(zones);
@@ -144,7 +148,7 @@ test("group: a watched zone changing DOES repaint", () => {
 test("group: an entity name carrying markup cannot break out of the card", () => {
   const evil = JSON.parse(JSON.stringify(states));
   evil["climate.living"].attributes.friendly_name = '<img src=x onerror=alert(1)>"';
-  const el = makeGroup(baseConfig, makeHass(evil));
+  const el = makeGroup(classicConfig, makeHass(evil));
   const root = el.shadowRoot;
 
   // Assert on the DOM, not on innerHTML. The HTML serializer does not escape angle
@@ -161,7 +165,7 @@ test("group: an entity name carrying markup cannot break out of the card", () =>
 test("group: a dead zone shows as unavailable instead of a stale reading", () => {
   const dead = JSON.parse(JSON.stringify(states));
   dead["climate.guest"].state = "unavailable";
-  const el = makeGroup(baseConfig, makeHass(dead));
+  const el = makeGroup(classicConfig, makeHass(dead));
   const z = el._live({ entity: "climate.guest" });
   assert.equal(z.dead, true);
   assert.equal(z.on, false);
@@ -169,7 +173,7 @@ test("group: a dead zone shows as unavailable instead of a stale reading", () =>
 
 test("group: renders a hero gauge, one tile per zone, and a working action bar", () => {
   const hass = makeHass(states);
-  const el = makeGroup(baseConfig, hass);
+  const el = makeGroup(classicConfig, hass);
   const root = el.shadowRoot;
 
   assert.equal(root.querySelectorAll("[data-zone]").length, 3, "one tile per zone");
@@ -187,13 +191,13 @@ test("group: renders a hero gauge, one tile per zone, and a working action bar",
 });
 
 test("group: the hero big number reads the average, not a raw entity value", () => {
-  const el = makeGroup(baseConfig, makeHass(states));
+  const el = makeGroup(classicConfig, makeHass(states));
   const big = el.shadowRoot.querySelector(".cg-hero-big").textContent;
   assert.equal(big, "70", "living 72, bedroom 70, guest 68");
 });
 
 test("group: a single-zone card still renders", () => {
-  const el = makeGroup({ entities: ["climate.living"] }, makeHass(states));
+  const el = makeGroup({ entities: ["climate.living"], layout: "classic" }, makeHass(states));
   assert.equal(el.shadowRoot.querySelectorAll("[data-zone]").length, 1);
   assert.ok(el.shadowRoot.querySelector(".cg-hero-svg"));
 });
@@ -208,45 +212,45 @@ test("group: eight zones all render, nothing is silently dropped", () => {
       attributes: { friendly_name: "Zone " + i, current_temperature: 70 + i, temperature: 70,
         min_temp: 61, max_temp: 86 } };
   }
-  const el = makeGroup({ entities: ids }, makeHass(many));
+  const el = makeGroup({ entities: ids, layout: "classic" }, makeHass(many));
   assert.equal(el.shadowRoot.querySelectorAll("[data-zone]").length, 8);
 });
 
 test("group: zone_rows lays the tiles out in the requested number of rows", () => {
-  const el = makeGroup(Object.assign({}, baseConfig, { zone_rows: 3 }), makeHass(states));
+  const el = makeGroup(Object.assign({}, classicConfig, { zone_rows: 3 }), makeHass(states));
   const zones = el.shadowRoot.querySelector(".cg-zones");
   // 3 zones over 3 rows is 1 column
   assert.match(zones.getAttribute("style") || "", /repeat\(1,/);
 
-  const two = makeGroup(Object.assign({}, baseConfig, { zone_rows: 2 }), makeHass(states));
+  const two = makeGroup(Object.assign({}, classicConfig, { zone_rows: 2 }), makeHass(states));
   // 3 zones over 2 rows is 2 columns
   assert.match(two.shadowRoot.querySelector(".cg-zones").getAttribute("style") || "", /repeat\(2,/);
 
-  const one = makeGroup(Object.assign({}, baseConfig, { zone_rows: 1 }), makeHass(states));
+  const one = makeGroup(Object.assign({}, classicConfig, { zone_rows: 1 }), makeHass(states));
   assert.match(one.shadowRoot.querySelector(".cg-zones").getAttribute("style") || "", /repeat\(3,/);
 });
 
 test("group: zone_rows unset leaves the responsive grid alone", () => {
-  const el = makeGroup(baseConfig, makeHass(states));
+  const el = makeGroup(classicConfig, makeHass(states));
   const style = el.shadowRoot.querySelector(".cg-zones").getAttribute("style");
   assert.ok(!style || !style.includes("repeat("), "no inline column override");
 });
 
 test("group: a silly zone_rows value is ignored rather than breaking the grid", () => {
   for (const bad of [0, -2, "abc", null]) {
-    const el = makeGroup(Object.assign({}, baseConfig, { zone_rows: bad }), makeHass(states));
+    const el = makeGroup(Object.assign({}, classicConfig, { zone_rows: bad }), makeHass(states));
     const style = el.shadowRoot.querySelector(".cg-zones").getAttribute("style");
     assert.ok(!style || !style.includes("repeat("), `zone_rows ${JSON.stringify(bad)} must fall back`);
   }
 });
 
 test("group: more rows than zones does not produce an empty column count", () => {
-  const el = makeGroup(Object.assign({}, baseConfig, { zone_rows: 99 }), makeHass(states));
+  const el = makeGroup(Object.assign({}, classicConfig, { zone_rows: 99 }), makeHass(states));
   assert.match(el.shadowRoot.querySelector(".cg-zones").getAttribute("style") || "", /repeat\(1,/);
 });
 
 test("group: action_rows lays the group buttons out in rows too", () => {
-  const el = makeGroup(Object.assign({}, baseConfig, { action_rows: 1 }), makeHass(states));
+  const el = makeGroup(Object.assign({}, classicConfig, { action_rows: 1 }), makeHass(states));
   const bar = el.shadowRoot.querySelector(".cg-actions");
   assert.ok(bar.classList.contains("cg-actions-grid"));
   const n = el.shadowRoot.querySelectorAll(".cg-act").length;
@@ -269,7 +273,7 @@ test("group: glass appearance is applied to the ha-card, same contract as the di
 });
 
 test("group: an unknown appearance falls back to the theme, it does not break the card", () => {
-  const el = makeGroup(Object.assign({}, baseConfig, { appearance: "chrome" }), makeHass(states));
+  const el = makeGroup(Object.assign({}, classicConfig, { appearance: "chrome" }), makeHass(states));
   assert.equal(el.shadowRoot.querySelector("ha-card").getAttribute("data-appearance"), null);
   assert.equal(el.shadowRoot.querySelectorAll("[data-zone]").length, 3, "still renders");
 });
@@ -299,7 +303,7 @@ test("group: the frosted slab never swallows the content", () => {
   // The slab is an absolutely positioned sibling of the content, and a positioned
   // element paints above static blocks. If the content ever loses its own wrapper
   // the whole card goes blank behind the glass, which no functional test would see.
-  const el = makeGroup(Object.assign({}, baseConfig, { appearance: "glass-dark" }), makeHass(states));
+  const el = makeGroup(Object.assign({}, classicConfig, { appearance: "glass-dark" }), makeHass(states));
   const card = el.shadowRoot.querySelector("ha-card");
   const frost = card.querySelector(".cg-frost");
   const inner = card.querySelector(".cg-inner");
@@ -342,14 +346,14 @@ test("group: an action button that cannot fit its track truncates instead of spi
 });
 
 test("group: pinned zone rows make the tiles fill the column height", () => {
-  const el = makeGroup(Object.assign({}, baseConfig, { zone_rows: 1 }), makeHass(states));
+  const el = makeGroup(Object.assign({}, classicConfig, { zone_rows: 1 }), makeHass(states));
   assert.ok(el.shadowRoot.querySelector(".cg-zones").classList.contains("cg-zones-fill"));
 
-  const loose = makeGroup(baseConfig, makeHass(states));
+  const loose = makeGroup(classicConfig, makeHass(states));
   assert.ok(!loose.shadowRoot.querySelector(".cg-zones").classList.contains("cg-zones-fill"),
     "the responsive grid is left alone");
 
-  const silly = makeGroup(Object.assign({}, baseConfig, { zone_rows: "abc" }), makeHass(states));
+  const silly = makeGroup(Object.assign({}, classicConfig, { zone_rows: "abc" }), makeHass(states));
   assert.ok(!silly.shadowRoot.querySelector(".cg-zones").classList.contains("cg-zones-fill"),
     "a rejected row count must not switch the fill mode on either");
 });
