@@ -184,9 +184,36 @@ const names = (rows) => rows.flatMap((r) => r.schema ? r.schema.map((x) => x.nam
 test("editor: the everyday fields are at the top, the rest folded away", () => {
   const ed = makeEditor({ entities: ids });
   const top = ed._schema().filter((r) => r.type !== "expandable").map((r) => r.name);
-  assert.deepEqual(top, ["entities", "name", "layout"]);
+  assert.deepEqual(top, ["entities", "name", "orientation"]);
   const secs = ed._schema().filter((r) => r.type === "expandable").map((r) => r.name);
   assert.deepEqual(secs, ["look", "grid", "range"]);
+});
+
+test("editor: the classic gauges are not offered, only the shape of the zone card", () => {
+  const rows = makeEditor({ entities: ids })._schema();
+  assert.ok(!names(rows).includes("layout"), "no layout picker at all");
+  const orient = rows.find((r) => r.name === "orientation");
+  assert.deepEqual(orient.selector.select.options.map((o) => o.value),
+    ["auto", "horizontal", "vertical"]);
+});
+
+test("editor: a YAML config asking for the classic gauges keeps them", () => {
+  // the field is gone from the form; Object.assign must still carry the key through
+  const ed = makeEditor({ entities: ids, layout: "classic" });
+  const seen = [];
+  ed.addEventListener("config-changed", (e) => seen.push(e.detail.config));
+  ed._valueChanged({ stopPropagation() {}, detail: { value: { name: "Casa" } } });
+  assert.equal(seen[0].layout, "classic", "not silently dropped by the editor");
+});
+
+test("zone: orientation forces the shape, and automatic sets no key", () => {
+  assert.equal(makeGroup().shadowRoot.querySelector(".cg-zonecard").dataset.orient, "auto");
+  assert.equal(makeGroup({ orientation: "horizontal" }).shadowRoot
+    .querySelector(".cg-zonecard").dataset.orient, "horizontal");
+  assert.equal(makeGroup({ orientation: "vertical" }).shadowRoot
+    .querySelector(".cg-zonecard").dataset.orient, "vertical");
+  assert.equal(makeGroup({ orientation: "sideways" }).shadowRoot
+    .querySelector(".cg-zonecard").dataset.orient, "auto", "junk falls back");
 });
 
 test("editor: hero and tap_zone are only offered on the layout that draws them", () => {

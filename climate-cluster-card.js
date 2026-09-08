@@ -6682,13 +6682,21 @@ ${ZONE.KEYFRAMES}
    measures the viewport and so never fired in any of those, which is how five tiles
    ended up stacked on top of each other with their names overprinted. */
 .cg-zonecard{ container-type:inline-size; }
+/* Automatic is the default and is what the container query drives. Asking for one
+   shape explicitly overrides it: horizontal keeps the hero beside the rooms at any
+   width, vertical stacks them at any width. The editor preview pane is narrow, so on
+   automatic it stacks there and goes back to a row once the card is on a real
+   dashboard, which is correct and still surprising, which is why both are offered. */
 @container (max-width:700px){
-  .cg-zonecard-body{ grid-template-columns:1fr !important; }
-  .cg-zonecard-tiles{ min-height:0 !important; align-self:auto !important; }
+  .cg-zonecard:not([data-orient="horizontal"]) .cg-zonecard-body{ grid-template-columns:1fr !important; }
+  .cg-zonecard:not([data-orient="horizontal"]) .cg-zonecard-tiles{ min-height:0 !important; align-self:auto !important; }
   /* Stacked, the hero would otherwise take the full card width and stand taller
      than every tile put together. It is one reading, not the whole card. */
-  .cg-zonecard-body > svg{ max-width:300px; margin:0 auto; }
+  .cg-zonecard:not([data-orient="horizontal"]) .cg-zonecard-body > svg{ max-width:300px; margin:0 auto; }
 }
+.cg-zonecard[data-orient="vertical"] .cg-zonecard-body{ grid-template-columns:1fr !important; }
+.cg-zonecard[data-orient="vertical"] .cg-zonecard-tiles{ min-height:0 !important; align-self:auto !important; }
+.cg-zonecard[data-orient="vertical"] .cg-zonecard-body > svg{ max-width:300px; margin:0 auto; }
 /* Browsers without container queries still get something readable: the tile track
    has a real minimum, so tiles wrap rather than compress. */
 .cg-zonecard-tiles{ min-width:0; }
@@ -7231,7 +7239,10 @@ ${ZONE.KEYFRAMES}
         ? forced.replace(/^ style="/, "").replace(/"$/, "")
         : "grid-template-columns:repeat(auto-fit,minmax(126px,1fr))";
 
-      let html = '<div class="cg-zonecard" style="position:relative; font-family:' + FONT_STACK + ';">';
+      const orient = ["horizontal", "vertical"].indexOf(this._config.orientation) >= 0
+        ? this._config.orientation : "auto";
+      let html = '<div class="cg-zonecard" data-orient="' + orient
+        + '" style="position:relative; font-family:' + FONT_STACK + ';">';
       html += '<div style="display:flex; align-items:baseline; justify-content:space-between;'
         + ' gap:14px; padding-bottom:6px; border-bottom:1px solid rgba(225,231,237,.12);">'
         + '<span style="font:600 22px/1 inherit; letter-spacing:.08em; text-transform:uppercase;'
@@ -7558,9 +7569,10 @@ ${ZONE.KEYFRAMES}
         { name: "entities", required: true,
           selector: { entity: { domain: "climate", multiple: true } } },
         { name: "name", selector: { text: {} } },
-        { name: "layout", selector: { select: { mode: "list", options: [
-          { value: "zones", label: this._t("editor.opt.layout_zones") },
-          { value: "classic", label: this._t("editor.opt.layout_classic") },
+        { name: "orientation", selector: { select: { mode: "list", options: [
+          { value: "auto", label: this._t("editor.opt.orient_auto") },
+          { value: "horizontal", label: this._t("editor.opt.orient_h") },
+          { value: "vertical", label: this._t("editor.opt.orient_v") },
         ] } } },
       ];
       const look = [
@@ -7606,8 +7618,11 @@ ${ZONE.KEYFRAMES}
 
     _t(k) {
       const M = {
-        "editor.opt.layout_zones": { en: "Zones (new)", es: "Zonas (nuevo)" },
-        "editor.opt.layout_classic": { en: "Classic gauges", es: "Medidores clasicos" },
+        "editor.opt.orient_auto": { en: "Automatic", es: "Automatico" },
+        "editor.opt.orient_h": { en: "Horizontal, hero beside the rooms",
+          es: "Horizontal, medidor al lado de los cuartos" },
+        "editor.opt.orient_v": { en: "Vertical, rooms under the hero",
+          es: "Vertical, cuartos debajo del medidor" },
         "editor.opt.appearance_theme": { en: "Theme (follows Home Assistant)", es: "Tema (sigue a Home Assistant)" },
         "editor.opt.appearance_glass_dark": { en: "Frosted glass, dark", es: "Vidrio esmerilado, oscuro" },
         "editor.opt.appearance_glass_light": { en: "Frosted glass, light", es: "Vidrio esmerilado, claro" },
@@ -7620,7 +7635,10 @@ ${ZONE.KEYFRAMES}
         "editor.sec.range": { en: "Temperature range", es: "Rango de temperatura" },
         "label.entities": { en: "Rooms", es: "Cuartos" },
         "label.name": { en: "Card title", es: "Titulo de la tarjeta" },
-        "label.layout": { en: "Layout", es: "Distribucion" },
+        "label.orientation": { en: "Shape", es: "Forma" },
+        "helper.orientation": {
+          en: "Automatic uses a row when the card is wide enough and stacks when it is not.",
+          es: "Automatico usa una fila cuando la tarjeta es ancha y apila cuando no." },
         "label.accent": { en: "Accent color", es: "Color de acento" },
         "label.zone_rows": { en: "Rows of rooms", es: "Filas de cuartos" },
         "label.action_rows": { en: "Rows of buttons", es: "Filas de botones" },
@@ -7646,7 +7664,10 @@ ${ZONE.KEYFRAMES}
       for (const k of Object.keys(cfg)) {
         if (cfg[k] === "" || cfg[k] === null || cfg[k] === undefined) delete cfg[k];
       }
-      if (cfg.layout === "zones") delete cfg.layout;   // the default is not a key
+      // Defaults are not keys. layout is deliberately NOT offered in the form any
+      // more, and Object.assign carries an existing one through untouched, so a YAML
+      // config that asked for the classic gauges keeps them.
+      if (cfg.orientation === "auto") delete cfg.orientation;
       const changed = JSON.stringify(cfg) !== JSON.stringify(this._config);
       this._config = cfg;
       if (changed) {
@@ -7673,7 +7694,8 @@ ${ZONE.KEYFRAMES}
       }
       const data = Object.assign({}, this._config, {
         entities: this._ids(this._config.entities),
-        layout: this._config.layout === "classic" ? "classic" : "zones",
+        orientation: ["horizontal", "vertical"].indexOf(this._config.orientation) >= 0
+          ? this._config.orientation : "auto",
       });
       this._form.hass = this._hass;
       this._form.schema = this._schema();
