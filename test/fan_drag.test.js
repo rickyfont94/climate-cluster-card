@@ -822,3 +822,29 @@ for (const style of ["silk", "breeze"]) {
     }
   });
 }
+
+/* Measured in the live dashboard: _siblings ran about 65 times per render and walked
+   the whole entity registry fifteen times per call. On 2,489 registry entries that was
+   110 ms per render per card, twice a second, and every animation on the page froze for
+   it. It reads only the registry and the config, and the frontend keeps the same
+   entities object across state pushes, so the answer is cached on those references. */
+test("_siblings is computed once per registry, not once per call", () => {
+  const card = liveCard();
+  const a = card._siblings();
+  assert.equal(card._siblings(), a, "same registry, same config: the same object back");
+
+  // a state push: new hass, SAME entities object, as the frontend does
+  const h2 = makeHass(JSON.parse(JSON.stringify(states)), { entities });
+  h2.entities = card._hass.entities;
+  card.hass = h2;
+  assert.equal(card._siblings(), a, "a state push must not rescan the registry");
+
+  // a registry change: a new entities object
+  card.hass = makeHass(states, { entities: { ...entities } });
+  assert.notEqual(card._siblings(), a, "a new registry object is walked again");
+  assert.deepEqual(card._siblings(), a, "and finds the same siblings");
+
+  // a new config is a new answer too
+  card.setConfig({ entity: "climate.ac", fan_style: "silk" });
+  assert.notEqual(card._siblings(), a);
+});

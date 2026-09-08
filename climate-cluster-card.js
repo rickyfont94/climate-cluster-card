@@ -2424,18 +2424,41 @@
     // ============================================================================
     // SIBLING DISCOVERY  (Midea device-id walk; config keys take precedence)
     // ============================================================================
+    /* Measured in the live dashboard, not the lab: this ran about 65 times per render,
+       once from every _fanRef, _swingRef, _ledRef, _haveFan and _fanSettable that asked,
+       and each call walked the WHOLE entity registry fifteen times, once per suffix.
+       On a house with 2,489 registry entries that is 2.4 million iterations per render,
+       110 ms on the main thread, and Home Assistant hands every card a new hass object
+       about twice a second. Two cards back to back were a 230 ms stall four times a
+       second: the tab produced 48 frames in 4 seconds, and every animation on it, no
+       matter how it was driven, froze for the duration. The lab never saw it because
+       the lab has five states.
+
+       It reads only the registry and the config, never a state, and the frontend keeps
+       the same entities object across state pushes and replaces it only when the
+       registry changes. So the answer is cached on those two references and recomputed
+       only when one of them is a new object. The walk itself is one pass collecting
+       the device's siblings in registry order, then a lookup per suffix over that
+       short list, which keeps the first-match semantics exactly. */
     _siblings() {
-      const out = {};
       const hass = this._hass;
       const cfg = this._config;
-      if (!hass || !cfg) return out;
+      if (!hass || !cfg) return {};
+      const c = this._sibCache;
+      if (c && c.ents === hass.entities && c.cfg === cfg) return c.out;
+      const out = {};
       const main = hass.entities ? hass.entities[cfg.entity] : null;
       const devId = main ? main.device_id : null;
-      const pick = (suffix, domain) => {
-        if (!devId || !hass.entities) return null;
+      const sibs = [];
+      if (devId && hass.entities) {
         for (const id in hass.entities) {
           const ent = hass.entities[id];
-          if (!ent || ent.device_id !== devId) continue;
+          if (ent && ent.device_id === devId) sibs.push(id);
+        }
+      }
+      const pick = (suffix, domain) => {
+        for (let i = 0; i < sibs.length; i++) {
+          const id = sibs[i];
           if (domain && id.indexOf(domain + ".") !== 0) continue;
           if (id.endsWith(suffix) || id.indexOf(suffix) !== -1) return id;
         }
@@ -2456,6 +2479,7 @@
       out.dust = pick("_full_dust", "binary_sensor");
       // fan_entity (preferred) / fan_speed (back-compat alias) / sibling number.*_fan_speed
       out.fan_speed = cfg.fan_entity || cfg.fan_speed || pick("_fan_speed", "number");
+      this._sibCache = { ents: hass.entities, cfg, out };
       return out;
     }
 

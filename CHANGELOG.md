@@ -125,6 +125,18 @@ every key that shipped before this release still reads the same way.
   all of them meaningless, with the friendly name sitting right there unread. The
   caption comes from the friendly name now, with the unit's own name taken off the
   front and `Mode` off the back, so "Aire-Sala Boost Mode" reads BOOST.
+- Every state change in the house cost each card 110 ms of main thread. Sibling
+  discovery, which finds a unit's fan, swing, LED and sound entities by walking the
+  entity registry, was asked about 65 times per render and walked the whole registry
+  fifteen times per call, once per suffix. On a house with 2,489 registry entries that
+  is 2.4 million iterations per render, and the frontend hands every card a new hass
+  object about twice a second, so two cards on one view stalled the tab for 230 ms four
+  times a second. Every animation on the page froze for it, whatever drove it, which
+  read as jumping, and the tab produced 48 frames in 4 seconds. The lab never saw it
+  because the lab has five states. The answer is now cached on the registry object and
+  recomputed only when the registry changes, and the walk is a single pass. Measured
+  with a registry that size and pushes at that rate: 2.2.1 cost 9 percent of a core,
+  this release before the fix 48, after it 4.
 - The animated fan rings cost a third of a core. Measured on five idle cards in Chrome:
   silk held the renderer at 30 percent and the raster process at 90, breeze at 16 and 92,
   while the same face with `original` sat at 3 and 12, which is what 2.2.1 costs. Any
