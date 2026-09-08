@@ -946,6 +946,8 @@
     "clover", "fanPct", "fanName", "swingChip", "swingHChip", "swingCap",
     "swingHCap", "hints"];
 
+  const HERO_MAX_W = 166;              // clear span between the two steppers, less air
+
   const CX = 300, CY = 284;            // _cx / _cy
   const R_TEMP = 200;                  // inner thick arc = TEMPERATURE
   const R_FAN = 226;                   // outer thin arc  = FAN SPEED
@@ -4022,6 +4024,7 @@
       this._faceSet = t;
       if (this._refs.face && this._faceOn !== false) {
         const fs = this._faceState(t);
+        this._syncFaceInk(fs.mode);
         this._paintFaceMoving(FACE.angleOf(fs.set, fs.min, fs.max),
           FACE.angleOf(fs.room, fs.min, fs.max), fs);
       }
@@ -4223,10 +4226,40 @@
       } catch (e) { return "dark"; }
     }
 
+    /* The face keeps the module's own palette, which is the design Ricky picked,
+       with two exceptions.
+
+       AUTO ships mint in the module and nothing on this card is green, so it takes
+       the card's own warm yellow, which is what the card has always drawn for that
+       mode and what every other yellow-on state in the house uses.
+
+       And a mode_colors entry the user actually configured has coloured this card
+       since it shipped. The face carrying its own table would drop that silently,
+       so an explicit override still wins. An unset mode is left alone: seeding from
+       _modeColor would repaint every mode in the card palette, which is a different
+       design, not a fix.
+
+       The pale companion is the ink lifted 55% toward white, which is what the
+       module's own pairs are, and it only ever has to clear the cell's own tinted
+       fill on a dark ground. */
+    _syncFaceInk(mode) {
+      const m = FACE.MODES[mode];
+      if (!m) return;
+      if (!m.base) m.base = { ink: m.ink, light: m.light };
+      const cfg = (this._config && this._config.mode_colors) || {};
+      const want = toColor(cfg[mode]) || (mode === "auto" ? MODE_COLORS.auto : null);
+      if (!want) { m.ink = m.base.ink; m.light = m.base.light; return; }
+      const rgb = colorToRgb(want);
+      if (!rgb) { m.ink = m.base.ink; m.light = m.base.light; return; }
+      m.ink = want;
+      m.light = "rgb(" + rgb.map((c) => Math.round(c + (255 - c) * 0.55)).join(",") + ")";
+    }
+
     _paintFace() {
       if (!this._refs.face || this._faceOn === false) return;
       const inkCard = this.shadowRoot && this.shadowRoot.querySelector(".ct-card");
       const st = this._faceState();
+      this._syncFaceInk(st.mode);
       if (inkCard) {
         inkCard.setAttribute("data-ink", this._inkGround(inkCard));
         // the light-ground rule mixes the mode word toward the card ink, so it needs
@@ -4234,14 +4267,19 @@
         inkCard.style.setProperty("--ct-mode-ink",
           (FACE.MODES[st.mode] || FACE.MODES.off).ink);
       }
-      const key = st.min + ":" + st.max;
+      // show_scale and show_current are config keys the card has always honoured.
+      // The face drew both unconditionally, so turning either off did nothing.
+      const wantScale = this._config.show_scale !== false;
+      const key = st.min + ":" + st.max + ":" + wantScale;
       const setA = FACE.angleOf(st.set, st.min, st.max);
       const roomA = FACE.angleOf(st.room, st.min, st.max);
       // The scale and the steppers depend only on the range, so they are not
       // restrung on every state change.
       if (this._faceScaleKey !== key) {
         this._faceScaleKey = key;
-        this._refs.faceScale.innerHTML = FACE.ticks(st.min, st.max) + FACE.scaleNumerals(st.min, st.max);
+        this._refs.faceScale.innerHTML = wantScale
+          ? FACE.ticks(st.min, st.max) + FACE.scaleNumerals(st.min, st.max)
+          : "";
         this._refs.faceStep.innerHTML = FACE.steppers();
       }
       // show_fan hides the ring AND its rail cell together. Before this it only
@@ -4265,6 +4303,23 @@
     // glyph lands on the G. Measured here instead: the glyph is pushed to 12 units
     // past the real right edge of the word, then the whole cluster is re-centred on
     // 300. Font independent, so it survives a custom font too.
+    /* The module sizes the setpoint for two digits. A half-degree step makes it
+       four characters wide and it ran straight through both steppers, which is
+       every Celsius user on a 0.5 step. The steppers sit at x 186 and 414 with
+       r 27, so the clear span between them is 174; leave a little air and measure
+       rather than guess, because the width depends on the theme font. */
+    _fitHero() {
+      const host = this._refs.faceCenter;
+      if (!host) return;
+      const t = host.querySelectorAll("text")[1];   // modeWord, hero, status
+      if (!t) return;
+      let b;
+      try { b = t.getBBox(); } catch (e) { return; }   // not laid out yet
+      if (!b || !b.width || b.width <= HERO_MAX_W) return;
+      const size = Math.max(52, Math.floor(104 * (HERO_MAX_W / b.width)));
+      t.setAttribute("font-size", String(size));
+    }
+
     _fixStatusLine() {
       const host = this._refs.faceCenter;
       if (!host) return;
@@ -4346,11 +4401,17 @@
     // The parts a drag moves. Deliberately small.
     _paintFaceMoving(setA, roomA, st) {
       this._refs.faceBand.innerHTML = FACE.band(setA);
-      this._refs.faceDelta.innerHTML = FACE.deltaSegment(setA, roomA, st.room - st.set);
-      this._refs.faceRoom.innerHTML = FACE.roomPin(roomA) + FACE.roomLabel(st.room, roomA);
+      // The delta rides with the room reading: it is the gap between the two, so
+      // with no current temperature on the card there is nothing for it to measure.
+      const wantCur = this._config.show_current !== false;
+      this._refs.faceDelta.innerHTML = wantCur
+        ? FACE.deltaSegment(setA, roomA, st.room - st.set) : "";
+      this._refs.faceRoom.innerHTML = wantCur
+        ? FACE.roomPin(roomA) + FACE.roomLabel(st.room, roomA) : "";
       this._refs.faceNeedle.innerHTML = FACE.needle(setA);
       this._refs.faceCenter.innerHTML = FACE.modeWord(st.mode) + FACE.bigNumeral(st.set)
         + FACE.statusLine(st.mode, st.action, st.preset);
+      this._fitHero();
       this._fixStatusLine();
       this._declutterScale();
     }
