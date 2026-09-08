@@ -915,6 +915,43 @@
       'stroke="rgba(154,175,210,.10)" stroke-width="7" stroke-linecap="round"></path>';
   }
 
+  /* The window the animated fan styles are clipped to.
+
+     The ring used to be REBUILT whenever the fan reading changed, because the puff
+     geometry was generated up to the current angle. Measured on the live house, one
+     Midea unit reports a new fan speed every 6.9 seconds while a silk cycle is 2.6
+     seconds, and an innerHTML rebuild destroys every animated node: a probe showed 0
+     of 21 SMIL timelines surviving one tick from 70 to 71. Every puff snapped back
+     into phase twice a minute, which is what "jumpy, not a constant flow" was.
+
+     So the flow is now drawn ONCE across the whole ring and this wedge is what moves.
+     Updating a clip path's d does not touch the animated siblings, so the timelines
+     run uninterrupted for as long as the card is on screen.
+
+     Sampled rather than built from arc commands, to avoid large-arc and sweep flags
+     on a shape whose angle crosses 180 degrees as the fan is turned up. At the outer
+     radius a 2 degree step is 0.04 user units off the true arc, well under a tenth of
+     a pixel on screen. The start is padded 3 degrees so the round cap at A0 is not
+     shaved; the end is exact, because the end IS the reading. */
+  function fanWindowPath(fanPct) {
+    var a0 = A0 - 3, a1 = fanAngle(fanPct), RI = RF - 26, RO = RF + 26;
+    if (a1 < a0) a1 = a0;
+    var d = '', a, p;
+    for (a = a0; a < a1; a += 2) { p = P(RO, a); d += (d ? 'L' : 'M') + f(p[0]) + ' ' + f(p[1]); }
+    p = P(RO, a1); d += (d ? 'L' : 'M') + f(p[0]) + ' ' + f(p[1]);
+    for (a = a1; a > a0; a -= 2) { p = P(RI, a); d += 'L' + f(p[0]) + ' ' + f(p[1]); }
+    p = P(RI, a0); d += 'L' + f(p[0]) + ' ' + f(p[1]);
+    return d + 'Z';
+  }
+
+  /* The two value-driven pieces of an animated ring, kept apart from the flow so the
+     card can rewrite them on every reading without disturbing the animation. */
+  function fanValueLayer(fanPct, noHandle) {
+    return '<clipPath id="ctFanWin"><path class="ct-fanwin" d="' +
+      fanWindowPath(fanPct) + '"></path></clipPath>' +
+      '<g class="ct-fanmark">' + fanHandle(noHandle ? null : fanPct) + '</g>';
+  }
+
   /* the handle is drawn ONLY when a speed is set. AUTO has no handle. */
   function fanHandle(fanPct) {
     if (fanPct == null) return '';
@@ -958,17 +995,27 @@
     { r: RF + 6, amp: 2.8, wave: 22, dash: '14 10', w: 1.5, lit: .26, dim: .13, k: 1.45 }
   ];
 
+  /* The ribbons run the WHOLE ring and the clip window decides how much shows. The
+     dash phase is measured from A0 either way, so the visible part is identical to
+     what the old up-to-the-angle version drew, minus the round cap at the end, which
+     the window now cuts square. What it buys is that a new fan reading no longer
+     recreates these nodes, and a CSS animation that is never recreated never jumps.
+
+     The period still comes from the reading, so it is read once at build time. A card
+     left running while the speed changes keeps the speed it was built with until the
+     ring is rebuilt for another reason; that is deliberate, because restarting four
+     ribbons to re-time them is the very stutter this is removing. */
   function fanBreeze(fanPct, mode, noHandle) {
-    var set = fanPct != null, end = fanAngle(fanPct), base = fanPeriod(fanPct);
+    var set = fanPct != null, base = fanPeriod(fanPct);
     var stroke = set ? MODES[mode].light : rgba(MODES[mode].ink, .9);
-    var out = fanTrack();
+    var out = fanTrack() + '<g class="ct-fanflow" clip-path="url(#ctFanWin)">';
     BREEZE.forEach(function (v) {
-      out += '<path d="' + wavyArc(v.r, A0, end, v.amp, v.wave) + '" fill="none" ' +
+      out += '<path d="' + wavyArc(v.r, A0, A0 + SPAN, v.amp, v.wave) + '" fill="none" ' +
         'stroke="' + stroke + '" stroke-width="' + v.w + '" stroke-linecap="round" ' +
         'stroke-dasharray="' + v.dash + '" opacity="' + (set ? v.lit : v.dim) + '" ' +
         'style="animation:drift ' + (base * v.k).toFixed(2) + 's linear infinite"></path>';
     });
-    return out + fanHandle(noHandle ? null : fanPct);
+    return out + '</g>' + fanValueLayer(fanPct, noHandle);
   }
 
   /* style 3: silk. Short tapered puffs that TRAVEL. One band is not one ribbon across
@@ -1014,24 +1061,44 @@
     return frames;
   }
 
+  /* Puffs are laid across the WHOLE ring and the clip window decides how many are
+     visible, instead of generating only as far as the reading. Two things follow.
+
+     The obvious one is that the reading no longer rebuilds anything, so the SMIL
+     timelines survive and the flow is continuous.
+
+     The quieter one is that the puffs no longer need the boundary clamp at the fan
+     end: v1 is the end of the ring, so no sample is ever pushed onto a moving edge
+     and the shapes are the same on every card at every setting. The clamp stays in
+     ribbonSeg because the window still has to be a fixed point count, and because
+     A0 remains a real boundary at the cold end. */
   function fanSilk(fanPct, mode, noHandle) {
-    var set = fanPct != null, end = fanAngle(fanPct), base = fanPeriod(fanPct);
-    var out = '<path d="' + arcPath(RF, A0, A0 + SPAN) + '" fill="none" ' +
-      'stroke="rgba(154,175,210,.07)" stroke-width="6" stroke-linecap="round"></path>';
+    var set = fanPct != null, full = A0 + SPAN, base = fanPeriod(fanPct);
+    var out = '<path d="' + arcPath(RF, A0, full) + '" fill="none" ' +
+      'stroke="rgba(154,175,210,.07)" stroke-width="6" stroke-linecap="round"></path>' +
+      '<g class="ct-fanflow" clip-path="url(#ctFanWin)">';
     SILK.forEach(function (v, bi) {
       var n = 0, dur = (base * v.k * 1.6).toFixed(2);
+      /* The blur and the opacity sit on the BAND, not on each puff. They were on every
+         path, which asked the renderer for around twenty separate filter regions and
+         re-rastered each one every frame, since the shape under it changes every frame.
+         Per band it is two. The pixels are the same because puffs within a band never
+         touch: the longest segment is seg times the largest SILK_VAR, 28 degrees on the
+         widest band, against a 34 degree pitch, so there is no overlap for a grouped
+         filter or a grouped alpha to composite differently. */
+      out += '<g opacity="' + (set ? v.lit : v.dim) + '"' +
+        (v.blur ? ' filter="url(#bSoft)"' : '') + '>';
       /* start a pitch early and finish a pitch late so puffs enter and leave */
-      for (var slot = A0 - v.pitch; slot < end + v.pitch; slot += v.pitch, n++) {
+      for (var slot = A0 - v.pitch; slot < full + v.pitch; slot += v.pitch, n++) {
         var seg = v.seg * SILK_VAR[(n + bi) % SILK_VAR.length];
-        var frames = segFrames(v, slot, seg, A0, end);
-        out += '<path d="' + frames[0] + '" fill="url(#bSilk)" ' +
-          'opacity="' + (set ? v.lit : v.dim) + '"' +
-          (v.blur ? ' filter="url(#bSoft)"' : '') + '>' +
+        var frames = segFrames(v, slot, seg, A0, full);
+        out += '<path d="' + frames[0] + '" fill="url(#bSilk)">' +
           '<animate attributeName="d" values="' + frames.join(';') + '" dur="' + dur + 's" ' +
           'calcMode="linear" repeatCount="indefinite"></animate></path>';
       }
+      out += '</g>';
     });
-    return out + fanHandle(noHandle ? null : fanPct);
+    return out + '</g>' + fanValueLayer(fanPct, noHandle);
   }
 
   var SILK_DEFS =
@@ -1074,7 +1141,7 @@
       rail(s.cells || [], s.mode);
   }
 
-    return { face: face, FAN_STYLES: FAN_STYLES, MODES: MODES, KEYFRAMES: KEYFRAMES, DEFS: DEFS, SILK_DEFS: SILK_DEFS, band: band, ticks: ticks, scaleNumerals: scaleNumerals, needle: needle, roomPin: roomPin, roomLabel: roomLabel, deltaSegment: deltaSegment, modeWord: modeWord, bigNumeral: bigNumeral, statusLine: statusLine, presetGlyph: presetGlyph, steppers: steppers, rail: rail, fanPlain: fanPlain, fanBreeze: fanBreeze, fanSilk: fanSilk, angleOf: angleOf, arcPath: arcPath, P: P };
+    return { face: face, FAN_STYLES: FAN_STYLES, MODES: MODES, KEYFRAMES: KEYFRAMES, DEFS: DEFS, SILK_DEFS: SILK_DEFS, band: band, ticks: ticks, scaleNumerals: scaleNumerals, needle: needle, roomPin: roomPin, roomLabel: roomLabel, deltaSegment: deltaSegment, modeWord: modeWord, bigNumeral: bigNumeral, statusLine: statusLine, presetGlyph: presetGlyph, steppers: steppers, rail: rail, fanPlain: fanPlain, fanBreeze: fanBreeze, fanSilk: fanSilk, fanWindowPath: fanWindowPath, fanHandle: fanHandle, fanAngle: fanAngle, angleOf: angleOf, arcPath: arcPath, P: P };
   })();
 
   /* Everything the original face paints that the handoff face repaints itself.
@@ -1757,7 +1824,19 @@
      control you grab to set one: every style dims itself when handed null, which on a
      dark card means there is nothing to aim at. The rail carries the word AUTO, so
      the distinction is still on screen, in the place that is made of words. */
-  const FACE_RING = (pct) => (pct == null ? 100 : pct);
+  /* RETIRED, and left here as the record of what it did.
+
+     This mapped a null fan reading to 100 before the ring styles ever saw it, so on
+     AUTO every style drew itself as though the fan were pinned at maximum: silk and
+     breeze took their LIT opacity instead of their dim one and ran at fanPeriod(100),
+     0.9s, the fastest the ring ever goes, when fanPeriod(null) asks for 3.4s, the
+     slowest. AUTO was the loudest thing on the dial rather than the calmest.
+
+     It was never needed. fanAngle already returns the full sweep for null and
+     fanHandle already draws nothing for it, which is the whole behaviour this was
+     added to restore. Passing the reading through untouched gives the full arc AND
+     the dim, slow treatment the tables were written for. */
+  const FACE_RING = (pct) => pct;
   /* The MARKER is the other half of that. It marks a value, so with no value there is
      nothing for it to mark, and on this hardware hvac auto refuses fan commands
      outright: a marker at the far end there points at a speed the unit will not take.
@@ -5495,10 +5574,19 @@
     _paintFaceFan(pct, label) {
       if (!this._refs.faceFan || this._faceOn === false) return;
       const st = this._faceState();
-      this._faceFanKey = null;
       if (this._haveFan()) {
-        const draw = FACE.FAN_STYLES[st.fanStyle] || FACE.FAN_STYLES.original;
-        this._refs.faceFan.innerHTML = draw(FACE_RING(pct), st.mode, pct == null);
+        /* Under the finger this used to restring the whole ring on every pointermove,
+           which on silk is 21 SMIL timelines and 54 KB of keyframe text per move, and
+           it restarted the flow continuously for as long as the drag lasted. The
+           animated styles move the clip window instead, so the ring keeps flowing
+           while it is being dragged and the drag itself gets much cheaper. */
+        if (st.fanStyle === "silk" || st.fanStyle === "breeze") {
+          this._setFanValue(FACE_RING(pct), pct == null);
+        } else {
+          this._faceFanKey = null;
+          const draw = FACE.FAN_STYLES[st.fanStyle] || FACE.FAN_STYLES.original;
+          this._refs.faceFan.innerHTML = draw(FACE_RING(pct), st.mode, pct == null);
+        }
       }
       // the rail's FAN cell is the same reading in words
       if (this._refs.faceRail) {
@@ -5507,6 +5595,22 @@
         this._refs.faceRail.innerHTML = FACE.rail(cells, st.mode);
         this._faceCellKeys = cells.map((c) => c.key);
       }
+    }
+
+    /* Move the fan ring's clip window and its handle without touching the flow.
+
+       Everything the reading controls lives in these two nodes. If either is missing
+       the ring was built by a style that has no window (original), or has not been
+       built yet, so fall back to a rebuild rather than silently doing nothing: a fan
+       ring frozen at the wrong angle is a worse bug than the one this replaces. */
+    _setFanValue(pct, noHandle) {
+      const host = this._refs.faceFan;
+      if (!host) return;
+      const win = host.querySelector(".ct-fanwin");
+      const mark = host.querySelector(".ct-fanmark");
+      if (!win || !mark) { this._faceFanKey = null; this._paintFace(); return; }
+      win.setAttribute("d", FACE.fanWindowPath(pct));
+      mark.innerHTML = FACE.fanHandle(noHandle ? null : pct);
     }
 
     _paintFace() {
@@ -5539,13 +5643,35 @@
       // show_fan hides the ring AND its rail cell together. Before this it only
       // removed the button, while the label promised it controlled the ring.
       const wantFan = this._haveFan();
-      const fanKey = [st.fanStyle, st.fanPct, st.mode, wantFan].join("|");
+      /* The reading is deliberately NOT part of the key for the animated styles.
+         Those draw the whole ring once and expose a clip window, so a new fan speed
+         moves the window instead of restringing the ring. Measured on this house one
+         unit reports a new speed every 6.9 seconds against a 2.6 second silk cycle,
+         and a rebuild kills every timeline, so keying on the reading meant the flow
+         restarted from zero twice a minute.
+
+         original stays keyed on the reading, because it is a static gradient arc with
+         a round cap at the end: it has no animation to protect and a clip window would
+         square that cap off, which is a visible change to the one style whose contract
+         is that nothing about it changes. */
+      const anim = st.fanStyle === "silk" || st.fanStyle === "breeze";
+      /* silk is not keyed on the mode either, because it does not draw the mode: its
+         puffs take a fixed gradient and their opacity comes from whether a speed is
+         set. breeze does colour its ribbons by mode, so it keeps it. This is not
+         hypothetical tidying: aire_master went unavailable 34 times in the last day,
+         and _faceMode maps unavailable to "off", so every dropout and recovery was
+         two more rebuilds of a ring that would have looked identical. */
+      const fanKey = [st.fanStyle, wantFan,
+        st.fanStyle === "silk" ? "" : st.mode,
+        anim ? st.fanPct == null : st.fanPct].join("|");
       if (this._faceFanKey !== fanKey) {
         this._faceFanKey = fanKey;
         this._refs.faceFan.innerHTML = wantFan
           ? (FACE.FAN_STYLES[st.fanStyle] || FACE.FAN_STYLES.original)(
               FACE_RING(st.fanPct), st.mode, st.fanPct == null)
           : "";
+      } else if (anim && wantFan) {
+        this._setFanValue(FACE_RING(st.fanPct), st.fanPct == null);
       }
       this._paintFaceMoving(setA, roomA, st);
       this._faceCellKeys = st.cells.map((c) => c.key);

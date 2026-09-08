@@ -61,8 +61,28 @@ test("fan drag: a drag can never land on auto, and settling to auto reads AUTO",
   assert.doesNotMatch(card._refs.faceRail.innerHTML, /\d+%/);
 });
 
-test("fan drag: the cached ring key is dropped, so the next full render redraws", () => {
+/* The invariant is that a full render puts the ring back on the COMMITTED reading,
+   whatever the drag left on screen. It used to be reached by dropping the cache key so
+   the next render restrung the whole ring. The animated styles no longer restring on a
+   reading at all, because that was killing 21 SMIL timelines every time the unit
+   reported a new speed, so the same invariant is now reached by moving the clip window.
+   Assert the invariant, not the mechanism: the window has to come back. */
+test("fan drag: a full render puts the ring back on the committed reading", () => {
   const card = liveCard();
+  const win = () => card._refs.faceFan.querySelector(".ct-fanwin").getAttribute("d");
+  const atRest = win();
+
+  card._paintFanNamed(["low", "medium", "high"], "high");
+  assert.notEqual(win(), atRest, "the window follows the finger");
+
+  card._paintFace();
+  assert.equal(win(), atRest, "and a render off committed state puts it back");
+});
+
+test("fan drag: original has no window, so it still drops the key and restrings", () => {
+  const card = liveCard({ fan_style: "original" });
+  assert.equal(card._refs.faceFan.querySelector(".ct-fanwin"), null,
+    "original is the untouched pre-2.3.0 arc, with no clip window");
   card._paintFanNamed(["low", "medium", "high"], "high");
   assert.equal(card._faceFanKey, null,
     "what is drawn no longer matches any committed state");
@@ -612,4 +632,79 @@ test("free drag: a unit with only names snaps to its names, it does not fake a p
     const i = pickAt(c, f, names.length);
     assert.ok(names[i], f + " lands on a mode this unit really has: " + names[i]);
   }
+});
+
+/* The bug this locks: the fan ring was keyed on the READING, so every speed report
+   from the unit rebuilt it. Measured on the live house, one Midea reports a new fan
+   speed every 6.9 seconds against a 2.6 second silk cycle, and a probe in headless
+   Chrome showed 0 of 21 SMIL timelines surviving a single tick from 70 to 71. Every
+   puff snapped back into phase twice a minute. The user's words were "a bit jumpy and
+   not constant smooth flow".
+
+   Node identity is the whole assertion. A ring that merely LOOKS right after a state
+   push can still have been destroyed and recreated, and that is exactly what the eye
+   was catching. */
+function pushFan(card, mode) {
+  const next = JSON.parse(JSON.stringify(states));
+  next["climate.ac"].attributes.fan_mode = mode;
+  card.hass = makeHass(next, { entities });
+}
+
+for (const style of ["silk", "breeze"]) {
+  test(`${style}: a new fan reading moves the window and keeps every animation alive`, () => {
+    const card = liveCard({ fan_style: style });
+    const ring = card._refs.faceFan;
+    const sel = style === "silk" ? "animate" : "[style*='animation']";
+    const before = [...ring.querySelectorAll(sel)];
+    assert.ok(before.length >= 3, `${style} draws animated nodes to protect`);
+    const winBefore = ring.querySelector(".ct-fanwin").getAttribute("d");
+
+    pushFan(card, "high");
+
+    const after = [...ring.querySelectorAll(sel)];
+    assert.equal(after.length, before.length, "same number of animated nodes");
+    for (let i = 0; i < before.length; i++) {
+      assert.equal(after[i], before[i],
+        "the SAME node object, not an equal-looking replacement");
+    }
+    assert.notEqual(ring.querySelector(".ct-fanwin").getAttribute("d"), winBefore,
+      "but the clip window really did move to the new reading");
+  });
+}
+
+test("silk draws the flow across the whole ring, not up to the reading", () => {
+  const low = liveCard({ fan_style: "silk" });
+  const high = liveCard({ fan_style: "silk" });
+  pushFan(high, "high");
+  assert.equal(high._refs.faceFan.querySelectorAll("animate").length,
+    low._refs.faceFan.querySelectorAll("animate").length,
+    "the puff count cannot depend on the reading, or the ring rebuilds when it changes");
+});
+
+/* fanSilk never reads its mode argument: the puffs are a fixed gradient and their
+   opacity comes from whether a speed is set. Keying the ring on the mode therefore
+   threw away 21 running timelines to redraw identical pixels. It is not a rare event:
+   _faceMode maps unavailable to "off", and one of this house's units went unavailable
+   34 times in a day. breeze does colour its ribbons by mode, so it must still rebuild. */
+test("silk keeps its flow across a mode change, breeze redraws because it must", () => {
+  const bymode = (style, mode) => {
+    const card = liveCard({ fan_style: style });
+    const nodes = () => [...card._refs.faceFan.querySelectorAll(
+      style === "silk" ? "animate" : "[style*='animation']")];
+    const before = nodes();
+    const next = JSON.parse(JSON.stringify(states));
+    next["climate.ac"].attributes.hvac_modes = ["off", "cool", "dry"];
+    next["climate.ac"].state = mode;
+    card.hass = makeHass(next, { entities });
+    return { before, after: nodes() };
+  };
+
+  const silk = bymode("silk", "dry");
+  assert.ok(silk.before.length >= 3);
+  assert.equal(silk.after[0], silk.before[0], "silk draws no mode ink, so it survives");
+
+  const breeze = bymode("breeze", "dry");
+  assert.ok(breeze.before.length >= 3);
+  assert.notEqual(breeze.after[0], breeze.before[0],
+    "breeze strokes its ribbons in the mode ink, so it has to redraw");
 });

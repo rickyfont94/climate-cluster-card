@@ -125,6 +125,27 @@ every key that shipped before this release still reads the same way.
   all of them meaningless, with the friendly name sitting right there unread. The
   caption comes from the friendly name now, with the unit's own name taken off the
   front and `Mode` off the back, so "Aire-Sala Boost Mode" reads BOOST.
+- The animated fan rings were not flowing, they were restarting. The ring was keyed on
+  the fan READING, so every speed the unit reported rebuilt it, and rebuilding destroys
+  every running animation. Measured on a live house: one unit reports a new fan speed
+  every 6.9 seconds against a 2.6 second silk cycle, and a probe found 0 of 21 timelines
+  surviving a single tick from 70 to 71, so every puff snapped back into phase twice a
+  minute. Silk and breeze now draw their flow once across the whole ring and move a clip
+  window instead, so the reading changes an attribute and the animation is never
+  interrupted. The same applies under a finger: dragging the ring used to restring it on
+  every pointermove. `original` is untouched, having no animation to protect.
+- Silk was also keyed on the hvac mode, which it does not draw: its puffs take a fixed
+  gradient. A unit that drops to unavailable and back therefore threw away a running
+  ring to redraw identical pixels, 34 times in a day on one of these units.
+- On AUTO the fan ring drew itself as if the fan were pinned at maximum. A null reading
+  was mapped to 100 before the styles saw it, so silk and breeze took their lit opacity
+  and their fastest period, making AUTO the loudest thing on the dial instead of the
+  calmest. The reading now reaches them intact; the arc still fills completely and still
+  carries no marker, which is all that mapping was there to do.
+- Silk applied its blur to every puff, asking for around twenty filter regions to be
+  re-rastered every frame against a shape that changes every frame. It is applied per
+  band now, which is two, and the pixels are identical because puffs within a band never
+  overlap.
 - That shortening reached the rail but not the mode popup, so the same toggle read
   BOOST under the dial and AIRE-SALA BOOST MODE inside the sheet, where it pushed the
   chip row past the edge. Both surfaces draw the same word now. A `name` written in
