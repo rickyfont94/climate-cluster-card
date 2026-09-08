@@ -587,3 +587,58 @@ test("step: a silly step falls back to a whole degree", () => {
     assert.equal(el._zoneStep(), 1, JSON.stringify(bad) + " must not reach the write");
   }
 });
+
+// ------------------------------------------------------- what it is DOING ------
+// The module answered that with room > set, which is only ever true of cooling. A
+// fan_only room, a dry room, an auto room and a cool room that has REACHED its
+// setpoint all read IDLE while the unit was plainly running.
+
+const doing = (mode, over) => {
+  const st = JSON.parse(JSON.stringify(states));
+  st["climate.sala"].state = mode;
+  Object.assign(st["climate.sala"].attributes, over || {});
+  const el = makeGroup({}, makeHass(st, { entities }));
+  const tile = el.shadowRoot.querySelectorAll("[data-zone]")[0];
+  return tile.textContent;
+};
+
+test("doing: a running fan_only room does not say IDLE", () => {
+  const t = doing("fan_only", { current_temperature: 70, temperature: 75 });
+  assert.ok(!/IDLE/.test(t), "the fan is moving air: " + t);
+  assert.match(t, /CIRCULATING|FAN/);
+});
+
+test("doing: dry and auto do not say IDLE either", () => {
+  assert.ok(!/IDLE/.test(doing("dry", { current_temperature: 70, temperature: 75 })));
+  assert.ok(!/IDLE/.test(doing("auto", { current_temperature: 70, temperature: 75 })));
+});
+
+test("doing: a cool room that has reached its setpoint really IS idle", () => {
+  assert.match(doing("cool", { current_temperature: 70, temperature: 75 }), /IDLE/);
+  assert.match(doing("cool", { current_temperature: 79, temperature: 75 }), /COOLING/);
+});
+
+test("doing: heat reads the numbers the other way round", () => {
+  assert.match(doing("heat", { current_temperature: 65, temperature: 72 }), /HEATING/);
+  assert.match(doing("heat", { current_temperature: 75, temperature: 72 }), /IDLE/);
+});
+
+test("doing: the entity's own hvac_action wins over any guess", () => {
+  // a cool room below its setpoint would be guessed IDLE; the unit says otherwise
+  assert.match(doing("cool", { current_temperature: 70, temperature: 75, hvac_action: "cooling" }),
+    /COOLING/);
+  // and a cool room above it would be guessed COOLING; the unit says it is idle
+  assert.match(doing("cool", { current_temperature: 79, temperature: 75, hvac_action: "idle" }),
+    /IDLE/);
+});
+
+test("doing: an off room says OFF, not idle", () => {
+  assert.match(doing("off", {}), /OFF/);
+});
+
+test("doing: the header counts COOLING, so it stays about cooling", () => {
+  const st = JSON.parse(JSON.stringify(states));
+  for (const id of ids) { st[id].state = "fan_only"; st[id].attributes.hvac_action = "fan"; }
+  const t = text(makeGroup({}, makeHass(st, { entities })));
+  assert.match(t, /0 COOLING/, "a house full of fans is not a house full of cooling");
+});

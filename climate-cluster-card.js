@@ -1195,7 +1195,14 @@
     var real = zones.filter(function (x) { return !x.dead && x.room != null && x.set != null; });
     for (i = 0; i < real.length; i++) {
       z = real[i];
-      if (z.mode !== 'off') { on++; live.push(z); if (z.room > z.set) cooling++; }
+      if (z.mode !== 'off') {
+        on++; live.push(z);
+        /* CARD ADDITION: the header says COOLING, so it counts cooling and not "busy".
+           A unit that reports its action is believed; one that does not is read off
+           the numbers, which only means anything in cool. */
+        var za = z.action ? String(z.action).toUpperCase() : '';
+        if (za ? za === 'COOLING' : (z.mode === 'cool' && z.room > z.set)) cooling++;
+      }
     }
     var pool = live.length ? live : real;
     /* every zone offline is a real state and it has to render, so hand the rest of the
@@ -1391,8 +1398,10 @@
   function strip(z, d) {
     var span = (d.hi - d.lo) || 1;
     var x = function (v) { return f(6 + (clamp(v, d.lo, d.hi) - d.lo) / span * 128); };
-    var on = z.mode !== 'off' && z.room > z.set;
     var m = MODES[z.mode] || MODES.unavailable;
+    /* CARD ADDITION: the bar is coloured by whether the unit is WORKING, which is the
+       same question the status word answers, so it is answered in one place. */
+    var on = tileAction(z, m, z.mode === 'off', z.room == null || z.set == null).live;
     return '<svg viewBox="0 0 140 16" style="display:block; width:100%; height:auto;" aria-hidden="true">' +
       '<line x1="6" y1="9" x2="134" y2="9" stroke="rgba(225,231,237,.10)" stroke-width="4" ' +
         'stroke-linecap="round"></line>' +
@@ -1460,14 +1469,39 @@
   }
 
   /* glass pane tinted by its own mode, never filled with a fixed cyan */
+  /* CARD ADDITION: what the unit is actually doing.
+
+     The module answered that with `room > set`, which is only ever true of cooling.
+     A fan_only zone, a dry zone, an auto zone and a cool zone that has REACHED its
+     setpoint all read IDLE while the unit was plainly running: the fan was moving air
+     and the card said it was doing nothing.
+
+     hvac_action is the entity's own answer and wins whenever it has one. Plenty of
+     these units report none, and then only cool and heat can be read off the numbers;
+     every other mode is doing its job the whole time it is on. */
+  function tileAction(z, m, off, nore) {
+    if (nore) return { word: m.status, live: false };
+    if (off) return { word: 'OFF', live: false };
+    var a = z.action ? String(z.action).toUpperCase() : '';
+    if (a === 'OFF') return { word: 'OFF', live: false };
+    if (a === 'IDLE') return { word: 'IDLE', live: false };
+    if (a) return { word: a, live: true };
+    if (z.mode === 'cool') return z.room > z.set
+      ? { word: m.status, live: true } : { word: 'IDLE', live: false };
+    if (z.mode === 'heat') return z.room < z.set
+      ? { word: m.status, live: true } : { word: 'IDLE', live: false };
+    return { word: m.status, live: true };
+  }
+
   function tile(z, i, d) {
     /* CARD ADDITION: an unknown mode falls back rather than throwing, and a zone with
        no reading shows the dash the shipped card shows rather than the word NaN. */
     var m = MODES[z.mode] || MODES.unavailable, off = z.mode === 'off';
     var nore = z.dead || z.room == null || z.set == null;
-    var on = !off && !nore && z.room > z.set, delta = nore ? 0 : z.room - z.set;
-    var act = nore ? m.status : (off ? 'OFF' : (on ? m.status : 'IDLE'));
-    var actInk = off || nore || !on ? '#6f7a88' : m.ink;
+    var ta = tileAction(z, m, off, nore);
+    var on = ta.live, delta = nore ? 0 : z.room - z.set;
+    var act = ta.word;
+    var actInk = ta.live ? m.ink : '#6f7a88';
     var btn = 'appearance:none; cursor:pointer; height:30px; border-radius:8px; ' +
       'border:1px solid rgba(225,231,237,.20); background:rgba(225,231,237,.05); ' +
       'color:#e1e5ea; font:400 16px/1 Rajdhani,sans-serif; padding:0;';
@@ -7629,6 +7663,8 @@ ${ZONE.KEYFRAMES}
           room: dead ? null : num(a.current_temperature),
           set: dead ? null : opt("set", this._setpoint(st)),
           mode: dead ? "unavailable" : opt("mode", st.state),
+          // the entity's own answer to "what are you doing right now"
+          action: dead ? null : (a.hvac_action || null),
           preset: opt("preset", this._zonePreset(a)),
           fan: this._zoneFanPct(a),
           swing: opt("swing", sib.swing ? sw("swing") : (a.swing_mode != null &&
