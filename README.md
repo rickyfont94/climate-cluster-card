@@ -120,6 +120,16 @@ max_height: 34vh
 
 </details>
 
+### The fan ring
+
+<img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/rings-anim.webp" alt="The three fan ring styles side by side" width="820">
+
+The outer ring is the fan, and you drag it the same way you drag the temperature. One
+dial, one second, three treatments: `silk` sends travelling puffs around the arc and
+speeds them up the higher the fan is set, `breeze` drifts ribbons that settle, and
+`original` is the plain gradient arc every version before 2.3.0 drew. Original is in
+the row so you can see it hold still next to the other two.
+
 ### Modes and presets at a glance
 
 <img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/modes.webp" alt="Every hvac mode on the dial" width="820">

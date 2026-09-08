@@ -163,8 +163,14 @@ test("BUG #34: an unknown-state select stays clickable (not dimmed) and shows it
   assert.equal(sel.classList.contains("disabled"), false, "a select with options must not be dimmed just because its state is unknown");
   assert.equal(sel.getAttribute("aria-disabled"), "false");
   const label = sel.querySelector(".ct-tg-lb").textContent;
-  assert.equal(label, "Salon Smart Wind", "an unchosen select shows its name, not the word 'unknown'");
+  // The chip is the width of SWING and LED, so a derived friendly name is shortened
+  // the same way the face rail shortens it: the word that identifies the toggle. The
+  // point of the regression still holds, it shows the toggle and never "unknown".
+  assert.equal(label, "WIND", "an unchosen select shows its name, not the word 'unknown'");
   assert.notEqual(label.toLowerCase(), "unknown");
+  // Nothing is lost: the full friendly name stays on the title and the aria-label.
+  assert.equal(sel.title, "Salon Smart Wind");
+  assert.equal(sel.getAttribute("aria-label"), "Salon Smart Wind: WIND");
 });
 
 test("BUG #34: tapping an unknown-state select picks the first real option", () => {
@@ -194,4 +200,39 @@ test("a genuinely unavailable select stays disabled and inert (fires nothing on 
   const card = makeCard(jurny.config, makeHass(st, { entities: jurny.entities }));
   card._xTap(1);
   assert.equal(card._hass.calls.length, 0, "an unavailable select must not fire a service call");
+});
+
+/* The popup chip is the same width as SWING and LED, but it was rendering the whole
+   friendly name while the face rail rendered the short caption. On a Midea unit that
+   names its switch after the unit ("Aire-Sala Boost Mode") the chip ran past the
+   sheet, which is how it reached a release screenshot. Both surfaces now agree.
+
+   The two cases that must not regress with it: a name written in YAML is the user's
+   own string and is left exactly as typed, and the full friendly name stays reachable
+   on the title and the aria-label no matter which of the two is drawn. */
+test("popup chip shortens a derived name the same way the rail does", () => {
+  const st = structuredClone(jurny.states);
+  st["switch.salon_anti_mould"].attributes.friendly_name = "Aire-Sala Boost Mode";
+  const hass = makeHass(st, { entities: jurny.entities });
+  const live = makeLiveCard(jurny.config, hass);
+
+  const chip = live._refs.sheet.querySelectorAll("button[data-xtoggle]")[0];
+  assert.equal(chip.querySelector(".ct-tg-lb").textContent, "BOOST",
+    "a long derived name is cut to the word that identifies the toggle");
+  assert.equal(chip.title, "Aire-Sala Boost Mode", "the full name stays on the title");
+  assert.ok(chip.getAttribute("aria-label").startsWith("Aire-Sala Boost Mode"),
+    "the full name stays on the aria-label");
+
+  // The same entity on the face rail draws the same word, which is the whole point.
+  const rail = live._faceCellsAvailable().find((i) => i.key === "extra:0");
+  assert.equal(rail.caption, "BOOST", "rail and popup agree");
+});
+
+test("popup chip leaves a name written in YAML exactly as typed", () => {
+  const hass = makeHass(jurny.states, { entities: jurny.entities });
+  const live = makeLiveCard(jurny.configObjects, hass);
+
+  const chip = live._refs.sheet.querySelectorAll("button[data-xtoggle]")[0];
+  assert.equal(chip.querySelector(".ct-tg-lb").textContent, "Anti Mould",
+    "an explicit name is not uppercased and not cut");
 });

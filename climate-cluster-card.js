@@ -4992,12 +4992,19 @@
           b.style.display = "";
           ref.icon.setAttribute("icon", this._xIcon(it));   // live: reflects a late friendly icon
           const name = this._xName(it);
+          /* The chip is the same width as SWING and LED, so a derived friendly name
+             gets the same shortening the face rail gives it: "Aire-Sala Boost Mode"
+             was rendering in full and pushing the row past the sheet. A name written
+             in YAML is left exactly as the user typed it, because they already chose
+             a string for this chip and the popup is wide enough to honour it. The
+             full name stays on the title and on every aria-label either way. */
+          const cap = it.name ? name : this._xCaption(it);
           b.title = name;
           if (!this._xAvail(it)) {                           // configured but missing/unavailable
             b.classList.add("disabled"); b.classList.remove("on");
             b.setAttribute("aria-disabled", "true");
             b.removeAttribute("aria-pressed");
-            ref.lb.textContent = name;
+            ref.lb.textContent = cap;
             b.setAttribute("aria-label", name);
             return;
           }
@@ -5009,7 +5016,7 @@
             const cur = this._xCurOpt(it);
             // Show the live option only when it is a real member; a not-yet-chosen
             // select (state "unknown") shows the name instead of the word "unknown".
-            const shown = (cur != null && opts.indexOf(cur) >= 0) ? cur : name;
+            const shown = (cur != null && opts.indexOf(cur) >= 0) ? cur : cap;
             b.classList.remove("on");
             b.removeAttribute("aria-pressed");
             ref.lb.textContent = shown;
@@ -5018,7 +5025,7 @@
             const on = this._xOn(it);
             b.classList.toggle("on", on);
             b.setAttribute("aria-pressed", on ? "true" : "false");
-            ref.lb.textContent = name;
+            ref.lb.textContent = cap;
             b.setAttribute("aria-label", name + " " + this._t(on ? "on" : "off"));
           }
         });

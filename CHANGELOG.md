@@ -125,6 +125,11 @@ every key that shipped before this release still reads the same way.
   all of them meaningless, with the friendly name sitting right there unread. The
   caption comes from the friendly name now, with the unit's own name taken off the
   front and `Mode` off the back, so "Aire-Sala Boost Mode" reads BOOST.
+- That shortening reached the rail but not the mode popup, so the same toggle read
+  BOOST under the dial and AIRE-SALA BOOST MODE inside the sheet, where it pushed the
+  chip row past the edge. Both surfaces draw the same word now. A `name` written in
+  YAML is still drawn exactly as typed, and the full friendly name stays on the chip's
+  title and aria-label either way. Found by looking at a release screenshot.
 - A stacked pair of ring labels was pushed DOWN from an already tight baseline and
   landed on the band. The pair moves up instead.
 - Real room names broke three layouts, found by shooting the release screenshots with
