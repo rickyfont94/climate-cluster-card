@@ -353,3 +353,29 @@ test("group: pinned zone rows make the tiles fill the column height", () => {
   assert.ok(!silly.shadowRoot.querySelector(".cg-zones").classList.contains("cg-zones-fill"),
     "a rejected row count must not switch the fill mode on either");
 });
+
+test("card: show_fan false hides the ring AND its rail cell, not just the button", () => {
+  // The label promised it controlled the fan ring while it only removed the button.
+  const el = document.createElement("climate-cluster-card");
+  el.setConfig({ type: "custom:climate-cluster-card", entity: "climate.living", show_fan: false });
+  el.hass = makeHass(states);
+  const fan = el.shadowRoot.querySelector(".ct-face-fan");
+  const rail = el.shadowRoot.querySelector(".ct-face-rail");
+  assert.equal(fan.innerHTML, "", "no ring drawn");
+  assert.ok(!/FAN/.test(rail.textContent || ""), "no FAN cell either");
+});
+
+test("card: the fan style falls back to the shipped ring, never to the dashed one", () => {
+  const mk = (style) => {
+    const el = document.createElement("climate-cluster-card");
+    const cfg = { type: "custom:climate-cluster-card", entity: "climate.living" };
+    if (style) cfg.fan_style = style;
+    el.setConfig(cfg);
+    el.hass = makeHass(states);
+    return el;
+  };
+  assert.equal(mk()._fanStyle, "original", "unset means the shipped ring");
+  assert.equal(mk("nonsense")._fanStyle, "original", "an unknown value falls back, not to dash");
+  assert.equal(mk("silk")._fanStyle, "silk");
+  assert.equal(mk("breeze")._fanStyle, "breeze");
+});

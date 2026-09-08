@@ -139,7 +139,7 @@ test("editor: preset_names round-trips through the pn__ display fields", () => {
   assert.equal("pn__eco" in saved, false, "display keys are stripped");
 });
 
-test("editor: fan_style offers exactly the three rings, with dash named as the original", () => {
+test("editor: fan_style offers the shipped ring plus the two animations", () => {
   const hass = makeHass(fx.states, { entities: fx.entities });
   const ed = makeEditor(fx.config, hass);
   const row = ed._schema(hass, fx.config).find((r) => r.name === "fan_style");
@@ -148,7 +148,10 @@ test("editor: fan_style offers exactly the three rings, with dash named as the o
   // mode list renders radios. A dropdown hides two of the three choices behind a
   // click, and the owner's complaint was specifically about dropdowns.
   assert.equal(sel.mode, "list");
-  assert.deepEqual(sel.options.map((o) => o.value), ["dash", "breeze", "silk"]);
+  // NOT "dash". The handoff module has a dashed style, but the released card draws a
+  // smooth gradient ring with no dashes, so dash cannot be offered as the unchanged
+  // option. It stays as a config alias for anyone who wrote it against the branch.
+  assert.deepEqual(sel.options.map((o) => o.value), ["original", "breeze", "silk"]);
   assert.match(sel.options[0].label, /original/i,
     "the migration promise rides the label, not a helper sentence");
 });

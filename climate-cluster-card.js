@@ -143,7 +143,7 @@
       "editor.opt.anim_dynamic": "Dynamic (scale with speed)",
       "editor.opt.anim_constant": "Constant",
       "editor.opt.anim_off": "Off",
-      "editor.opt.fan_style_dash": "Dash (original, unchanged)",
+      "editor.opt.fan_style_original": "Original (no animation)",
       "editor.opt.fan_style_breeze": "Breeze (drifting ribbons)",
       "editor.opt.fan_style_silk": "Silk (travelling puffs)",
       "editor.opt.appearance_theme": "Theme (follows Home Assistant)",
@@ -170,7 +170,7 @@
         modes: "Modes",
         fan_entity: "Fan speed entity (number.*)",
         __advanced: "Show all options",
-        show_fan: "Show fan ring",
+        show_fan: "Fan ring and button",
         show_presets: "Show preset row",
         show_humidity: "Show humidity",
         zone_rows: "Zone rows",
@@ -195,7 +195,7 @@
       },
       editorHelpers: {
         name: "Card title. Defaults to the entity's friendly name.",
-        fan_style: "Dash is what the card has always drawn. The other two animate, and both cost more on a wall tablet that never sleeps.",
+        fan_style: "Original is the smooth ring the card has always drawn. The other two animate, and both cost more on a wall tablet that never sleeps.",
         appearance: "Theme follows your active Home Assistant theme (works on light and dark). Frosted glass is a translucent panel, in a dark indigo or light finish, that holds its look on any theme.",
         reset_styling: "Clears the appearance, glass, accent, font and per-mode color settings back to their defaults. Your entity, range, modes and other options are kept.",
         glass_color: "Tints the frosted glass panel. Applies only to the frosted glass backgrounds.",
@@ -212,7 +212,7 @@
         modes: "Which HVAC modes appear in the popup. Defaults to the entity's modes.",
         fan_entity: "A number.* percent entity for a draggable fan ring. Auto-discovered for Midea; falls back to named fan_modes.",
         __advanced: "Modes, presets, fan, feature chips, layout and tap actions. Everything here has a sensible default, so you can leave it closed.",
-        show_fan: "Force the fan ring on or off. Auto shows it when a fan source resolves.",
+        show_fan: "Hides the ring and its button together. Auto shows them when a fan source resolves.",
         show_presets: "Force the preset row on or off. Auto shows it when the entity advertises preset_modes.",
         show_humidity: "Force the humidity line on or off. Auto shows it when the entity reports current_humidity.",
         zone_rows: "How many rows the zone tiles are laid out in. Leave empty to let them reflow with the card width.",
@@ -284,7 +284,7 @@
       "editor.opt.anim_dynamic": "Dinamica (escala con la velocidad)",
       "editor.opt.anim_constant": "Constante",
       "editor.opt.anim_off": "Apagada",
-      "editor.opt.fan_style_dash": "Dash (el original, sin cambios)",
+      "editor.opt.fan_style_original": "Original (sin animacion)",
       "editor.opt.fan_style_breeze": "Breeze (cintas que van y vienen)",
       "editor.opt.fan_style_silk": "Silk (soplos que viajan)",
       "editor.opt.appearance_theme": "Tema (sigue a Home Assistant)",
@@ -311,7 +311,7 @@
         modes: "Modos",
         fan_entity: "Entidad de velocidad del ventilador (number.*)",
         __advanced: "Mostrar todas las opciones",
-        show_fan: "Mostrar anillo del ventilador",
+        show_fan: "Anillo y boton del ventilador",
         show_presets: "Mostrar fila de preajustes",
         show_humidity: "Mostrar humedad",
         zone_rows: "Filas de zonas",
@@ -336,7 +336,7 @@
       },
       editorHelpers: {
         name: "Titulo de la tarjeta. Por defecto usa el nombre descriptivo de la entidad.",
-        fan_style: "Dash es lo que la tarjeta siempre ha dibujado. Los otros dos se animan y cuestan mas en una tablet de pared que nunca duerme.",
+        fan_style: "Original es el anillo suave de siempre. Los otros dos se animan y cuestan mas en una tablet de pared que nunca duerme.",
         appearance: "Tema sigue el tema activo de Home Assistant (funciona en claro y oscuro). Vidrio esmerilado es un panel translucido, en acabado indigo oscuro o claro, que mantiene su aspecto en cualquier tema.",
         reset_styling: "Borra los ajustes de apariencia, vidrio, acento, fuente y colores por modo a sus valores por defecto. Se conservan la entidad, el rango, los modos y las demas opciones.",
         glass_color: "Tinta el panel de vidrio esmerilado. Solo aplica a los fondos de vidrio esmerilado.",
@@ -353,7 +353,7 @@
         modes: "Que modos HVAC aparecen en el menu. Por defecto los modos de la entidad.",
         fan_entity: "Una entidad number.* de porcentaje para un anillo de ventilador arrastrable. Se autodetecta en Midea; si no, usa los fan_modes con nombre.",
         __advanced: "Modos, preajustes, ventilador, controles, diseno y acciones. Todo aqui tiene un valor por defecto razonable, asi que puedes dejarlo cerrado.",
-        show_fan: "Forzar el anillo del ventilador encendido o apagado. Auto lo muestra cuando se resuelve una fuente de ventilador.",
+        show_fan: "Oculta el anillo y su boton juntos. Auto los muestra cuando hay una fuente de ventilador.",
         show_presets: "Forzar la fila de preajustes encendida o apagada. Auto la muestra cuando la entidad expone preset_modes.",
         show_humidity: "Forzar la linea de humedad. Auto la muestra cuando la entidad reporta current_humidity.",
         zone_rows: "En cuantas filas se acomodan las zonas. Vacio deja que fluyan con el ancho de la tarjeta.",
@@ -763,6 +763,17 @@
       '<path d="M 0 7.5 L 4.6 -2.9 L -4.6 -2.9 Z" fill="rgba(207,244,255,.40)"></path></g>';
   }
 
+  /* style 0: original. What the released card actually draws: one smooth gradient
+     arc, no dashes and no motion. The handoff's dash style adds travelling dashes,
+     which has never shipped, so it cannot be offered as the unchanged option. */
+  function fanPlain(fanPct, mode) {
+    var end = fanAngle(fanPct), out = fanTrack();
+    out += '<path d="' + arcPath(RF, A0, end) + '" fill="none" stroke="url(#aFanGrad)" ' +
+      'stroke-width="7" stroke-linecap="round"' +
+      (fanPct == null ? ' opacity=".45"' : '') + '></path>';
+    return out + fanHandle(fanPct);
+  }
+
   /* style 1: dash, what ships today */
   function fanDash(fanPct, mode) {
     var ink = MODES[mode].ink, end = fanAngle(fanPct), out = fanTrack();
@@ -887,7 +898,10 @@
     '<filter id="bSoft" x="-40%" y="-40%" width="180%" height="180%">' +
       '<feGaussianBlur stdDeviation="1.7"></feGaussianBlur></filter>';
 
-  var FAN_STYLES = { dash: fanDash, breeze: fanBreeze, silk: fanSilk };
+  // `dash` is kept as an alias so a config written against the branch keeps working,
+  // but it is not offered in the editor and it is not the default.
+  var FAN_STYLES = { original: fanPlain, dash: fanPlain, breeze: fanBreeze, silk: fanSilk };
+  var FAN_DASH_UNUSED = fanDash;   // the handoff's dashed ring, retained, never selected
 
   var KEYFRAMES =
     '@keyframes pulse { 0%, 100% { opacity: .3 } 50% { opacity: 1 } }' +
@@ -919,7 +933,7 @@
       rail(s.cells || [], s.mode);
   }
 
-    return { face: face, FAN_STYLES: FAN_STYLES, MODES: MODES, KEYFRAMES: KEYFRAMES, DEFS: DEFS, SILK_DEFS: SILK_DEFS, band: band, ticks: ticks, scaleNumerals: scaleNumerals, needle: needle, roomPin: roomPin, roomLabel: roomLabel, deltaSegment: deltaSegment, modeWord: modeWord, bigNumeral: bigNumeral, statusLine: statusLine, presetGlyph: presetGlyph, steppers: steppers, rail: rail, fanDash: fanDash, fanBreeze: fanBreeze, fanSilk: fanSilk, angleOf: angleOf, arcPath: arcPath, P: P };
+    return { face: face, FAN_STYLES: FAN_STYLES, MODES: MODES, KEYFRAMES: KEYFRAMES, DEFS: DEFS, SILK_DEFS: SILK_DEFS, band: band, ticks: ticks, scaleNumerals: scaleNumerals, needle: needle, roomPin: roomPin, roomLabel: roomLabel, deltaSegment: deltaSegment, modeWord: modeWord, bigNumeral: bigNumeral, statusLine: statusLine, presetGlyph: presetGlyph, steppers: steppers, rail: rail, fanPlain: fanPlain, fanDash: fanDash, fanBreeze: fanBreeze, fanSilk: fanSilk, angleOf: angleOf, arcPath: arcPath, P: P };
   })();
 
   const CX = 300, CY = 284;            // _cx / _cy
@@ -1229,7 +1243,7 @@
       // Fan ring style. dash is the shipped look and the DEFAULT, so an update
       // changes nothing for anyone who does not opt in. Unknown values fall back.
       const _fs = this._config.fan_style;
-      this._fanStyle = (_fs === "breeze" || _fs === "silk") ? _fs : "dash";
+      this._fanStyle = (_fs === "breeze" || _fs === "silk") ? _fs : "original";
 
       const _gc = colorToRgb(this._config.glass_color);
       this._glassColorRgb = _gc ? _gc.join(",") : null;
@@ -4183,10 +4197,15 @@
         this._refs.faceScale.innerHTML = FACE.ticks(st.min, st.max) + FACE.scaleNumerals(st.min, st.max);
         this._refs.faceStep.innerHTML = FACE.steppers();
       }
-      const fanKey = [st.fanStyle, st.fanPct, st.mode].join("|");
+      // show_fan hides the ring AND its rail cell together. Before this it only
+      // removed the button, while the label promised it controlled the ring.
+      const wantFan = this._config.show_fan !== false;
+      const fanKey = [st.fanStyle, st.fanPct, st.mode, wantFan].join("|");
       if (this._faceFanKey !== fanKey) {
         this._faceFanKey = fanKey;
-        this._refs.faceFan.innerHTML = (FACE.FAN_STYLES[st.fanStyle] || FACE.fanDash)(st.fanPct, st.mode);
+        this._refs.faceFan.innerHTML = wantFan
+          ? (FACE.FAN_STYLES[st.fanStyle] || FACE.FAN_STYLES.original)(st.fanPct, st.mode)
+          : "";
       }
       this._paintFaceMoving(setA, roomA, st);
       this._faceCellKeys = st.cells.map((c) => c.key);
@@ -5247,7 +5266,7 @@ ${FACE.KEYFRAMES}
         // move, so a closed dropdown hides the entire decision. The migration promise
         // rides the option label rather than a helper sentence underneath it.
         { name: "fan_style", selector: { select: { mode: "list", options: [
-          { value: "dash", label: this._t("editor.opt.fan_style_dash") },
+          { value: "original", label: this._t("editor.opt.fan_style_original") },
           { value: "breeze", label: this._t("editor.opt.fan_style_breeze") },
           { value: "silk", label: this._t("editor.opt.fan_style_silk") },
         ] } } },
