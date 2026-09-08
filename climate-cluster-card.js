@@ -3250,6 +3250,9 @@
       this._active = (rad != null && rad >= PICK_INNER && rad <= PICK_OUTER)
         ? (rad < PICK_SPLIT ? "temp" : "fan")
         : ring;
+      // A gesture the unit will refuse is not accepted at all. Faking it and reverting
+      // five seconds later is worse than not moving: it reads as success.
+      if (this._active === "fan" && !this._fanSettable()) return;
       // ARM the gesture NOW so the svg touchmove guard claims it from the very
       // first move and the page can never scroll mid-drag (touch regression). We
       // still hold off PAINTING until the pointer travels past DRAG_THRESH_PX, so a
@@ -3390,8 +3393,9 @@
       const s = this._st(this._config.entity);
       if (!s || s.state === "off" || s.state === "unavailable" || s.state === "unknown") return;
       if (this._popOpen) return;
-      if (ring === "temp") this._tempKeyDown(e, s);
-      else this._fanKeyDown(e, s);
+      if (ring === "temp") { this._tempKeyDown(e, s); return; }
+      if (!this._fanSettable()) return;
+      this._fanKeyDown(e, s);
     }
 
     // Arrow = one step, Page = five steps, Home/End = min/max. heat_cool nudges the
@@ -3473,7 +3477,13 @@
         const r = this._fanNumRange();
         let p;
         if (fanOptActive && this._optimisticFanPct != null) p = this._optimisticFanPct;
-        else { const liveP = num((this._fanNumState() || {}).state); p = liveP != null ? liveP : r.min; }
+        else {
+          /* The speed entity parks OUTSIDE its own range to say "no speed" (101 on a
+             1..100 number). Seeding a nudge from that made one ArrowUp compute 106 and
+             clamp to max, so a single key press jumped the fan from nothing to full. */
+          const liveP = num((this._fanNumState() || {}).state);
+          p = (liveP != null && liveP >= r.min && liveP <= r.max) ? liveP : r.min;
+        }
         const big = r.step * 5;
         let np = p;
         if (k === "ArrowUp" || k === "ArrowRight") np = p + r.step;
@@ -3713,9 +3723,12 @@
       this._announce(this._t("fan") + " " + this._t("automatic"));
       // No optimistic value to revert here (AUTO drops optimism above); on
       // failure just repaint live state so the ring snaps back to reality.
+      /* _render() as a failure handler repaints the optimistic AUTO this function
+         just armed, so a refused call showed AUTO for the full hold and then reverted
+         anyway. Drop the optimism first, then repaint. */
       this._svc("climate", "set_fan_mode",
         { entity_id: this._config.entity, fan_mode: autoMode },
-        () => this._render());
+        () => this._revertFan());
     }
 
     // Fan ICON tap. Movement-thresholded so a drag never fires it.
@@ -3743,6 +3756,7 @@
     }
     // Clover tap: percent mode OR auto-capable -> AUTO; named-without-auto -> cycle.
     _fanCloverTap() {
+      if (!this._fanSettable()) return;   // same gate as the ring, same control
       const s = this._st(this._config.entity);
       const attr = (s && s.attributes) || {};
       const fanModes = attr.fan_modes || [];
@@ -4878,6 +4892,39 @@
        Two things follow from mirroring _render rather than reading state directly:
        an optimistic hold wins, and a fan sitting in auto is the absence of a value
        rather than whatever number the speed entity happens to hold underneath. */
+    /* Is there a fan on this card at all? One answer, used by the paint, the rail,
+       the grab band and the glyph, because four copies of it is how a hidden ring
+       ends up with a live drag band underneath it. */
+    _haveFan() {
+      const v = this._config && this._config.show_fan;
+      if (v === true) return true;
+      if (v === false) return false;
+      return !!(this._fanUsesNumber() || this._fanNamedModes().length);
+    }
+
+    /* Can this unit take a fan speed RIGHT NOW?
+
+       Measured on the hardware, not assumed: in hvac auto it refuses set_fan_mode and
+       a write to the speed entity alike, and Home Assistant reports both as
+       successful. Nothing rejects, so the failure path never runs, and the card
+       showed the refused value confidently for the whole optimistic hold before
+       snapping back with no explanation. It also announced it to a screen reader.
+
+       The test is deliberately narrow and every part of it comes from the device: the
+       mode is auto AND the device is reporting no speed of its own. A unit that
+       really does take a fan speed in auto reports one, so this never fires on it,
+       and nothing here is keyed to a vendor. Live state only: reading through the
+       optimistic hold would let a refused gesture authorise the next one. */
+    _fanSettable() {
+      const s = this._st(this._config && this._config.entity);
+      if (!s || s.state === "off" || s.state === "unavailable" || s.state === "unknown") return false;
+      if (!this._haveFan()) return false;
+      if (String(s.state).toLowerCase() !== "auto") return true;
+      const rng = this._fanNumRange();
+      if (rng) return !this._faceNumUnset(rng);
+      return String((s.attributes || {}).fan_mode || "").toLowerCase() !== "auto";
+    }
+
     _facePct() {
       const st = this._st(this._config && this._config.entity);
       const a2 = (st && st.attributes) || {};
@@ -4931,7 +4978,7 @@
       // NOT _featureResolved("fan"): that helper only knows swing, led and sound and
       // silently falls through to the sound switch for anything else, so the fan cell
       // was gated on a beep entity existing. show_fan is the key that governs it.
-      if (this._config.show_fan !== false) {
+      if (this._haveFan()) {
         out.push({ key: "fan", value: pct == null ? "AUTO" : pct + "%", caption: "FAN",
           lit: pct != null, widest: "100%" });
       }
@@ -5047,7 +5094,7 @@
       if (!this._refs.faceFan || this._faceOn === false) return;
       const st = this._faceState();
       this._faceFanKey = null;
-      if (this._config.show_fan !== false) {
+      if (this._haveFan()) {
         const draw = FACE.FAN_STYLES[st.fanStyle] || FACE.FAN_STYLES.original;
         this._refs.faceFan.innerHTML = draw(FACE_RING(pct), st.mode, pct == null);
       }
@@ -5089,7 +5136,7 @@
       }
       // show_fan hides the ring AND its rail cell together. Before this it only
       // removed the button, while the label promised it controlled the ring.
-      const wantFan = this._config.show_fan !== false;
+      const wantFan = this._haveFan();
       const fanKey = [st.fanStyle, st.fanPct, st.mode, wantFan].join("|");
       if (this._faceFanKey !== fanKey) {
         this._faceFanKey = fanKey;
@@ -5151,6 +5198,8 @@
     _placeClover() {
       const g = this._refs.clover;
       if (!g || !this._config || this._config.fan_clover !== true) return;
+      // _render decided whether this card has a fan at all; do not overrule it
+      if (!this._haveFan()) { g.style.display = "none"; return; }
       const host = this._refs.faceCenter;
       const grp = host && host.querySelector("g");
       if (!grp) return;
@@ -5458,6 +5507,13 @@
         if (this._refs.rhCap) this._refs.rhCap.style.display = "none";
         if (this._refs.swingHChip) this._refs.swingHChip.style.display = "none";
         if (this._refs.swingHCap) this._refs.swingHCap.style.display = "none";
+        /* The face is not repainted on this path, so a card that goes offline after
+           being alive kept drawing its last fan speed, its last band and its last
+           room reading for as long as it stayed dead. Hand the state back to the
+           original face, which is what draws the dashes, exactly as heat_cool does. */
+        this._faceOn = false;
+        if (this._faceHidden) this._showLegacyFace();
+        if (this._refs.face) this._refs.face.style.display = "none";
         this._refs.svg.style.opacity = "0.5";
         // a11y: nothing is settable while unavailable -> take the fan slider out of
         // the tab order (the temp slider's key handler already no-ops here, issue #5).

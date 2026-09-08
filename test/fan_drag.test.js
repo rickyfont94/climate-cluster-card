@@ -278,3 +278,94 @@ test("fan glyph: seated against the status word, whatever its length", () => {
   assert.ok(x(short) !== null && x(long) !== null, "both are placed");
   assert.ok(x(long) <= x(short), "a longer status word pushes the glyph further left");
 });
+
+// ------------------------------------------------------------ refused commands --
+// Measured on the hardware: in hvac auto the unit refuses set_fan_mode AND a write to
+// the speed entity, and Home Assistant reports both as successful. Nothing rejects,
+// so the failure path never runs, and the card showed the refused value confidently
+// for the whole 5 second hold before snapping back with no explanation. It announced
+// it to a screen reader too. A gesture the unit will refuse is not accepted now.
+
+const down = (c, ring) => {
+  const el = ring === "fan" ? c._refs.fanGrab : c._refs.drag;
+  const e = { pointerId: 1, clientX: 10, clientY: 10, target: el, currentTarget: el,
+    preventDefault() {}, stopPropagation() {} };
+  c._ringPointerDown(e, ring);
+  return c;
+};
+
+test("refused: a fan drag is not accepted at all when the unit will not take one", () => {
+  const refuse = mCard("auto", "auto", 102);          // hvac auto, speed entity parked
+  assert.equal(refuse._fanSettable(), false);
+  down(refuse, "fan");
+  assert.ok(!refuse._ringArmed, "the gesture never arms, so nothing is faked");
+
+  const ok = mCard("cool", "auto", 102);              // cool: the unit does take one
+  assert.equal(ok._fanSettable(), true);
+  down(ok, "fan");
+  assert.ok(ok._ringArmed, "and a settable fan still drags");
+});
+
+test("refused: the temp ring is untouched by the fan gate", () => {
+  const c = mCard("auto", "auto", 102);
+  down(c, "temp");
+  assert.ok(c._ringArmed, "temperature is still settable in hvac auto");
+});
+
+test("refused: a unit reporting a real speed in hvac auto is still settable", () => {
+  // the gate comes from the DEVICE, not from a vendor rule: report a speed and it
+  // is taken at its word
+  assert.equal(mCard("auto", "high", 60)._fanSettable(), true);
+});
+
+test("refused: the FAN rail cell and the clover use the same gate as the ring", () => {
+  const c = mCard("auto", "auto", 102);
+  c._fanCloverTap();
+  assert.deepEqual(c._hass.calls, [], "no command for a control that cannot act");
+});
+
+test("keys: an arrow from a parked speed does not jump the fan to full", () => {
+  // the speed entity parks at 101 on a 1..100 number, and seeding a nudge from it
+  // made one ArrowUp compute 106 and clamp to max
+  const c = mCard("cool", "auto", 101);
+  const e = { key: "ArrowUp", preventDefault() {}, stopPropagation() {} };
+  c._fanKeyDown(e, c._st("climate.ac"));
+  const wrote = c._hass.calls.find((x) => x.service === "set_value");
+  assert.ok(wrote, "it still writes something");
+  assert.ok(wrote.data.value <= 20, "from the bottom, not from the park value: " + wrote.data.value);
+});
+
+test("no fan at all: no ring, no FAN cell, and the band is inert", () => {
+  const bare = {
+    "climate.ac": { entity_id: "climate.ac", state: "cool", attributes: {
+      friendly_name: "AC", hvac_modes: ["off", "cool"],
+      current_temperature: 78, temperature: 75, min_temp: 61, max_temp: 86 } },
+  };
+  const c = document.createElement("climate-cluster-card");
+  c.setConfig({ entity: "climate.ac" });
+  c.hass = makeHass(bare, { entities: { "climate.ac": { entity_id: "climate.ac", device_id: "d" } } });
+
+  assert.equal(c._haveFan(), false);
+  assert.equal(c._refs.faceFan.innerHTML, "", "nothing is drawn");
+  assert.ok(!/FAN/.test(c._refs.faceRail.textContent), "and no dead cell offering it");
+  down(c, "fan");
+  assert.ok(!c._ringArmed, "the grab band does not claim the gesture either");
+});
+
+test("show_fan false also makes the drag band inert, not just invisible", () => {
+  const c = mCard("cool", "high", 80, { show_fan: false });
+  assert.equal(c._haveFan(), false);
+  down(c, "fan");
+  assert.ok(!c._ringArmed, "a hidden ring must not commit an invisible change");
+});
+
+test("a unit that dies keeps no live reading on the face", () => {
+  const c = mCard("cool", "high", 80);
+  assert.ok(c._refs.faceFan.innerHTML.length > 100, "alive: the face is drawn");
+
+  c.hass = makeHass({ "climate.ac": { entity_id: "climate.ac", state: "unavailable",
+    attributes: {} } }, { entities: mEnts });
+  assert.equal(c._refs.face.style.display, "none",
+    "the handoff face is not repainted on this path, so it must not stay on screen");
+  assert.notEqual(c._refs.bigNum.style.display, "none", "the original dead face is back");
+});
