@@ -923,32 +923,14 @@
       '<path d="M 0 7.5 L 4.6 -2.9 L -4.6 -2.9 Z" fill="rgba(207,244,255,.40)"></path></g>';
   }
 
-  /* style 0: original. What the released card actually draws: one smooth gradient
-     arc, no dashes and no motion. The handoff's dash style adds travelling dashes,
-     which has never shipped, so it cannot be offered as the unchanged option. */
+  /* original. What the released card actually draws: one smooth gradient arc, no
+     dashes and no motion. This is the "leave it as it was" option, so it must stay
+     exactly this and never grow an animation. */
   function fanPlain(fanPct, mode, noHandle) {
     var end = fanAngle(fanPct), out = fanTrack();
     out += '<path d="' + arcPath(RF, A0, end) + '" fill="none" stroke="url(#aFanGrad)" ' +
       'stroke-width="7" stroke-linecap="round"' +
       (fanPct == null ? ' opacity=".45"' : '') + '></path>';
-    return out + fanHandle(noHandle ? null : fanPct);
-  }
-
-  /* style 1: dash, what ships today */
-  function fanDash(fanPct, mode, noHandle) {
-    var ink = MODES[mode].ink, end = fanAngle(fanPct), out = fanTrack();
-    if (fanPct == null) {
-      out += '<path d="' + arcPath(RF, A0, A0 + SPAN) + '" fill="none" stroke="' + rgba(ink, .26) +
-        '" stroke-width="5" stroke-linecap="round" stroke-dasharray="3 11" ' +
-        'style="animation:creep 2.4s linear infinite"></path>';
-    } else {
-      var dur = Math.min(3.2, Math.max(0.55, 70 / fanPct));
-      out += '<path d="' + arcPath(RF, A0, end) + '" fill="none" stroke="' + rgba(ink, .55) +
-          '" stroke-width="7" stroke-linecap="round"></path>' +
-        '<path d="' + arcPath(RF, A0, end) + '" fill="none" stroke="' + MODES[mode].light +
-          '" stroke-width="7" stroke-linecap="butt" stroke-dasharray="3 11" opacity=".55" ' +
-          'style="animation:creep ' + dur.toFixed(2) + 's linear infinite"></path>';
-    }
     return out + fanHandle(noHandle ? null : fanPct);
   }
 
@@ -1058,14 +1040,10 @@
     '<filter id="bSoft" x="-40%" y="-40%" width="180%" height="180%">' +
       '<feGaussianBlur stdDeviation="1.7"></feGaussianBlur></filter>';
 
-  // `dash` is kept as an alias so a config written against the branch keeps working,
-  // but it is not offered in the editor and it is not the default.
-  var FAN_STYLES = { original: fanPlain, dash: fanPlain, breeze: fanBreeze, silk: fanSilk };
-  var FAN_DASH_UNUSED = fanDash;   // the handoff's dashed ring, retained, never selected
+  var FAN_STYLES = { original: fanPlain, breeze: fanBreeze, silk: fanSilk };
 
   var KEYFRAMES =
     '@keyframes pulse { 0%, 100% { opacity: .3 } 50% { opacity: 1 } }' +
-    '@keyframes creep { to { stroke-dashoffset: -28 } }' +
     '@keyframes drift { to { stroke-dashoffset: -120 } }' +
     '@keyframes wink { 0%, 100% { opacity: .10 } 18%, 44% { opacity: 1 } }';
 
@@ -1075,7 +1053,7 @@
   function face(s) {
     var min = s.min == null ? 61 : s.min, max = s.max == null ? 86 : s.max;
     var setA = angleOf(s.set, min, max), roomA = angleOf(s.room, min, max);
-    var style = FAN_STYLES[s.fanStyle || 'dash'];
+    var style = FAN_STYLES[s.fanStyle || 'original'];
     return '' +
       '<defs>' + DEFS + SILK_DEFS + '</defs>' +
       style(s.fanPct, s.mode) +
@@ -1093,7 +1071,7 @@
       rail(s.cells || [], s.mode);
   }
 
-    return { face: face, FAN_STYLES: FAN_STYLES, MODES: MODES, KEYFRAMES: KEYFRAMES, DEFS: DEFS, SILK_DEFS: SILK_DEFS, band: band, ticks: ticks, scaleNumerals: scaleNumerals, needle: needle, roomPin: roomPin, roomLabel: roomLabel, deltaSegment: deltaSegment, modeWord: modeWord, bigNumeral: bigNumeral, statusLine: statusLine, presetGlyph: presetGlyph, steppers: steppers, rail: rail, fanPlain: fanPlain, fanDash: fanDash, fanBreeze: fanBreeze, fanSilk: fanSilk, angleOf: angleOf, arcPath: arcPath, P: P };
+    return { face: face, FAN_STYLES: FAN_STYLES, MODES: MODES, KEYFRAMES: KEYFRAMES, DEFS: DEFS, SILK_DEFS: SILK_DEFS, band: band, ticks: ticks, scaleNumerals: scaleNumerals, needle: needle, roomPin: roomPin, roomLabel: roomLabel, deltaSegment: deltaSegment, modeWord: modeWord, bigNumeral: bigNumeral, statusLine: statusLine, presetGlyph: presetGlyph, steppers: steppers, rail: rail, fanPlain: fanPlain, fanBreeze: fanBreeze, fanSilk: fanSilk, angleOf: angleOf, arcPath: arcPath, P: P };
   })();
 
   /* Everything the original face paints that the handoff face repaints itself.
@@ -6276,7 +6254,8 @@ ha-card[data-appearance^="glass"] .ct-card{
 @keyframes ctfanspin{ to{ transform:rotate(360deg); } }
 
 /* Face keyframes, injected verbatim from the handoff module. pulse drives the
-   status dot, creep and drift the dash and breeze rings, wink the preset glyphs. */
+   status dot and the zone card's room dots, drift the breeze ribbons, wink the
+   preset glyphs. */
 ${FACE.KEYFRAMES}
 @media (prefers-reduced-motion: reduce){
   .ct-face [style*='animation']{ animation:none !important; }
