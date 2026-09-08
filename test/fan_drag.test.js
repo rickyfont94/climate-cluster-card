@@ -81,3 +81,49 @@ test("temp drag: the face already followed, and still does", () => {
   assert.notEqual(card._refs.faceCenter.innerHTML, before);
   assert.match(card._refs.faceCenter.textContent, /68/);
 });
+
+// The snap-back. The marker followed the finger, then jumped back to where it
+// started while the finger was still down, and only reappeared at the new position
+// on release. _paintFace runs at the END of every render and re-derived the fan from
+// the COMMITTED state, so any push from anywhere in the house overwrote the drag.
+// Home Assistant pushes state constantly, so this fired within a second every time.
+
+test("fan drag: a state push mid-drag does not snap the marker back", () => {
+  const card = liveCard();
+
+  // finger down, dragged to high; the device still reports low
+  card._optimisticFanName = "high";
+  card._optimisticFanPct = null;
+  card._optimisticFanUntil = Date.now() + 5000;
+  card._paintFanNamed(["low", "medium", "high"], "high");
+  const dragged = card._refs.faceFan.innerHTML;
+  assert.match(card._refs.faceRail.innerHTML, /100%/);
+
+  // an unrelated entity changes and Home Assistant pushes the whole state object
+  card._sig = null;
+  card.hass = makeHass(states, { entities });
+
+  assert.equal(card._refs.faceFan.innerHTML, dragged,
+    "the ring must not jump back to the value the device still reports");
+  assert.match(card._refs.faceRail.innerHTML, /100%/);
+});
+
+test("fan drag: once the hold lapses the face reads the device again", () => {
+  const card = liveCard();
+  card._optimisticFanName = "high";
+  card._optimisticFanUntil = Date.now() - 1;   // expired
+  card._sig = null;
+  card.hass = makeHass(states, { entities });
+  // fan_mode is "low", which is 1 of 3 named modes
+  assert.match(card._refs.faceRail.innerHTML, /33%/);
+});
+
+test("fan in auto reads AUTO even when a speed entity holds a number underneath", () => {
+  const auto = JSON.parse(JSON.stringify(states));
+  auto["climate.ac"].attributes.fan_mode = "auto";
+  const card = document.createElement("climate-cluster-card");
+  card.setConfig({ entity: "climate.ac" });
+  card.hass = makeHass(auto, { entities });
+  assert.equal(card._facePct(), null, "auto is the absence of a value");
+  assert.match(card._refs.faceRail.innerHTML, /AUTO/);
+});

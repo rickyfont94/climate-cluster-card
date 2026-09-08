@@ -4832,11 +4832,32 @@
 
     // fanPct is 1..100 or null, and null means AUTO. AUTO draws no handle: a chevron
     // parked at the arc end while the cell reads AUTO was the bug this replaces.
+    /* The fan reading the face draws.
+       It has to resolve exactly the way _render resolves the legacy ring, because
+       _paintFace runs at the END of a render and would otherwise overwrite what the
+       drag just painted. That is what made the marker jump back to where it started
+       while the finger was still down: any state push from anywhere in the house
+       repainted the face from the COMMITTED value, and the value only reappeared on
+       release when the device finally reported it.
+
+       Two things follow from mirroring _render rather than reading state directly:
+       an optimistic hold wins, and a fan sitting in auto is the absence of a value
+       rather than whatever number the speed entity happens to hold underneath. */
     _facePct() {
       const st = this._st(this._config && this._config.entity);
       const a2 = (st && st.attributes) || {};
+      const optActive = this._optimisticFanUntil && Date.now() < this._optimisticFanUntil;
       const rng = this._fanNumRange();
+      if (optActive && this._optimisticFanPct != null) {
+        const r = rng || { min: FAN_MIN, max: FAN_MAX };
+        return clamp(Math.round(((this._optimisticFanPct - r.min) / ((r.max - r.min) || 1)) * 100), 1, 100);
+      }
+      if (optActive && this._optimisticFanName != null) {
+        return this._faceNamedPct(this._optimisticFanName, a2);
+      }
       if (rng) {
+        // auto is a state, not a ring position, whatever the number entity reads
+        if (String(a2.fan_mode).toLowerCase() === "auto") return null;
         const fs = this._fanNumState();
         const v = fs ? num(fs.state) : null;
         if (v == null) return null;
@@ -4844,10 +4865,16 @@
       }
       const fm = a2.fan_mode;
       if (!fm || String(fm).toLowerCase() === "auto") return null;
+      return this._faceNamedPct(fm, a2);
+    }
+
+    // position in the entity's own list, auto excluded, as a percentage
+    _faceNamedPct(name, a2) {
+      if (!name || String(name).toLowerCase() === "auto") return null;
       const list = Array.isArray(a2.fan_modes)
         ? a2.fan_modes.filter((x) => String(x).toLowerCase() !== "auto") : [];
       if (!list.length) return null;
-      const i = list.findIndex((x) => String(x).toLowerCase() === String(fm).toLowerCase());
+      const i = list.findIndex((x) => String(x).toLowerCase() === String(name).toLowerCase());
       if (i < 0) return null;
       return clamp(Math.round(((i + 1) / list.length) * 100), 1, 100);
     }
