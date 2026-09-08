@@ -146,6 +146,12 @@
       "editor.opt.fan_style_original": "Original (no animation)",
       "editor.opt.fan_style_breeze": "Breeze (drifting ribbons)",
       "editor.opt.fan_style_silk": "Silk (travelling puffs)",
+      "editor.section.rail": "Buttons under the dial",
+      "editor.opt.rail_fan": "Fan",
+      "editor.opt.rail_swing": "Swing",
+      "editor.opt.rail_led": "LED",
+      "editor.opt.rail_sound": "Sound",
+      "editor.opt.rail_extra": "Your own toggle",
       "editor.opt.appearance_theme": "Theme (follows Home Assistant)",
       "editor.opt.appearance_glass_dark": "Frosted glass (dark)",
       "editor.opt.appearance_glass_light": "Frosted glass (light)",
@@ -154,6 +160,7 @@
         entity: "Climate entity",
         name: "Name",
         fan_style: "Fan ring",
+        rail: "Buttons and their order",
         fan_clover: "Spinning fan glyph",
         appearance: "Background",
         reset_styling: "Reset styling to defaults",
@@ -198,6 +205,7 @@
         name: "Card title. Defaults to the entity's friendly name.",
         fan_style: "Silk and breeze animate; original is the smooth ring every card installed before this release draws. Both animated ones cost more on a wall tablet that never sleeps.",
         fan_clover: "Brings back the small spinning fan from the original face, beside the status line.",
+        rail: "Leave empty for the usual set. Ticking them one at a time sets the order they appear in. A button for something this unit does not have is skipped.",
         appearance: "Theme follows your active Home Assistant theme (works on light and dark). Frosted glass is a translucent panel, in a dark indigo or light finish, that holds its look on any theme.",
         reset_styling: "Clears the appearance, glass, accent, font and per-mode color settings back to their defaults. Your entity, range, modes and other options are kept.",
         glass_color: "Tints the frosted glass panel. Applies only to the frosted glass backgrounds.",
@@ -289,6 +297,12 @@
       "editor.opt.fan_style_original": "Original (sin animacion)",
       "editor.opt.fan_style_breeze": "Breeze (cintas que van y vienen)",
       "editor.opt.fan_style_silk": "Silk (soplos que viajan)",
+      "editor.section.rail": "Botones debajo del dial",
+      "editor.opt.rail_fan": "Ventilador",
+      "editor.opt.rail_swing": "Swing",
+      "editor.opt.rail_led": "LED",
+      "editor.opt.rail_sound": "Sonido",
+      "editor.opt.rail_extra": "Tu propio interruptor",
       "editor.opt.appearance_theme": "Tema (sigue a Home Assistant)",
       "editor.opt.appearance_glass_dark": "Vidrio esmerilado (oscuro)",
       "editor.opt.appearance_glass_light": "Vidrio esmerilado (claro)",
@@ -297,6 +311,7 @@
         entity: "Entidad de clima",
         name: "Nombre",
         fan_style: "Anillo del ventilador",
+        rail: "Botones y su orden",
         fan_clover: "Ventilador que gira",
         appearance: "Fondo",
         reset_styling: "Restablecer estilo a los valores por defecto",
@@ -341,6 +356,7 @@
         name: "Titulo de la tarjeta. Por defecto usa el nombre descriptivo de la entidad.",
         fan_style: "Silk y breeze se animan; original es el anillo suave que dibuja toda tarjeta instalada antes de este release. Los dos animados cuestan mas en una tablet de pared que nunca duerme.",
         fan_clover: "Trae de vuelta el ventilador pequeno que gira de la cara original, al lado de la linea de estado.",
+        rail: "Dejalo vacio para el set de siempre. Marcandolos uno por uno defines el orden. Un boton para algo que esta unidad no tiene se salta.",
         appearance: "Tema sigue el tema activo de Home Assistant (funciona en claro y oscuro). Vidrio esmerilado es un panel translucido, en acabado indigo oscuro o claro, que mantiene su aspecto en cualquier tema.",
         reset_styling: "Borra los ajustes de apariencia, vidrio, acento, fuente y colores por modo a sus valores por defecto. Se conservan la entidad, el rango, los modos y las demas opciones.",
         glass_color: "Tinta el panel de vidrio esmerilado. Solo aplica a los fondos de vidrio esmerilado.",
@@ -5048,7 +5064,36 @@
       return clamp(Math.round(((i + 1) / list.length) * 100), 1, 100);
     }
 
+    /* Which buttons the bottom row carries, and in what order.
+
+       `rail` is its OWN key on purpose. show_fan, show_swing, show_led and show_sound
+       are dual-surface: they gate the popup chips as well as this row, so retiring
+       them into an ordering key would have silently destroyed popup config for anyone
+       already using them. They still decide whether a feature EXISTS; `rail` only
+       decides whether it appears down here and where. A name for a feature this
+       entity does not have is skipped rather than drawn dead, so a shared rail across
+       a house of mixed units degrades per card instead of lying on some of them. */
+    _railOrder() {
+      const want = this._config && this._config.rail;
+      if (!Array.isArray(want) || !want.length) return null;
+      const seen = {};
+      return want
+        .map((k) => String(k).toLowerCase().trim())
+        .filter((k) => k && !seen[k] && (seen[k] = true));
+    }
+
     _faceCells() {
+      const all = this._faceCellsAvailable();
+      const order = this._railOrder();
+      if (!order) return all;
+      const by = {};
+      all.forEach((c) => { by[c.key] = c; });
+      const out = [];
+      order.forEach((k) => { if (by[k]) out.push(by[k]); });
+      return out;
+    }
+
+    _faceCellsAvailable() {
       const out = [];
       const pct = this._facePct();
       // NOT _featureResolved("fan"): that helper only knows swing, led and sound and
@@ -5065,6 +5110,10 @@
       if (this._featureResolved("led") !== false && this._ledRef()) {
         const on = this._featureOn("led");
         out.push({ key: "led", value: on ? "ON" : "OFF", caption: "LED", lit: on, widest: "OFF" });
+      }
+      if (this._featureResolved("sound") !== false && this._soundRef && this._soundRef()) {
+        const on = this._featureOn("sound");
+        out.push({ key: "sound", value: on ? "ON" : "OFF", caption: "SOUND", lit: on, widest: "OFF" });
       }
       (this._extraToggles || []).slice(0, 3).forEach((it, i) => {
         const st = this._st(it.entity);
@@ -6311,6 +6360,18 @@ ${POPUP_CSS}
           { name: "fan_clover", selector: { boolean: {} } },
           { name: "show_fan", selector: { select: { mode: "dropdown", options: autoTF } } },
           { name: "fan_entity", selector: { entity: { domain: "number" } } },
+        ] },
+
+        { type: "expandable", name: "", title: this._t("editor.section.rail"), icon: "mdi:dots-horizontal", schema: [
+          { name: "rail", selector: { select: { multiple: true, mode: "list", options: [
+            { value: "fan", label: this._t("editor.opt.rail_fan") },
+            { value: "swing", label: this._t("editor.opt.rail_swing") },
+            { value: "led", label: this._t("editor.opt.rail_led") },
+            { value: "sound", label: this._t("editor.opt.rail_sound") },
+            { value: "extra:0", label: this._t("editor.opt.rail_extra") + " 1" },
+            { value: "extra:1", label: this._t("editor.opt.rail_extra") + " 2" },
+            { value: "extra:2", label: this._t("editor.opt.rail_extra") + " 3" },
+          ] } } },
         ] },
 
         { type: "expandable", name: "", title: this._t("editor.section.appearance"), icon: "mdi:palette", schema: [

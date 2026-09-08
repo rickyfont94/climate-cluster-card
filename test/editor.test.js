@@ -44,14 +44,16 @@ test("editor: a first-time user sees a handful of rows, not the whole surface", 
   const ed = makeEditor(fx.config, hass);
 
   const basic = ed._schema(hass, fx.config);
-  // Was 4. The Fan section is the fifth, ABOVE the advanced switch, because the ring
-  // style is the control a person is most likely to want and hiding it behind a
-  // curtain hides the whole decision. It sits in the Fan section rather than loose at
-  // the top, so there is one place that owns fan settings. The guard moves, not goes.
-  assert.equal(topLevelRows(basic), 5,
-    "entity, name, Fan, Appearance and the advanced switch");
+  // Was 4, then 5. Six now: the buttons row got its own section, above the advanced
+  // switch, because which buttons appear under the dial is a thing people want to
+  // change and hiding it behind a curtain hides the whole decision. Each of these
+  // owns one subject, so there is one place to look. The guard moves, it does not go.
+  assert.equal(topLevelRows(basic), 6,
+    "entity, name, Fan, Buttons, Appearance and the advanced switch");
   assert.ok(fieldNames(basic).includes("fan_style"),
     "the fan ring choice is reachable without opening advanced");
+  assert.ok(fieldNames(basic).includes("rail"),
+    "and so is the choice of which buttons appear");
 
   ed._showAdvanced = true;
   const full = ed._schema(hass, fx.config);
