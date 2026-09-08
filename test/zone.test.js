@@ -642,3 +642,57 @@ test("doing: the header counts COOLING, so it stays about cooling", () => {
   const t = text(makeGroup({}, makeHass(st, { entities })));
   assert.match(t, /0 COOLING/, "a house full of fans is not a house full of cooling");
 });
+
+// ------------------------------------------------------- hero and its labels ---
+
+test("hero: the two ring labels share a baseline, so they read as a pair", () => {
+  const svg = html(makeGroup());
+  const ys = [...svg.matchAll(/class="cg-ringlab"[^>]*y="([-0-9.]+)"/g)].map((m) => Number(m[1]));
+  assert.equal(ys.length, 2, "both ends are named");
+  assert.equal(ys[0], ys[1], "at the same height, whatever each room's temperature is");
+});
+
+test("hero: one room at both ends of the spread is ONE label", () => {
+  const same = JSON.parse(JSON.stringify(states));
+  for (const id of ids) same[id].attributes.current_temperature = 75;
+  const svg = html(makeGroup({}, makeHass(same, { entities })));
+  const n = [...svg.matchAll(/class="cg-ringlab"/g)].length;
+  assert.equal(n, 1, "drawing both put one label exactly on top of the other");
+});
+
+test("hero: the mode dot breathes, and a room with no reading holds still", () => {
+  const t = html(makeGroup());
+  assert.match(t, /animation:pulse 1\.9s/, "the same rate as the dial's status dot");
+
+  const dead = Object.assign({}, states, {
+    "climate.ricky": { entity_id: "climate.ricky", state: "unavailable", attributes: {} },
+  });
+  const tiles = makeGroup({}, makeHass(dead, { entities }))
+    .shadowRoot.querySelectorAll("[data-zone]");
+  assert.ok(!/animation:pulse/.test(tiles[1].innerHTML),
+    "there is nothing alive to show on an offline room");
+});
+
+test("hero: the drag band writes the house setpoint on release", () => {
+  const el = makeGroup();
+  const band = el.shadowRoot.querySelector('[data-act="house"]');
+  assert.ok(band, "the module draws the band");
+
+  // drive the handler directly: happy-dom lays nothing out, so a synthetic pointer
+  // sequence cannot produce a real angle
+  el._zui = el._zui || {};
+  el._zui.houseTarget = 71;
+  el._houseDrag = true;
+  el._onHouseUp = el._onHouseUp || (() => {});
+  el._groupAction("setpoint", "71");
+  assert.equal(el._hass.calls.length, 1);
+  assert.equal(el._hass.calls[0].service, "set_temperature");
+  assert.equal(el._hass.calls[0].data.temperature, 71);
+});
+
+test("hero: while dragging, the hero reads the dragged value", () => {
+  const el = makeGroup();
+  el._zui = { houseTarget: 68 };
+  el._zoneRepaint();
+  assert.match(text(el), /68/, "the number under the finger is the one on screen");
+});

@@ -1319,7 +1319,19 @@
 
   /* CARD ADDITION. A label seated on the spread ring at `a`, pushed clear of it and
      anchored so the text runs away from the dial rather than across it. */
-  function ringLabel(text, a, ink) {
+  /* CARD ADDITION: the two of them share a baseline.
+
+     Seated each on its own ring end, their heights drift apart with the spread and
+     they stop reading as a pair: one ends up beside the arc and the other above it,
+     at whatever height that room's temperature happens to fall. They keep their own
+     side, which is what says which room is which, and take the higher of the two
+     ends as a common y. */
+  function ringLabelY(loA, hiA) {
+    var y = Math.min(P(130, loA)[1], P(130, hiA)[1]);
+    return clamp(y, 80, 150);
+  }
+
+  function ringLabel(text, a, ink, y) {
     var p = P(130, a), left = ((a % 360) + 360) % 360 > 180;
     /* Grow AWAY from the dial by preference, because that is the empty side. Near
        either end of the range the ring end swings low and outward runs the label off
@@ -1333,7 +1345,8 @@
        the range that is exactly where the needle stands. Lift it clear. */
     if (left && p[0] - w < 48) { anchor = 'start'; dy = -11; }
     if (!left && p[0] + w > 296) { anchor = 'end'; dy = -11; }
-    return '<text class="cg-ringlab" x="' + f(p[0]) + '" y="' + f(p[1] + dy) + '" text-anchor="' +
+    var yy = y == null ? p[1] + dy : y;
+    return '<text class="cg-ringlab" x="' + f(p[0]) + '" y="' + f(yy) + '" text-anchor="' +
       anchor + '" dominant-baseline="central" font-size="9.5" ' +
       'font-weight="600" letter-spacing="1.2" fill="' + ink + '">' + text + '</text>';
   }
@@ -1367,12 +1380,17 @@
          a five zone house with a moderate spread, and its own README says the honest
          version seats each on its ring end's radial. They do now, anchored away from
          the dial so a long room name grows outward instead of across the band. */
-      ringLabel(String(d.coldestRoom.name || '').toUpperCase() + ' ' + d.roomMin, lo, '#8b95a2') +
-      ringLabel(String(d.warmest.name || '').toUpperCase() + ' ' + d.roomMax, hi, '#27d3ff') +
+      /* CARD ADDITION: with every room at the same temperature the two ends ARE the
+         same end, and drawing both put one label exactly on top of the other. */
+      (d.spread === 0 ? '' :
+        ringLabel(String(d.coldestRoom.name || '').toUpperCase() + ' ' + d.roomMin, lo,
+          '#8b95a2', ringLabelY(lo, hi))) +
+      ringLabel(String(d.warmest.name || '').toUpperCase() + ' ' + d.roomMax, hi,
+        '#27d3ff', ringLabelY(lo, hi)) +
       heroNeedle(ta) +
       heroPin(d.roomAvg, pa) +
-      '<text x="168" y="164" text-anchor="middle" font-size="13" font-weight="600" ' +
-        'letter-spacing="4" fill="#9aa5b1">TARGET</text>' +
+      '<text class="cg-target-lb" x="168" y="164" text-anchor="middle" font-size="13" ' +
+        'font-weight="600" letter-spacing="4" fill="#9aa5b1">TARGET</text>' +
       /* the digits stay on the gauge axis and the degree sits outside them, so adding
          the symbol does not push the number off centre */
       '<text x="168" y="213" text-anchor="middle" dominant-baseline="central" ' +
@@ -1513,8 +1531,13 @@
         'box-shadow:inset 0 1px 0 rgba(255,255,255,.14); padding:9px 9px 8px; display:flex; ' +
         'flex-direction:column; justify-content:space-between; gap:5px;">' +
       '<div style="display:flex; align-items:center; justify-content:center; gap:7px;">' +
+        /* CARD ADDITION: it breathes, on the same 1.9s as the dial's status dot,
+           from the same keyframe, so the two cards cannot drift to two rates that
+           look almost the same. A room with no reading holds still: there is nothing
+           alive to show. */
         '<span style="width:7px; height:7px; border-radius:50%; background:' + m.ink +
-          '; box-shadow:0 0 9px ' + rgba(m.ink, .85) + ';"></span>' +
+          '; box-shadow:0 0 9px ' + rgba(m.ink, .85) + ';' +
+          (nore ? '' : ' animation:pulse 1.9s ease-in-out infinite;') + '"></span>' +
         '<span style="font:600 14px/1 Rajdhani,sans-serif; letter-spacing:.14em; ' +
           'text-transform:uppercase; color:#f2f5f8;">' + z.name + '</span></div>' +
       /* the numeral is the ROOM, the fact you walked over to check, and tapping it
@@ -7067,7 +7090,7 @@ ha-card[data-appearance="glass-light"] .cg-inner,
   --ct-zone-inset: rgba(255,255,255,.55);
   --ct-zone-inset-lo: rgba(255,255,255,.30);
 }
-${ZONE.KEYFRAMES}
+${FACE.KEYFRAMES}
 @media (prefers-reduced-motion: reduce){
   .cg-zonecard [style*='animation']{ animation:none !important; }
 }
@@ -7356,6 +7379,7 @@ ${ZONE.KEYFRAMES}
       this._sheetHtml = null;
       root.appendChild(card);
       card.addEventListener("click", (e) => this._onClick(e));
+      card.addEventListener("pointerdown", (e) => this._housePointerDown(e));
       this._built = true;
       this._applyAppearance();
     }
@@ -7681,7 +7705,7 @@ ${ZONE.KEYFRAMES}
       return {
         name: escapeText(this._config.name || "House"),
         zones,
-        target: this._zoneTarget,
+        target: (this._zui && this._zui.houseTarget != null) ? this._zui.houseTarget : null,
         min: r.lo, max: r.hi,
       };
     }
@@ -7751,6 +7775,7 @@ ${ZONE.KEYFRAMES}
         html += ZONE.footer(acts);
       }
       html += "</div>";
+      this._pendingDeclutter = true;
 
       /* Two independent writes, each skipped when nothing changed. Rebuilding the
          whole card on every state push in the house meant re-running the theme pass
@@ -7768,6 +7793,7 @@ ${ZONE.KEYFRAMES}
         this._sheetHtml = sheetHtml;
         this._sheetHost.innerHTML = sheetHtml;
       }
+      this._declutterHero();
     }
 
 
@@ -7846,7 +7872,105 @@ ${ZONE.KEYFRAMES}
 
     // A tap that only moves interface state still has to repaint, and the signature
     // gate would otherwise swallow it.
+    /* TARGET is a static label; AVG ROOM is a live reading that moves with the house.
+       When the average lands near the middle of the arc the two overlap, and the
+       reading is the one worth keeping, so the label goes. Same rule the dial uses
+       when its scale numerals collide with the room reading: measured, not guessed,
+       because the widths depend on the theme font. */
+    _declutterHero() {
+      const root = this._inner;
+      if (!root) return;
+      const lb = root.querySelector(".cg-target-lb");
+      if (!lb) return;
+      lb.style.display = "";
+      const caps = root.querySelectorAll(".cg-zonecard-body > svg text");
+      let avg = null;
+      caps.forEach((t) => { if (t.textContent === "AVG ROOM") avg = t; });
+      if (!avg) return;
+      let a, b;
+      try { a = lb.getBBox(); b = avg.getBBox(); } catch (e) { return; }
+      if (!a || !b || !a.width || !b.width) return;
+      const hit = a.x < b.x + b.width && b.x < a.x + a.width
+        && a.y < b.y + b.height && b.y < a.y + a.height;
+      if (hit) lb.style.display = "none";
+    }
+
     _zoneRepaint() { this._sig = null; this._render(); }
+
+    /* Dragging the hero sets the house temperature.
+
+       The module draws a transparent 34 wide band across the whole arc with
+       cursor:ew-resize, and neither it nor its verify page ever wired one up, so the
+       card was advertising a drag it did not have. Its README calls the draggable
+       house target one of the three things not to tidy away and describes it as
+       exactly what Sync all writes, so that is what this does: every room that can
+       take a setpoint follows the finger, and it commits on release.
+
+       The angle comes back out of the hero's own viewBox rather than from a second
+       copy of the geometry, so it cannot drift from what is drawn. */
+    _houseTempAt(e) {
+      const svg = this._inner && this._inner.querySelector(".cg-zonecard-body > svg");
+      if (!svg || !svg.viewBox) return null;
+      const box = svg.getBoundingClientRect();
+      if (!box.width || !box.height) return null;
+      const vb = svg.viewBox.baseVal;
+      const k = Math.min(box.width / vb.width, box.height / vb.height);
+      // the viewBox is letterboxed inside the element, so undo that before scaling
+      const ox = box.left + (box.width - vb.width * k) / 2;
+      const oy = box.top + (box.height - vb.height * k) / 2;
+      const x = (e.clientX - ox) / k + vb.x - 168;
+      const y = (e.clientY - oy) / k + vb.y - 208;
+      let a = Math.atan2(x, -y) * 180 / Math.PI;   // 0 at twelve o'clock, clockwise
+      if (a < 0) a += 360;
+      if (a < 110) a += 360;            // the arc runs 250 through 360 to 470
+      const d = ZONE.derive(this._zoneModel());
+      const frac = clamp((a - 250) / 220, 0, 1);
+      return Math.round(d.min + frac * (d.max - d.min));
+    }
+
+    _housePointerDown(e) {
+      if (!this._config || this._config.layout === "classic") return;
+      const band = e.target && e.target.closest ? e.target.closest('[data-act="house"]') : null;
+      if (!band) return;
+      const t = this._houseTempAt(e);
+      if (t == null) return;
+      e.preventDefault();
+      this._zui = this._zui || {};
+      this._houseDrag = true;
+      try { e.target.setPointerCapture(e.pointerId); } catch (err) {}
+      this._onHouseMove = (ev) => {
+        if (!this._houseDrag) return;
+        const v = this._houseTempAt(ev);
+        if (v == null || v === this._zui.houseTarget) return;
+        this._zui.houseTarget = v;
+        // one repaint per frame: rebuilding on every pointermove is jerkier than the
+        // drag it is trying to follow
+        if (this._houseRaf) return;
+        this._houseRaf = requestAnimationFrame(() => {
+          this._houseRaf = 0;
+          this._zoneRepaint();
+        });
+      };
+      this._onHouseUp = () => {
+        window.removeEventListener("pointermove", this._onHouseMove);
+        window.removeEventListener("pointerup", this._onHouseUp);
+        window.removeEventListener("pointercancel", this._onHouseUp);
+        if (!this._houseDrag) return;
+        this._houseDrag = false;
+        const v = this._zui.houseTarget;
+        if (v != null) this._groupAction("setpoint", String(v));
+        // hold the dragged value while the rooms report back, then let go
+        const held = v;
+        setTimeout(() => {
+          if (this._zui.houseTarget === held) { this._zui.houseTarget = null; this._zoneRepaint(); }
+        }, OPT_HOLD_MS);
+      };
+      window.addEventListener("pointermove", this._onHouseMove);
+      window.addEventListener("pointerup", this._onHouseUp);
+      window.addEventListener("pointercancel", this._onHouseUp);
+      this._zui.houseTarget = t;
+      this._zoneRepaint();
+    }
 
     _zoneAct(el) {
       const model = this._zoneModel();
