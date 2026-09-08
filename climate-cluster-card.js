@@ -408,6 +408,140 @@
     return Object.assign({}, LOCALE.en[which], (LOCALE[langOf(hass)] || {})[which]);
   }
 
+  /* ---------------------------------------------------------------------------
+     The mode sheet, shared. Both cards present the same object, so they cannot
+     have two copies of its stylesheet that drift: the group card was growing a
+     second, plainer sheet with the same job.
+     ------------------------------------------------------------------------- */
+  const POPUP_CSS = `
+.ct-pop{
+  position:fixed; inset:0; z-index:50;
+  display:flex; align-items:center; justify-content:center;
+  background:rgba(3,6,10,.55);
+  -webkit-backdrop-filter:blur(3px); backdrop-filter:blur(3px);
+  opacity:0; visibility:hidden; pointer-events:none;
+  transition:opacity .18s ease, visibility 0s linear .18s;
+}
+.ct-pop.open{ opacity:1; visibility:visible; pointer-events:auto; transition:opacity .18s ease; }
+.ct-sheet{
+  background:var(--ha-card-background, var(--card-background-color, linear-gradient(180deg, rgba(24,31,40,.92), rgba(12,17,23,.94))));
+  border:1px solid var(--divider-color, rgba(234,235,238,.12)); border-radius:16px; padding:14px;
+  -webkit-backdrop-filter:blur(18px) saturate(120%); backdrop-filter:blur(18px) saturate(120%);
+  box-shadow:0 24px 60px rgba(0,0,0,.6), inset 0 1px 1px rgba(255,255,255,.05);
+  display:grid; grid-template-columns:repeat(3,1fr); gap:8px;
+  transform:scale(.92); transition:transform .18s ease;
+  font-family:var(--ct-font);
+}
+.ct-pop.open .ct-sheet{ transform:scale(1); }
+.ct-sheet button{
+  min-width:74px; padding:9px 10px; cursor:pointer;
+  background:var(--secondary-background-color, rgba(30,40,52,.55)); color:var(--secondary-text-color, #9aa8b6);
+  border:1px solid var(--divider-color, rgba(234,235,238,.14)); border-radius:12px;
+  font:inherit; font-size:13px; letter-spacing:1.4px; text-transform:uppercase; transition:.15s;
+}
+.ct-sheet button:hover{ border-color:color-mix(in srgb, var(--ct-lit, var(--ct-accent)) 45%, transparent); color:var(--primary-text-color, #c6d3df); }
+/* The lit mode button wears its OWN mode color (--ct-lit, set per button in
+   _buildPop) and falls back to the UI accent for any button without one, so the
+   popup belongs to the same instrument as the arc instead of going one flat blue. */
+.ct-sheet button.active{
+  background:color-mix(in srgb, var(--ct-lit, var(--ct-accent)) 16%, transparent); color:var(--primary-text-color, rgba(234,235,238,.98));
+  border:1.5px solid var(--ct-lit, var(--ct-accent));
+  box-shadow:0 0 14px color-mix(in srgb, var(--ct-lit, var(--ct-accent)) 40%, transparent),
+    inset 0 0 12px color-mix(in srgb, var(--ct-lit, var(--ct-accent)) 14%, transparent);
+}
+/* Close button: pinned to the sheet corner, never a grid cell. The extra top
+   padding is the band it sits in, so it never covers the first row of modes. */
+.ct-sheet{ position:relative; padding-top:38px; }
+.ct-sheet button.ct-popclose{
+  position:absolute; top:10px; right:10px;
+  min-width:0; width:36px; height:36px; padding:0;
+  display:grid; place-items:center; border-radius:50%;
+  background:var(--secondary-background-color, rgba(30,40,52,.55));
+  color:var(--secondary-text-color, #9aa8b6);
+  border:1px solid var(--divider-color, rgba(234,235,238,.14));
+}
+.ct-sheet button.ct-popclose:hover{ color:var(--primary-text-color, #c6d3df); }
+.ct-popclose svg{ width:18px; height:18px; display:block; }
+
+/* Respect the OS "reduce motion" setting: kill the clover spin, the popup scale-in
+   and every hover/press transition. A wall tablet left running should not animate
+   for someone who asked the platform not to. */
+@media (prefers-reduced-motion: reduce){
+  .ct-clover g, .ct-pop, .ct-sheet, .ct-sheet button, .ct-hit, .ct-pressdisc{
+    animation:none !important; transition:none !important;
+  }
+  .ct-pop.open .ct-sheet{ transform:none; }
+  .ct-sheet{ transform:none; }
+}
+@media (max-width:480px){ .ct-sheet button{ min-width:88px; padding:14px 8px; font-size:13px; } }
+
+/* PRESET ROW: full-width strip between the modes and the feature chips. Pill
+   shaped so it never reads as another mode button, and it wraps on a phone. */
+.ct-presets{
+  grid-column:1 / -1;
+  display:flex; flex-wrap:wrap; gap:10px; justify-content:center;
+  margin-top:6px; padding-top:16px;
+  border-top:1px solid rgba(234,235,238,.12);
+}
+.ct-sheet button.ct-preset{
+  min-width:0; padding:7px 13px; border-radius:999px;
+  font-size:12px; letter-spacing:1.2px; line-height:1;
+  background:var(--secondary-background-color, rgba(30,40,52,.45));
+  color:var(--secondary-text-color, #8a98a6);
+  border:1px solid var(--divider-color, rgba(234,235,238,.14));
+}
+.ct-sheet button.ct-preset:hover{ border-color:color-mix(in srgb, var(--ct-accent) 45%, transparent); color:var(--primary-text-color, #c6d3df); }
+/* Lit state on this sheet wears the MODE's ink, not the fixed UI accent. The face
+   already does: a lit rail cell and the popup toggle are the same feature on two
+   surfaces, so with the accent pinned to cyan a DRY card showed a teal dial above a
+   cyan sheet. --ct-mode-ink is published per paint on .ct-card, and falls back to
+   the accent for the one state that does not paint the face. */
+.ct-sheet button.ct-preset.active{
+  color:var(--ct-mode-ink, var(--ct-accent));
+  background:color-mix(in srgb, var(--ct-mode-ink, var(--ct-accent)) 16%, transparent);
+  border:1.5px solid var(--ct-mode-ink, var(--ct-accent));
+  box-shadow:0 0 14px color-mix(in srgb, var(--ct-mode-ink, var(--ct-accent)) 34%, transparent);
+}
+
+/* TOGGLES ROW: full-width strip under the modes, divider above it. */
+.ct-toggles{
+  grid-column:1 / -1;
+  display:flex; flex-wrap:wrap; gap:12px; justify-content:center;
+  margin-top:6px; padding-top:16px;
+  border-top:1px solid rgba(234,235,238,.12);
+}
+/* Glass toggle chip. Higher specificity than ".ct-sheet button" so it overrides the
+   mode-button min-width/padding/font. Dim grey by default; lit accent when .on. */
+.ct-sheet button.ct-toggle{
+  min-width:64px; padding:7px 10px;
+  display:flex; flex-direction:column; align-items:center; gap:4px;
+  background:var(--secondary-background-color, rgba(30,40,52,.45)); color:var(--secondary-text-color, #8a98a6);
+  border:1px solid var(--divider-color, rgba(234,235,238,.14)); border-radius:12px;
+  font-size:12px; letter-spacing:1.5px; line-height:1; transition:.15s;
+}
+.ct-sheet button.ct-toggle:hover{ border-color:color-mix(in srgb, var(--ct-accent) 45%, transparent); color:var(--primary-text-color, #c6d3df); }
+.ct-sheet button.ct-toggle.on{
+  color:var(--ct-mode-ink, var(--ct-accent));
+  background:color-mix(in srgb, var(--ct-mode-ink, var(--ct-accent)) 16%, transparent);
+  border:1.5px solid var(--ct-mode-ink, var(--ct-accent));
+  box-shadow:0 0 14px color-mix(in srgb, var(--ct-mode-ink, var(--ct-accent)) 40%, transparent),
+    inset 0 0 12px color-mix(in srgb, var(--ct-mode-ink, var(--ct-accent)) 14%, transparent);
+}
+.ct-sheet button.ct-toggle.disabled{ opacity:.4; cursor:default; }
+.ct-toggle .ct-tg-ic{ width:24px; height:24px; display:block; }
+/* ha-icon paints in currentColor, so the .on accent lights a user chip like the inline-SVG ones. */
+.ct-sheet button.ct-toggle ha-icon.ct-tg-ic{ --mdc-icon-size:24px; color:inherit; }
+.ct-toggle .ct-tg-lb{ display:block; }
+@media (max-width:480px){ .ct-sheet button.ct-toggle{ min-width:72px; padding:9px 8px; } }
+/* The group sheet names the room it belongs to. The dial has one entity and
+   needs no title, so this row simply never appears there. */
+.ct-sheet .ct-poptitle{
+  grid-column:1 / -1; text-align:center; margin:-4px 0 2px;
+  font-size:19px; letter-spacing:1.2px; font-weight:600;
+  color:var(--secondary-text-color, rgba(236,239,247,.62));
+}
+`;
+
   // ---- popup TOGGLES ROW chips (SWING / LED / SOUND) -----------------------
   // Inline glyphs only (no icon deps). stroke="currentColor" so the lit/dim color
   // is driven by the chip's CSS `color` (.ct-toggle.on = accent, else grey).
@@ -5773,125 +5907,7 @@ ${FACE.KEYFRAMES}
 }
 
 /* Mode popup: position:fixed glass overlay (no transformed/filtered ancestor). */
-.ct-pop{
-  position:fixed; inset:0; z-index:50;
-  display:flex; align-items:center; justify-content:center;
-  background:rgba(3,6,10,.55);
-  -webkit-backdrop-filter:blur(3px); backdrop-filter:blur(3px);
-  opacity:0; visibility:hidden; pointer-events:none;
-  transition:opacity .18s ease, visibility 0s linear .18s;
-}
-.ct-pop.open{ opacity:1; visibility:visible; pointer-events:auto; transition:opacity .18s ease; }
-.ct-sheet{
-  background:var(--ha-card-background, var(--card-background-color, linear-gradient(180deg, rgba(24,31,40,.92), rgba(12,17,23,.94))));
-  border:1px solid var(--divider-color, rgba(234,235,238,.12)); border-radius:16px; padding:14px;
-  -webkit-backdrop-filter:blur(18px) saturate(120%); backdrop-filter:blur(18px) saturate(120%);
-  box-shadow:0 24px 60px rgba(0,0,0,.6), inset 0 1px 1px rgba(255,255,255,.05);
-  display:grid; grid-template-columns:repeat(3,1fr); gap:8px;
-  transform:scale(.92); transition:transform .18s ease;
-  font-family:var(--ct-font);
-}
-.ct-pop.open .ct-sheet{ transform:scale(1); }
-.ct-sheet button{
-  min-width:74px; padding:9px 10px; cursor:pointer;
-  background:var(--secondary-background-color, rgba(30,40,52,.55)); color:var(--secondary-text-color, #9aa8b6);
-  border:1px solid var(--divider-color, rgba(234,235,238,.14)); border-radius:12px;
-  font:inherit; font-size:13px; letter-spacing:1.4px; text-transform:uppercase; transition:.15s;
-}
-.ct-sheet button:hover{ border-color:color-mix(in srgb, var(--ct-lit, var(--ct-accent)) 45%, transparent); color:var(--primary-text-color, #c6d3df); }
-/* The lit mode button wears its OWN mode color (--ct-lit, set per button in
-   _buildPop) and falls back to the UI accent for any button without one, so the
-   popup belongs to the same instrument as the arc instead of going one flat blue. */
-.ct-sheet button.active{
-  background:color-mix(in srgb, var(--ct-lit, var(--ct-accent)) 16%, transparent); color:var(--primary-text-color, rgba(234,235,238,.98));
-  border:1.5px solid var(--ct-lit, var(--ct-accent));
-  box-shadow:0 0 14px color-mix(in srgb, var(--ct-lit, var(--ct-accent)) 40%, transparent),
-    inset 0 0 12px color-mix(in srgb, var(--ct-lit, var(--ct-accent)) 14%, transparent);
-}
-/* Close button: pinned to the sheet corner, never a grid cell. The extra top
-   padding is the band it sits in, so it never covers the first row of modes. */
-.ct-sheet{ position:relative; padding-top:38px; }
-.ct-sheet button.ct-popclose{
-  position:absolute; top:10px; right:10px;
-  min-width:0; width:36px; height:36px; padding:0;
-  display:grid; place-items:center; border-radius:50%;
-  background:var(--secondary-background-color, rgba(30,40,52,.55));
-  color:var(--secondary-text-color, #9aa8b6);
-  border:1px solid var(--divider-color, rgba(234,235,238,.14));
-}
-.ct-sheet button.ct-popclose:hover{ color:var(--primary-text-color, #c6d3df); }
-.ct-popclose svg{ width:18px; height:18px; display:block; }
-
-/* Respect the OS "reduce motion" setting: kill the clover spin, the popup scale-in
-   and every hover/press transition. A wall tablet left running should not animate
-   for someone who asked the platform not to. */
-@media (prefers-reduced-motion: reduce){
-  .ct-clover g, .ct-pop, .ct-sheet, .ct-sheet button, .ct-hit, .ct-pressdisc{
-    animation:none !important; transition:none !important;
-  }
-  .ct-pop.open .ct-sheet{ transform:none; }
-  .ct-sheet{ transform:none; }
-}
-@media (max-width:480px){ .ct-sheet button{ min-width:88px; padding:14px 8px; font-size:13px; } }
-
-/* PRESET ROW: full-width strip between the modes and the feature chips. Pill
-   shaped so it never reads as another mode button, and it wraps on a phone. */
-.ct-presets{
-  grid-column:1 / -1;
-  display:flex; flex-wrap:wrap; gap:10px; justify-content:center;
-  margin-top:6px; padding-top:16px;
-  border-top:1px solid rgba(234,235,238,.12);
-}
-.ct-sheet button.ct-preset{
-  min-width:0; padding:7px 13px; border-radius:999px;
-  font-size:12px; letter-spacing:1.2px; line-height:1;
-  background:var(--secondary-background-color, rgba(30,40,52,.45));
-  color:var(--secondary-text-color, #8a98a6);
-  border:1px solid var(--divider-color, rgba(234,235,238,.14));
-}
-.ct-sheet button.ct-preset:hover{ border-color:color-mix(in srgb, var(--ct-accent) 45%, transparent); color:var(--primary-text-color, #c6d3df); }
-/* Lit state on this sheet wears the MODE's ink, not the fixed UI accent. The face
-   already does: a lit rail cell and the popup toggle are the same feature on two
-   surfaces, so with the accent pinned to cyan a DRY card showed a teal dial above a
-   cyan sheet. --ct-mode-ink is published per paint on .ct-card, and falls back to
-   the accent for the one state that does not paint the face. */
-.ct-sheet button.ct-preset.active{
-  color:var(--ct-mode-ink, var(--ct-accent));
-  background:color-mix(in srgb, var(--ct-mode-ink, var(--ct-accent)) 16%, transparent);
-  border:1.5px solid var(--ct-mode-ink, var(--ct-accent));
-  box-shadow:0 0 14px color-mix(in srgb, var(--ct-mode-ink, var(--ct-accent)) 34%, transparent);
-}
-
-/* TOGGLES ROW: full-width strip under the modes, divider above it. */
-.ct-toggles{
-  grid-column:1 / -1;
-  display:flex; flex-wrap:wrap; gap:12px; justify-content:center;
-  margin-top:6px; padding-top:16px;
-  border-top:1px solid rgba(234,235,238,.12);
-}
-/* Glass toggle chip. Higher specificity than ".ct-sheet button" so it overrides the
-   mode-button min-width/padding/font. Dim grey by default; lit accent when .on. */
-.ct-sheet button.ct-toggle{
-  min-width:64px; padding:7px 10px;
-  display:flex; flex-direction:column; align-items:center; gap:4px;
-  background:var(--secondary-background-color, rgba(30,40,52,.45)); color:var(--secondary-text-color, #8a98a6);
-  border:1px solid var(--divider-color, rgba(234,235,238,.14)); border-radius:12px;
-  font-size:12px; letter-spacing:1.5px; line-height:1; transition:.15s;
-}
-.ct-sheet button.ct-toggle:hover{ border-color:color-mix(in srgb, var(--ct-accent) 45%, transparent); color:var(--primary-text-color, #c6d3df); }
-.ct-sheet button.ct-toggle.on{
-  color:var(--ct-mode-ink, var(--ct-accent));
-  background:color-mix(in srgb, var(--ct-mode-ink, var(--ct-accent)) 16%, transparent);
-  border:1.5px solid var(--ct-mode-ink, var(--ct-accent));
-  box-shadow:0 0 14px color-mix(in srgb, var(--ct-mode-ink, var(--ct-accent)) 40%, transparent),
-    inset 0 0 12px color-mix(in srgb, var(--ct-mode-ink, var(--ct-accent)) 14%, transparent);
-}
-.ct-sheet button.ct-toggle.disabled{ opacity:.4; cursor:default; }
-.ct-toggle .ct-tg-ic{ width:24px; height:24px; display:block; }
-/* ha-icon paints in currentColor, so the .on accent lights a user chip like the inline-SVG ones. */
-.ct-sheet button.ct-toggle ha-icon.ct-tg-ic{ --mdc-icon-size:24px; color:inherit; }
-.ct-toggle .ct-tg-lb{ display:block; }
-@media (max-width:480px){ .ct-sheet button.ct-toggle{ min-width:72px; padding:9px 8px; } }
+${POPUP_CSS}
 
 /* Swing POSITION picker (long-press): reuses the mode-popup glass, tighter grid so
    the short vane labels ("Auto" / "1" / "Swing") pack into a small modal. The .active
@@ -6646,7 +6662,10 @@ ha-card[data-appearance^="glass"] .cg-inner{
 
   /* The zone tiles carry the preset glyphs, which are the module's one animation.
      One rule, injected once, guarded for reduced motion like every other. */
-  const GROUP_CSS_ZONE = GROUP_CSS + `
+  const GROUP_CSS_ZONE = GROUP_CSS + POPUP_CSS + `
+/* The sheet's stylesheet speaks --ct-accent and --ct-font; this card publishes the
+   same two things under its own names. Alias rather than fork the stylesheet. */
+.cg-card{ --ct-accent: var(--cg-accent, ${DEFAULT_ACCENT}); --ct-font: ${FONT_STACK}; }
 ${ZONE.KEYFRAMES}
 @media (prefers-reduced-motion: reduce){
   .cg-zonecard [style*='animation']{ animation:none !important; }
@@ -7079,6 +7098,10 @@ ${ZONE.KEYFRAMES}
         sync: { en: "Sync all", es: "Igualar todo" },
         unavailable: { en: "Unavailable", es: "No disponible" },
         cooling: { en: "COOLING", es: "ENFRIANDO" },
+        close: { en: "Close", es: "Cerrar" },
+        swing: { en: "SWING", es: "SWING" },
+        led: { en: "LED", es: "LED" },
+        sound: { en: "SOUND", es: "SONIDO" },
       };
       const lang = langOf(this._hass);
       const row = M[k] || {};
@@ -7241,11 +7264,79 @@ ${ZONE.KEYFRAMES}
         }
         html += ZONE.footer(acts);
       }
-      if (ui.sheetIndex != null && model.zones[ui.sheetIndex]) {
-        html += ZONE.sheet(model.zones[ui.sheetIndex], ui.sheetIndex);
-      }
       html += "</div>";
+      if (ui.sheetIndex != null && model.zones[ui.sheetIndex]) {
+        html += this._zoneSheetHtml(model.zones[ui.sheetIndex], ui.sheetIndex);
+      }
       this._inner.innerHTML = html;
+    }
+
+
+    /* The room sheet, built here rather than by the module, so it is the SAME object
+       the dial opens: same glass, same pill modes lit in their own mode ink, same
+       preset row, same icon toggles, same round close. The module's own sheet was a
+       plainer second copy of the same idea, and two sheets that drift is worse than
+       one that is shared.
+
+       It also lives OUTSIDE .cg-zonecard on purpose. That element carries
+       container-type for the layout breakpoint, and containment makes an element the
+       containing block for fixed-position descendants, which would have trapped a
+       full-screen overlay inside the card. Sitting outside it, .ct-pop is fixed to
+       the viewport, which is what makes a tap anywhere outside close it. */
+    _zoneSheetHtml(z, i) {
+      if (!z) return "";
+      const st = this._st(z.id);
+      const a = (st && st.attributes) || {};
+      const modes = (Array.isArray(a.hvac_modes) && a.hvac_modes.length
+        ? a.hvac_modes : ["off", "cool"]).filter((m) => typeof m === "string");
+      const presets = (Array.isArray(a.preset_modes) ? a.preset_modes : [])
+        .filter((p) => typeof p === "string");
+      const sib = this._zoneSiblings(z.id);
+
+      let out = '<div class="ct-pop open" data-act="backdrop">'
+        + '<div class="ct-sheet" data-act="panel">'
+        + '<button type="button" class="ct-popclose" data-act="close" aria-label="'
+        + escapeAttr(this._t("close")) + '">'
+        + '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">'
+        + '<path d="M6 6 L18 18 M18 6 L6 18" fill="none" stroke="currentColor" '
+        + 'stroke-width="2.4" stroke-linecap="round"/></svg></button>'
+        + '<div class="ct-poptitle">' + z.title + "</div>";
+
+      for (const m of modes) {
+        const ink = (ZONE.MODES[m] || ZONE.MODES.off).ink;
+        out += '<button type="button" data-zmode="' + escapeAttr(m) + '"'
+          + (z.mode === m ? ' class="active"' : "")
+          + ' style="--ct-lit:' + ink + '">'
+          + escapeText(modeName(this._hass, m) || String(m).replace(/_/g, " ")) + "</button>";
+      }
+      if (presets.length) {
+        out += '<div class="ct-presets">';
+        for (const p of presets) {
+          out += '<button type="button" class="ct-preset'
+            + (String(z.preset).toUpperCase() === String(p).toUpperCase() ? " active" : "")
+            + '" data-zpre="' + escapeAttr(p) + '">'
+            + escapeText(String(p).replace(/_/g, " ")) + "</button>";
+        }
+        out += "</div>";
+      }
+      // A toggle with nothing behind it is drawn dimmed and inert rather than left
+      // out, so the row does not reflow from room to room.
+      const togs = [
+        ["swing", !!(sib.swing || (Array.isArray(a.swing_modes) && a.swing_modes.length))],
+        ["led", !!sib.led],
+        ["sound", !!sib.sound],
+      ];
+      out += '<div class="ct-toggles">';
+      for (const [kind, live] of togs) {
+        const def = TOGGLE_DEFS.find((t) => t.kind === kind);
+        out += '<button type="button" class="ct-toggle' + (z[kind] ? " on" : "")
+          + (live ? "" : " disabled") + '" data-ztog="' + kind + '">'
+          + '<svg class="ct-tg-ic" viewBox="-12 -12 24 24" aria-hidden="true">'
+          + def.svg + "</svg>"
+          + '<span class="ct-tg-lb">' + escapeText(this._t(kind)) + "</span></button>";
+      }
+      out += "</div></div></div>";
+      return out;
     }
 
     // A tap that only moves interface state still has to repaint, and the signature
@@ -7275,9 +7366,13 @@ ${ZONE.KEYFRAMES}
         const p = zp.dataset.zpre;
         // PREMAP is the setpoint each preset IMPLIES. Write the preset and let the
         // device report its own setpoint back rather than guessing it here.
+        // The button carries the entity's OWN spelling now, so the exact match is
+        // the normal path; the case-insensitive one is the fallback for a config that
+        // named a preset in different case.
         const st = this._st(z.id);
-        const real = (((st && st.attributes) || {}).preset_modes || [])
-          .find((x) => String(x).toUpperCase() === p);
+        const list = ((st && st.attributes) || {}).preset_modes || [];
+        const real = list.find((x) => String(x) === p)
+          || list.find((x) => String(x).toUpperCase() === String(p).toUpperCase());
         if (real) this._call("climate", "set_preset_mode", { entity_id: z.id, preset_mode: real });
         return true;
       }

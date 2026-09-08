@@ -248,19 +248,39 @@ test("controls: a mode in the sheet writes to the room the sheet is for", () => 
 
 test("controls: a preset writes the entity's OWN casing, never the button's", () => {
   const el = openSheet(makeGroup(), 0);
-  click(el, '[data-zpre="ECO"]');
-  // the buttons are upper case, the entity advertises "eco"
+  // the sheet UPPERCASES in CSS; what is written is the string the entity advertises
+  click(el, '[data-zpre="eco"]');
   assert.deepEqual(el._hass.calls, [{ domain: "climate", service: "set_preset_mode",
     data: { entity_id: "climate.sala", preset_mode: "eco" } }]);
 });
 
-test("controls: a preset the entity does not advertise writes nothing", () => {
-  const noPre = Object.assign({}, states, {
-    "climate.sala": zone("climate.sala", { preset_modes: ["none"], preset_mode: "none" }),
+test("controls: the sheet offers only the presets and modes the room advertises", () => {
+  const narrow = Object.assign({}, states, {
+    "climate.sala": zone("climate.sala", {
+      preset_modes: ["none"], preset_mode: "none", hvac_modes: ["off", "cool"] }),
   });
-  const el = openSheet(makeGroup({}, makeHass(noPre, { entities })), 0);
-  click(el, '[data-zpre="BOOST"]');
+  const el = openSheet(makeGroup({}, makeHass(narrow, { entities })), 0);
+  const pres = [...el.shadowRoot.querySelectorAll("[data-zpre]")].map((b) => b.dataset.zpre);
+  assert.deepEqual(pres, ["none"], "no button exists for a preset it would reject");
+  const modes = [...el.shadowRoot.querySelectorAll("[data-zmode]")].map((b) => b.dataset.zmode);
+  assert.deepEqual(modes, ["off", "cool"]);
+
+  // and a value that somehow reaches the handler anyway still writes nothing
+  el._zoneAct(el.shadowRoot.querySelector('[data-act="panel"]'));
   assert.deepEqual(el._hass.calls, []);
+});
+
+test("controls: the sheet is the SAME object the dial opens, not a second one", () => {
+  const el = openSheet(makeGroup(), 0);
+  const root = el.shadowRoot;
+  assert.ok(root.querySelector(".ct-pop"), "the dial's overlay");
+  assert.ok(root.querySelector(".ct-sheet"), "the dial's glass panel");
+  assert.ok(root.querySelector(".ct-popclose"), "the dial's round close");
+  assert.equal(root.querySelectorAll(".ct-toggle .ct-tg-ic").length, 3,
+    "the toggles carry the dial's icons, not bare words");
+  // and it must sit OUTSIDE the container-query element, or position:fixed is
+  // trapped inside the card and a tap outside cannot reach it
+  assert.equal(root.querySelector(".cg-zonecard .ct-pop"), null);
 });
 
 test("controls: swing falls back to the climate entity when there is no sibling switch", () => {
