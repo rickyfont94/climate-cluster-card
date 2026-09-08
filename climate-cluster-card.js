@@ -7588,6 +7588,19 @@ ${ZONE.KEYFRAMES}
       return o[field];
     }
 
+    /* Whole degrees by default, whatever the entity advertises.
+
+       These units report target_temp_step 0.5, and half a degree Fahrenheit is below
+       anything they actually hold: it takes two presses to move the room by one
+       degree, and the tile then reads 74.5, which is a precision the hardware does
+       not have. It is also the module's own rule, stated in its README as "whole
+       degrees everywhere". temp_step brings the entity's own step back for anyone who
+       wants it, and is the same key the single dial uses. */
+    _zoneStep() {
+      const cfg = num(this._config && this._config.temp_step);
+      return cfg && cfg > 0 ? cfg : 1;
+    }
+
     _zoneModel() {
       const r = this._range();
       /* Every zone here is called "Aire <Room>". Without this the shared prefix eats
@@ -7921,7 +7934,7 @@ ${ZONE.KEYFRAMES}
         if (a === "close" || a === "backdrop") { this._zui.sheetIndex = null; this._zoneRepaint(); return true; }
         if (a === "panel" || a === "footer" || a === "house") return true; // swallow, never close
         if ((a === "inc" || a === "dec") && z && z.set != null) {
-          const step = num((((this._st(z.id) || {}).attributes) || {}).target_temp_step) || 1;
+          const step = this._zoneStep();
           const v = z.set + (a === "inc" ? step : -step);
           this._zoneOptSet(z.id, "set", v);
           this._zoneRepaint();
@@ -8078,6 +8091,7 @@ ${ZONE.KEYFRAMES}
       const range = [
         { name: "min_temp", selector: { number: { mode: "box" } } },
         { name: "max_temp", selector: { number: { mode: "box" } } },
+        { name: "temp_step", selector: { number: { min: 0.5, max: 5, step: 0.5, mode: "box" } } },
         { name: "temperature_unit", selector: { select: { mode: "dropdown", options: [
           { value: "F", label: "F" }, { value: "C", label: "C" },
         ] } } },
@@ -8125,6 +8139,10 @@ ${ZONE.KEYFRAMES}
           en: "Automatic uses a row when the card is wide enough and stacks when it is not.",
           es: "Automatico usa una fila cuando la tarjeta es ancha y apila cuando no." },
         "label.accent": { en: "Accent color", es: "Color de acento" },
+        "label.temp_step": { en: "Step size", es: "Tamano del paso" },
+        "helper.temp_step": {
+          en: "How much one press of plus or minus moves a room. Whole degrees unless you say otherwise.",
+          es: "Cuanto mueve un cuarto cada toque de mas o menos. Grados enteros si no dices otra cosa." },
         "label.zone_rows": { en: "Rows of rooms", es: "Filas de cuartos" },
         "label.action_rows": { en: "Rows of buttons", es: "Filas de botones" },
         "label.group_actions": { en: "Show the button bar", es: "Mostrar la barra de botones" },

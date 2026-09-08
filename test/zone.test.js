@@ -558,3 +558,32 @@ test("sheet: a state push does not rebuild the open sheet under your finger", ()
   assert.equal(el.shadowRoot.querySelector('[data-act="panel"]'), node,
     "the very same node survived, so a tap mid-push cannot miss");
 });
+
+test("step: one press moves a whole degree, whatever the entity advertises", () => {
+  // these units report target_temp_step 0.5, and half a degree Fahrenheit is below
+  // anything they hold: two presses to move the room by one, and a tile reading 74.5
+  const half = JSON.parse(JSON.stringify(states));
+  for (const id of ids) half[id].attributes.target_temp_step = 0.5;
+  const el = makeGroup({}, makeHass(half, { entities }));
+
+  el.shadowRoot.querySelectorAll("[data-zone]")[2].querySelector('[data-act="inc"]')
+    .dispatchEvent(new Event("click", { bubbles: true, composed: true }));
+  assert.equal(el._hass.calls[0].data.temperature, 71, "elly was 70, one press is 71");
+});
+
+test("step: temp_step brings a finer step back", () => {
+  const half = JSON.parse(JSON.stringify(states));
+  for (const id of ids) half[id].attributes.target_temp_step = 0.5;
+  const el = makeGroup({ temp_step: 0.5 }, makeHass(half, { entities }));
+
+  el.shadowRoot.querySelectorAll("[data-zone]")[2].querySelector('[data-act="inc"]')
+    .dispatchEvent(new Event("click", { bubbles: true, composed: true }));
+  assert.equal(el._hass.calls[0].data.temperature, 70.5);
+});
+
+test("step: a silly step falls back to a whole degree", () => {
+  for (const bad of [0, -2, "abc", null]) {
+    const el = makeGroup({ temp_step: bad });
+    assert.equal(el._zoneStep(), 1, JSON.stringify(bad) + " must not reach the write");
+  }
+});
