@@ -4202,7 +4202,7 @@
         // _presetActive holds the optimistic value, so tapping a preset shows its
         // glyph immediately instead of waiting for the device to report back.
         preset: String(this._presetActive() || "").toUpperCase(),
-        fanStyle: this._fanStyle || "dash",
+        fanStyle: this._fanStyle || "original",
         cells: this._faceCells(),
       };
     }
