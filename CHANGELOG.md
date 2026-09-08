@@ -119,6 +119,18 @@ every key that shipped before this release still reads the same way.
   finger on "low" drew the ring a third of the way round and the marker stepped
   forward the moment it lifted. Both now come from one pair of functions, and the
   round trip is asserted for every stop count.
+- Real room names broke three layouts, found by shooting the release screenshots with
+  a real house in them instead of the short names every earlier capture used.
+  (a) The two ring labels ran through each other: near a narrow spread both ends sit
+  close to twelve o'clock, and a label that would leave the card flipped and grew back
+  ACROSS the dial, so "FAMILY ROOM 71" and "LIVING ROOM 78" overlapped by 25 units.
+  They now always grow outward and slide back inside the box, which leaves them 96
+  units apart on one baseline. (b) A two word room name wrapped to two lines in a
+  tile while a one word name did not, so the numeral underneath sat at a different
+  height on every other tile; the caption now gives up size and tracking before it
+  gives up letters. (c) A caption that does have to truncate now carries the full
+  name as a tooltip, attribute-escaped separately from the text so a name with a
+  quote in it cannot break out of it.
 - The group card's house gauge had the same three, where a release writes every room
   rather than one setpoint, plus a fourth: a second finger landing on the gauge
   rebound its move and release handlers and stranded the old pair on the window,

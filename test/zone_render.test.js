@@ -261,3 +261,92 @@ test("bar: a silly action_rows is ignored rather than breaking the bar", () => {
     assert.match(bar.getAttribute("style"), /display:flex/, JSON.stringify(bad));
   }
 });
+
+test("hero: two long room names do not run through each other", () => {
+  // measured on a real house: with a narrow spread both ring ends sit near twelve
+  // o'clock, and "FAMILY ROOM 71" met "LIVING ROOM 78" head on
+  const long = JSON.parse(JSON.stringify(states));
+  long["climate.sala"].attributes.friendly_name = "Living Room";
+  long["climate.sala"].attributes.current_temperature = 78;
+  long["climate.ricky"].attributes.friendly_name = "Family Room";
+  long["climate.ricky"].attributes.current_temperature = 71;
+  long["climate.elly"].attributes.friendly_name = "Bedroom";
+  long["climate.elly"].attributes.current_temperature = 75;
+
+  const svg = html(makeGroup({}, makeHass(long, { entities })));
+  const labs = [...svg.matchAll(
+    /class="cg-ringlab" x="([-0-9.]+)" y="([-0-9.]+)" text-anchor="(\w+)"[^>]*>([^<]+)</g)]
+    .map((m) => {
+      const w = m[4].length * 5.6;
+      const x = Number(m[1]);
+      return { x0: m[3] === "end" ? x - w : x, x1: (m[3] === "end" ? x - w : x) + w,
+        y: Number(m[2]), text: m[4] };
+    });
+  assert.equal(labs.length, 2, "both ends are named");
+
+  const [a, b] = labs;
+  const apart = a.x1 <= b.x0 || b.x1 <= a.x0 || a.y !== b.y;
+  assert.ok(apart, "side by side or on two lines, never on top of each other: "
+    + JSON.stringify(labs));
+});
+
+test("hero: names that fit stay on one line", () => {
+  const svg = html(makeGroup());
+  const ys = [...svg.matchAll(/class="cg-ringlab"[^>]*y="([-0-9.]+)"/g)].map((m) => Number(m[1]));
+  assert.equal(ys[0], ys[1], "stacking is the exception, not the new normal");
+});
+
+test("hero: a label cannot leave the card", () => {
+  const long = JSON.parse(JSON.stringify(states));
+  long["climate.sala"].attributes.friendly_name = "Downstairs Guest Bedroom Annexe";
+  long["climate.sala"].attributes.current_temperature = 86;
+  const svg = html(makeGroup({}, makeHass(long, { entities })));
+  for (const m of svg.matchAll(
+    /class="cg-ringlab" x="([-0-9.]+)" y="[-0-9.]+" text-anchor="(\w+)"[^>]*>([^<]+)</g)) {
+    const w = m[3].length * 5.6, x = Number(m[1]);
+    const x0 = m[2] === "end" ? x - w : x;
+    assert.ok(x0 >= 44 && x0 + w <= 300, m[3] + " stays inside the hero viewBox");
+  }
+});
+
+test("tiles: a two word room name stays on one line", () => {
+  const long = JSON.parse(JSON.stringify(states));
+  long["climate.sala"].attributes.friendly_name = "Living Room";
+  long["climate.ricky"].attributes.friendly_name = "Family Room";
+  long["climate.elly"].attributes.friendly_name = "Master";
+  const el = makeGroup({}, makeHass(long, { entities }));
+
+  const names = [...el.shadowRoot.querySelectorAll("[data-zone] .cg-tilename")];
+  assert.equal(names.length, 3, "every tile names its room");
+  for (const n of names) {
+    const st = n.getAttribute("style") || "";
+    assert.match(st, /white-space:nowrap/, n.textContent + " must not wrap");
+    assert.match(st, /text-overflow:ellipsis/);
+  }
+  assert.equal(names[0].getAttribute("title"), "Living Room",
+    "and the full name is still reachable, the way the dial's title is");
+});
+
+test("tiles: a name carrying a quote cannot break out of the tooltip", () => {
+  const bad = JSON.parse(JSON.stringify(states));
+  bad["climate.sala"].attributes.friendly_name = 'Rick"s <b>Room</b>';
+  const el = makeGroup({}, makeHass(bad, { entities }));
+  const n = el.shadowRoot.querySelector("[data-zone] .cg-tilename");
+  assert.equal(n.getAttribute("title"), 'Rick"s <b>Room</b>', "escaped in, decoded back");
+  assert.equal(el.shadowRoot.querySelectorAll("[data-zone] b").length, 0,
+    "and no element came out of it");
+});
+
+test("tiles: the caption gives up size before it gives up letters", () => {
+  const nm = (n) => {
+    const st = JSON.parse(JSON.stringify(states));
+    st["climate.sala"].attributes.friendly_name = n;
+    return makeGroup({}, makeHass(st, { entities }))
+      .shadowRoot.querySelector("[data-zone] .cg-tilename").getAttribute("style");
+  };
+  assert.match(nm("Master"), /font:600 14px/, "a short name keeps the full size");
+  assert.match(nm("Master"), /letter-spacing:\.14em/);
+  assert.match(nm("Living Room"), /font:600 12px/, "eleven characters step down");
+  assert.match(nm("Living Room"), /letter-spacing:\.08em/, "and lose the wide tracking");
+  assert.match(nm("Downstairs Annexe"), /font:600 11px/, "and a long one steps down again");
+});

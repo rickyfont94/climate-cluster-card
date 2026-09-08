@@ -1312,24 +1312,55 @@
     return clamp(y, 80, 150);
   }
 
-  function ringLabel(text, a, ink, y) {
+  /* Where one end label wants to sit, as a box rather than as markup, so the two of
+     them can be compared before either is drawn.
+
+     Grow AWAY from the dial by preference, because that is the empty side. Near
+     either end of the range the ring end swings low and outward runs the label off
+     the card, so it flips and grows back across the arc instead. The width is
+     estimated rather than measured because this returns a string, and 5.6 per
+     character at 9.5px with this tracking is close enough to decide which way is
+     safe. */
+  function ringLabelBox(text, a, y) {
     var p = P(130, a), left = ((a % 360) + 360) % 360 > 180;
-    /* Grow AWAY from the dial by preference, because that is the empty side. Near
-       either end of the range the ring end swings low and outward runs the label off
-       the card, so it flips and grows back across the arc instead; the knockout is
-       what keeps it readable when it does. The width is estimated rather than
-       measured because this returns a string, and 5.6 per character at 9.5px with
-       this tracking is close enough to decide which way is safe. */
     var w = String(text).length * 5.6;
-    var anchor = left ? 'end' : 'start', dy = 0;
-    /* Flipped, the label runs back across its own ring end, and at the low end of
-       the range that is exactly where the needle stands. Lift it clear. */
-    if (left && p[0] - w < 48) { anchor = 'start'; dy = -11; }
-    if (!left && p[0] + w > 296) { anchor = 'end'; dy = -11; }
-    var yy = y == null ? p[1] + dy : y;
-    return '<text class="cg-ringlab" x="' + f(p[0]) + '" y="' + f(yy) + '" text-anchor="' +
-      anchor + '" dominant-baseline="central" font-size="9.5" ' +
-      'font-weight="600" letter-spacing="1.2" fill="' + ink + '">' + text + '</text>';
+    /* Always outward. The first version flipped the anchor when the label would
+       leave the card, which sends it back ACROSS the dial: measured on a real house
+       that turned two labels that could not touch into two that overlapped by 25
+       units. Growing outward and then sliding the whole label back inside the box
+       keeps them on their own sides, where they cannot meet. */
+    var anchor = left ? 'end' : 'start';
+    var x = p[0];
+    // the hero viewBox runs x 44 to 300; a label that leaves it is simply gone
+    var x0 = anchor === 'end' ? x - w : x;
+    if (x0 < 46) { x += 46 - x0; x0 = 46; }
+    if (x0 + w > 298) { x -= (x0 + w) - 298; x0 = 298 - w; }
+    return { text: text, x: x, y: y, anchor: anchor, w: w, x0: x0, x1: x0 + w };
+  }
+
+  function ringLabelDraw(b, ink) {
+    return '<text class="cg-ringlab" x="' + f(b.x) + '" y="' + f(b.y) + '" text-anchor="' +
+      b.anchor + '" dominant-baseline="central" font-size="9.5" ' +
+      'font-weight="600" letter-spacing="1.2" fill="' + ink + '">' + b.text + '</text>';
+  }
+
+  /* CARD ADDITION: the two are laid out TOGETHER, because neither can see the other
+     and a shared baseline made a collision MORE likely rather than less.
+
+     With a narrow spread both ring ends sit near twelve o'clock, and two long room
+     names then run straight through each other: measured on a real house,
+     "FAMILY ROOM 71" and "LIVING ROOM 78" overlapped into one unreadable string.
+     Side by side while they fit, because that is what reads as a pair; the warmer
+     one drops to a second line when they do not. */
+  function ringLabelPair(coldText, warmText, lo, hi, showCold) {
+    var y = ringLabelY(lo, hi);
+    var warm = ringLabelBox(warmText, hi, y);
+    if (!showCold) return ringLabelDraw(warm, '#27d3ff');
+    var cold = ringLabelBox(coldText, lo, y);
+    var GAP = 6;
+    var clear = cold.x1 + GAP <= warm.x0 || warm.x1 + GAP <= cold.x0;
+    if (!clear) warm.y = y + 12;
+    return ringLabelDraw(cold, '#8b95a2') + ringLabelDraw(warm, '#27d3ff');
   }
 
   function hero(s, d) {
@@ -1363,11 +1394,10 @@
          the dial so a long room name grows outward instead of across the band. */
       /* CARD ADDITION: with every room at the same temperature the two ends ARE the
          same end, and drawing both put one label exactly on top of the other. */
-      (d.spread === 0 ? '' :
-        ringLabel(String(d.coldestRoom.name || '').toUpperCase() + ' ' + d.roomMin, lo,
-          '#8b95a2', ringLabelY(lo, hi))) +
-      ringLabel(String(d.warmest.name || '').toUpperCase() + ' ' + d.roomMax, hi,
-        '#27d3ff', ringLabelY(lo, hi)) +
+      ringLabelPair(
+        String(d.coldestRoom.name || '').toUpperCase() + ' ' + d.roomMin,
+        String(d.warmest.name || '').toUpperCase() + ' ' + d.roomMax,
+        lo, hi, d.spread !== 0) +
       heroNeedle(ta) +
       heroPin(d.roomAvg, pa) +
       '<text class="cg-target-lb" x="168" y="164" text-anchor="middle" font-size="13" ' +
@@ -1492,6 +1522,14 @@
     return { word: m.status, live: true };
   }
 
+  /* CARD ADDITION: the caption shrinks before it truncates. Three steps rather than
+     a continuous fit, because this returns a string and cannot measure anything. */
+  function tileNameSize(len) {
+    if (!len || len <= 8) return 14;
+    if (len <= 11) return 12;
+    return 11;
+  }
+
   function tile(z, i, d) {
     /* CARD ADDITION: an unknown mode falls back rather than throwing, and a zone with
        no reading shows the dash the shipped card shows rather than the word NaN. */
@@ -1511,7 +1549,8 @@
         '; backdrop-filter:blur(14px) saturate(130%); -webkit-backdrop-filter:blur(14px) saturate(130%); ' +
         'box-shadow:inset 0 1px 0 rgba(255,255,255,.14); padding:9px 9px 8px; display:flex; ' +
         'flex-direction:column; justify-content:space-between; gap:5px;">' +
-      '<div style="display:flex; align-items:center; justify-content:center; gap:7px;">' +
+      '<div style="display:flex; align-items:center; justify-content:center; gap:7px; ' +
+        'min-width:0;">' +
         /* CARD ADDITION: it breathes, on the same 1.9s as the dial's status dot,
            from the same keyframe, so the two cards cannot drift to two rates that
            look almost the same. A room with no reading holds still: there is nothing
@@ -1519,8 +1558,22 @@
         '<span style="width:7px; height:7px; border-radius:50%; background:' + m.ink +
           '; box-shadow:0 0 9px ' + rgba(m.ink, .85) + ';' +
           (nore ? '' : ' animation:pulse 1.9s ease-in-out infinite;') + '"></span>' +
-        '<span style="font:600 14px/1 Rajdhani,sans-serif; letter-spacing:.14em; ' +
-          'text-transform:uppercase; color:#f2f5f8;">' + z.name + '</span></div>' +
+        /* CARD ADDITION: one line, always, and the whole name on it.
+
+           A real house has rooms called "Living Room" and "Family Room". At the
+           shipped 14px with .14em tracking those wrapped to two lines while "Master"
+           did not, so the numeral underneath sat at a different height on every other
+           tile and the row stopped reading as a row. Nowrap alone only traded that
+           for "LIVING R...", so the caption gives up size and tracking before it
+           gives up letters: a tile is about 110 wide and 11 characters at 12px with
+           .08em is about 96 of it. Past that it does truncate, and the full name is
+           on the tooltip, the same bargain the dial's own title makes. */
+        '<span class="cg-tilename" title="' + (z.titleAttr || '') +
+          '" style="font:600 ' + tileNameSize(z.nameLen) + 'px/1 Rajdhani,sans-serif; ' +
+          'letter-spacing:' + (z.nameLen > 8 ? '.08em' : '.14em') + '; ' +
+          'text-transform:uppercase; color:#f2f5f8; min-width:0; ' +
+          'white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' +
+          z.name + '</span></div>' +
       /* the numeral is the ROOM, the fact you walked over to check, and tapping it
          opens this zone's sheet */
       '<div data-act="sheet" style="display:flex; align-items:baseline; justify-content:center; ' +
@@ -7816,6 +7869,11 @@ ${FACE.KEYFRAMES}
           id: z.entity,
           name: escapeText(short[zi] || rawName),
           title: escapeText(rawName),
+          // the same name again, safe to drop into an attribute, for the tile's tooltip
+          titleAttr: escapeAttr(rawName),
+          // measured on the RAW string: escaping turns one ampersand into five
+          // characters, and the tile sizes its caption by length
+          nameLen: String(short[zi] || rawName).length,
           room: dead ? null : num(a.current_temperature),
           set: dead ? null : opt("set", this._setpoint(st)),
           mode: dead ? "unavailable" : opt("mode", st.state),
