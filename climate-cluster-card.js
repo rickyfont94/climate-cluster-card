@@ -3698,6 +3698,14 @@
       const raw = String(p).replace(/_/g, " ");
       return raw.charAt(0).toUpperCase() + raw.slice(1);
     }
+    // "" unless the live preset is a real member of this entity's preset_modes.
+    _presetKnown() {
+      const p = this._presetActive();
+      if (p == null || p === "") return "";
+      return this._presetModes().some((x) => String(x) === String(p))
+        ? String(p).toUpperCase() : "";
+    }
+
     _setPreset(p) {
       if (!this._hass) return;
       if (!this._presetModes().some((x) => String(x) === String(p))) return; // never write a non-member
@@ -4206,7 +4214,11 @@
         fanPct: this._facePct(),
         // _presetActive holds the optimistic value, so tapping a preset shows its
         // glyph immediately instead of waiting for the device to report back.
-        preset: String(this._presetActive() || "").toUpperCase(),
+        // Only a preset the entity actually advertises. presetGlyph falls back to
+        // the first LETTER of anything it has no glyph for, so a transient value the
+        // device reports mid mode-change painted a bare "A" beside the status word,
+        // which tells a user nothing.
+        preset: this._presetKnown(),
         fanStyle: this._fanStyle || "original",
         cells: this._faceCells(),
       };
@@ -4236,7 +4248,9 @@
 
        AUTO ships mint in the module and nothing on this card is green, so it takes
        the card's own warm yellow, which is what the card has always drawn for that
-       mode and what every other yellow-on state in the house uses.
+       mode and what every other yellow-on state in the house uses. DRY follows for
+       the same reason: the module's amber is a shade of that same yellow, so with
+       AUTO corrected the two modes stopped being tellable apart.
 
        And a mode_colors entry the user actually configured has coloured this card
        since it shipped. The face carrying its own table would drop that silently,
@@ -4252,7 +4266,8 @@
       if (!m) return;
       if (!m.base) m.base = { ink: m.ink, light: m.light };
       const cfg = (this._config && this._config.mode_colors) || {};
-      const want = toColor(cfg[mode]) || (mode === "auto" ? MODE_COLORS.auto : null);
+      const want = toColor(cfg[mode]) ||
+        (mode === "auto" || mode === "dry" ? MODE_COLORS[mode] : null);
       if (!want) { m.ink = m.base.ink; m.light = m.base.light; return; }
       const rgb = colorToRgb(want);
       if (!rgb) { m.ink = m.base.ink; m.light = m.base.light; return; }
@@ -5286,11 +5301,16 @@ ${FACE.KEYFRAMES}
   border:1px solid var(--divider-color, rgba(234,235,238,.14));
 }
 .ct-sheet button.ct-preset:hover{ border-color:color-mix(in srgb, var(--ct-accent) 45%, transparent); color:var(--primary-text-color, #c6d3df); }
+/* Lit state on this sheet wears the MODE's ink, not the fixed UI accent. The face
+   already does: a lit rail cell and the popup toggle are the same feature on two
+   surfaces, so with the accent pinned to cyan a DRY card showed a teal dial above a
+   cyan sheet. --ct-mode-ink is published per paint on .ct-card, and falls back to
+   the accent for the one state that does not paint the face. */
 .ct-sheet button.ct-preset.active{
-  color:var(--ct-accent);
-  background:color-mix(in srgb, var(--ct-accent) 16%, transparent);
-  border:1.5px solid var(--ct-accent);
-  box-shadow:0 0 14px color-mix(in srgb, var(--ct-accent) 34%, transparent);
+  color:var(--ct-mode-ink, var(--ct-accent));
+  background:color-mix(in srgb, var(--ct-mode-ink, var(--ct-accent)) 16%, transparent);
+  border:1.5px solid var(--ct-mode-ink, var(--ct-accent));
+  box-shadow:0 0 14px color-mix(in srgb, var(--ct-mode-ink, var(--ct-accent)) 34%, transparent);
 }
 
 /* TOGGLES ROW: full-width strip under the modes, divider above it. */
@@ -5311,11 +5331,11 @@ ${FACE.KEYFRAMES}
 }
 .ct-sheet button.ct-toggle:hover{ border-color:color-mix(in srgb, var(--ct-accent) 45%, transparent); color:var(--primary-text-color, #c6d3df); }
 .ct-sheet button.ct-toggle.on{
-  color:var(--ct-accent);
-  background:color-mix(in srgb, var(--ct-accent) 16%, transparent);
-  border:1.5px solid var(--ct-accent);
-  box-shadow:0 0 14px color-mix(in srgb, var(--ct-accent) 40%, transparent),
-    inset 0 0 12px color-mix(in srgb, var(--ct-accent) 14%, transparent);
+  color:var(--ct-mode-ink, var(--ct-accent));
+  background:color-mix(in srgb, var(--ct-mode-ink, var(--ct-accent)) 16%, transparent);
+  border:1.5px solid var(--ct-mode-ink, var(--ct-accent));
+  box-shadow:0 0 14px color-mix(in srgb, var(--ct-mode-ink, var(--ct-accent)) 40%, transparent),
+    inset 0 0 12px color-mix(in srgb, var(--ct-mode-ink, var(--ct-accent)) 14%, transparent);
 }
 .ct-sheet button.ct-toggle.disabled{ opacity:.4; cursor:default; }
 .ct-toggle .ct-tg-ic{ width:24px; height:24px; display:block; }
