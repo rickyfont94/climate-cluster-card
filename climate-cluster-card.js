@@ -4958,6 +4958,35 @@
       m.light = "rgb(" + rgb.map((c) => Math.round(c + (255 - c) * 0.55)).join(",") + ")";
     }
 
+    /* The fan ring under the finger.
+
+       _paintFanPct and _paintFanNamed write to fanFill, fanHandle, fanPct and
+       fanName, every one of which _hideLegacyFace switches off, so on the new face a
+       fan drag moved nothing at all: the ring sat still and jumped to its new place
+       on release, when the next full render redrew it. The temp band never had this
+       because _paintTempArc already calls _paintFaceMoving.
+
+       Cheap enough to run per pointermove: one innerHTML for the ring and one for the
+       rail, which is what a temp drag already costs five of. The cache key is cleared
+       rather than updated, because what is drawn no longer matches any state the card
+       has committed and the next full render has to redraw it. */
+    _paintFaceFan(pct, label) {
+      if (!this._refs.faceFan || this._faceOn === false) return;
+      const st = this._faceState();
+      this._faceFanKey = null;
+      if (this._config.show_fan !== false) {
+        const draw = FACE.FAN_STYLES[st.fanStyle] || FACE.FAN_STYLES.original;
+        this._refs.faceFan.innerHTML = draw(pct, st.mode);
+      }
+      // the rail's FAN cell is the same reading in words
+      if (this._refs.faceRail) {
+        const cells = st.cells.map((c) => (c.key === "fan"
+          ? Object.assign({}, c, { value: label, lit: pct != null }) : c));
+        this._refs.faceRail.innerHTML = FACE.rail(cells, st.mode);
+        this._faceCellKeys = cells.map((c) => c.key);
+      }
+    }
+
     _paintFace() {
       if (!this._refs.face || this._faceOn === false) return;
       const inkCard = this.shadowRoot && this.shadowRoot.querySelector(".ct-card");
@@ -5149,6 +5178,7 @@
         `translate(${seat[0].toFixed(1)},${seat[1].toFixed(1)}) rotate(${ang.toFixed(1)})`);
       // 0..100 equivalent drives the clover spin and the "%" label for a 1..100 source.
       const pctEq = ((p - r.min) / ((r.max - r.min) || 1)) * 100;
+      this._paintFaceFan(clamp(Math.round(pctEq), 1, 100), Math.round(pctEq) + "%");
       this._refs.fanPct.textContent = (r.max === 100) ? Math.round(pctEq) + "%" : this._fmtFan(p, r.step);
       const nm = this._nearestFanMode(p);
       this._refs.fanName.textContent = nm ? this._fanModeName(nm) : ""; // localized via HA (issue #19)
@@ -5177,6 +5207,12 @@
       const seat = polar(CX, CY, R_FAN + FAN_HANDLE_OFFSET, ang);
       this._refs.fanHandle.setAttribute("transform",
         `translate(${seat[0].toFixed(1)},${seat[1].toFixed(1)}) rotate(${ang.toFixed(1)})`);
+      /* A named fan has no percentage, so the ring shows the POSITION in the list,
+         derived the same way _facePct derives it for a settled state, or the two
+         disagree by one step the moment the finger lifts. auto never arrives here:
+         it returns above, and _fanNamedModes filters it out of the drag list. */
+      const named = clamp(Math.round(((i + 1) / n) * 100), 1, 100);
+      this._paintFaceFan(named, named + "%");
       this._refs.fanPct.textContent = this._fanModeName(names[i]); // localized via HA (issue #19)
       this._refs.fanName.textContent = "";
       const pctEq = n <= 1 ? 100 : (i / (n - 1)) * 100;
@@ -5197,6 +5233,9 @@
       const seat = polar(CX, CY, R_FAN + FAN_HANDLE_OFFSET, END_ANG);
       this._refs.fanHandle.setAttribute("transform",
         `translate(${seat[0].toFixed(1)},${seat[1].toFixed(1)}) rotate(${END_ANG.toFixed(1)})`);
+      // AUTO is the absence of a value on the new face too: the ring goes to its
+      // unset state and the rail cell reads the word rather than a number.
+      this._paintFaceFan(null, "AUTO");
       this._refs.fanPct.textContent = this._t("auto");
       this._refs.fanName.textContent = "";
       this._applyFanSpin(100, true);
