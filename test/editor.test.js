@@ -31,8 +31,14 @@ test("editor: a first-time user sees a handful of rows, not the whole surface", 
   const ed = makeEditor(fx.config, hass);
 
   const basic = ed._schema(hass, fx.config);
-  assert.equal(topLevelRows(basic), 4,
-    "entity, name, Appearance and the advanced switch");
+  // Was 4. fan_style is deliberately the fifth, ABOVE the advanced switch: the three
+  // rings differ only by how they move, so hiding the choice behind a curtain hides
+  // the whole decision, and someone who never opens advanced never learns the
+  // original look is still available. The guard is kept, only its number moves.
+  assert.equal(topLevelRows(basic), 5,
+    "entity, name, fan style, Appearance and the advanced switch");
+  const names = basic.map((r) => r.name).filter(Boolean);
+  assert.ok(names.includes("fan_style"), "the fan ring choice is not behind advanced");
 
   ed._showAdvanced = true;
   const full = ed._schema(hass, fx.config);
@@ -131,4 +137,32 @@ test("editor: preset_names round-trips through the pn__ display fields", () => {
 
   assert.deepEqual(saved.preset_names, { eco: "iECO", boost: "Turbo" });
   assert.equal("pn__eco" in saved, false, "display keys are stripped");
+});
+
+test("editor: fan_style offers exactly the three rings, with dash named as the original", () => {
+  const hass = makeHass(fx.states, { entities: fx.entities });
+  const ed = makeEditor(fx.config, hass);
+  const row = ed._schema(hass, fx.config).find((r) => r.name === "fan_style");
+  assert.ok(row, "fan_style is present without opening advanced");
+  const sel = row.selector.select;
+  // mode list renders radios. A dropdown hides two of the three choices behind a
+  // click, and the owner's complaint was specifically about dropdowns.
+  assert.equal(sel.mode, "list");
+  assert.deepEqual(sel.options.map((o) => o.value), ["dash", "breeze", "silk"]);
+  assert.match(sel.options[0].label, /original/i,
+    "the migration promise rides the label, not a helper sentence");
+});
+
+test("editor: the retired clover animation keys are gone from the GUI but still read", () => {
+  const hass = makeHass(fx.states, { entities: fx.entities });
+  const ed = makeEditor(fx.config, hass);
+  ed._showAdvanced = true;
+  const names = [];
+  (function walk(rows) {
+    rows.forEach((r) => { if (r.name) names.push(r.name); if (r.schema) walk(r.schema); });
+  })(ed._schema(hass, fx.config));
+  // Both drive the spinning clover, which the dial face does not draw, so the
+  // controls did nothing. Reading them must still work for existing YAML.
+  assert.ok(!names.includes("fan_animation"), "no control for a dead key");
+  assert.ok(!names.includes("fan_animation_speed"), "no control for a dead key");
 });

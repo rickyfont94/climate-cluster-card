@@ -143,6 +143,9 @@
       "editor.opt.anim_dynamic": "Dynamic (scale with speed)",
       "editor.opt.anim_constant": "Constant",
       "editor.opt.anim_off": "Off",
+      "editor.opt.fan_style_dash": "Dash (original, unchanged)",
+      "editor.opt.fan_style_breeze": "Breeze (drifting ribbons)",
+      "editor.opt.fan_style_silk": "Silk (travelling puffs)",
       "editor.opt.appearance_theme": "Theme (follows Home Assistant)",
       "editor.opt.appearance_glass_dark": "Frosted glass (dark)",
       "editor.opt.appearance_glass_light": "Frosted glass (light)",
@@ -150,6 +153,7 @@
       editorLabels: {
         entity: "Climate entity",
         name: "Name",
+        fan_style: "Fan ring",
         appearance: "Background",
         reset_styling: "Reset styling to defaults",
         glass_color: "Glass tint",
@@ -191,6 +195,7 @@
       },
       editorHelpers: {
         name: "Card title. Defaults to the entity's friendly name.",
+        fan_style: "Dash is what the card has always drawn. The other two animate, and both cost more on a wall tablet that never sleeps.",
         appearance: "Theme follows your active Home Assistant theme (works on light and dark). Frosted glass is a translucent panel, in a dark indigo or light finish, that holds its look on any theme.",
         reset_styling: "Clears the appearance, glass, accent, font and per-mode color settings back to their defaults. Your entity, range, modes and other options are kept.",
         glass_color: "Tints the frosted glass panel. Applies only to the frosted glass backgrounds.",
@@ -279,6 +284,9 @@
       "editor.opt.anim_dynamic": "Dinamica (escala con la velocidad)",
       "editor.opt.anim_constant": "Constante",
       "editor.opt.anim_off": "Apagada",
+      "editor.opt.fan_style_dash": "Dash (el original, sin cambios)",
+      "editor.opt.fan_style_breeze": "Breeze (cintas que van y vienen)",
+      "editor.opt.fan_style_silk": "Silk (soplos que viajan)",
       "editor.opt.appearance_theme": "Tema (sigue a Home Assistant)",
       "editor.opt.appearance_glass_dark": "Vidrio esmerilado (oscuro)",
       "editor.opt.appearance_glass_light": "Vidrio esmerilado (claro)",
@@ -286,6 +294,7 @@
       editorLabels: {
         entity: "Entidad de clima",
         name: "Nombre",
+        fan_style: "Anillo del ventilador",
         appearance: "Fondo",
         reset_styling: "Restablecer estilo a los valores por defecto",
         glass_color: "Tinte del vidrio",
@@ -327,6 +336,7 @@
       },
       editorHelpers: {
         name: "Titulo de la tarjeta. Por defecto usa el nombre descriptivo de la entidad.",
+        fan_style: "Dash es lo que la tarjeta siempre ha dibujado. Los otros dos se animan y cuestan mas en una tablet de pared que nunca duerme.",
         appearance: "Tema sigue el tema activo de Home Assistant (funciona en claro y oscuro). Vidrio esmerilado es un panel translucido, en acabado indigo oscuro o claro, que mantiene su aspecto en cualquier tema.",
         reset_styling: "Borra los ajustes de apariencia, vidrio, acento, fuente y colores por modo a sus valores por defecto. Se conservan la entidad, el rango, los modos y las demas opciones.",
         glass_color: "Tinta el panel de vidrio esmerilado. Solo aplica a los fondos de vidrio esmerilado.",
@@ -2128,7 +2138,11 @@
       // (default = more-info), and a double tap to double_tap_action (default none),
       // while respecting DRAG_THRESH_PX so a swipe off the disc is never an action.
       this._refs.centerHit = el("circle", {
-        class: "ct-hit ct-center-hit", cx: 300, cy: 255, r: 86, fill: "transparent",
+        // r86 reached y341 and the rail starts at y321, so the centre hit sat ON TOP
+        // of the rail cells and swallowed their taps: pressing SWING opened the mode
+        // sheet instead of toggling. r62 spans x238..362 and y193..317, which is the
+        // numeral's own box and clear of both the rail and the steppers.
+        class: "ct-hit ct-center-hit", cx: 300, cy: 255, r: 62, fill: "transparent",
         role: "button", tabindex: "0", "aria-label": "Change mode", "aria-haspopup": "dialog",
       });
       svg.appendChild(this._refs.centerHit);
@@ -4107,7 +4121,10 @@
     _faceCells() {
       const out = [];
       const pct = this._facePct();
-      if (this._featureResolved("fan") !== false) {
+      // NOT _featureResolved("fan"): that helper only knows swing, led and sound and
+      // silently falls through to the sound switch for anything else, so the fan cell
+      // was gated on a beep entity existing. show_fan is the key that governs it.
+      if (this._config.show_fan !== false) {
         out.push({ key: "fan", value: pct == null ? "AUTO" : pct + "%", caption: "FAN",
           lit: pct != null, widest: "100%" });
       }
@@ -4115,7 +4132,7 @@
         const on = this._featureOn("swing");
         out.push({ key: "swing", value: on ? "ON" : "OFF", caption: "SWING", lit: on, widest: "OFF" });
       }
-      if (this._featureResolved("led") !== false) {
+      if (this._featureResolved("led") !== false && this._ledRef()) {
         const on = this._featureOn("led");
         out.push({ key: "led", value: on ? "ON" : "OFF", caption: "LED", lit: on, widest: "OFF" });
       }
@@ -5226,6 +5243,15 @@ ${FACE.KEYFRAMES}
         { name: "entity", required: true, selector: { entity: { domain: "climate" } } },
         { name: "name", selector: { text: {} } },
 
+        // Visible radios, not a dropdown: the three rings differ only by how they
+        // move, so a closed dropdown hides the entire decision. The migration promise
+        // rides the option label rather than a helper sentence underneath it.
+        { name: "fan_style", selector: { select: { mode: "list", options: [
+          { value: "dash", label: this._t("editor.opt.fan_style_dash") },
+          { value: "breeze", label: this._t("editor.opt.fan_style_breeze") },
+          { value: "silk", label: this._t("editor.opt.fan_style_silk") },
+        ] } } },
+
         { type: "expandable", name: "", title: this._t("editor.section.appearance"), icon: "mdi:palette", schema: [
           { name: "appearance", selector: { select: { mode: "dropdown", options: [
             { value: "theme", label: this._t("editor.opt.appearance_theme") },
@@ -5282,15 +5308,10 @@ ${FACE.KEYFRAMES}
 
         { type: "expandable", name: "", title: this._t("editor.section.fan"), icon: "mdi:fan", schema: [
           { name: "fan_entity", selector: { entity: { domain: "number" } } },
-          { type: "grid", schema: [
-            { name: "show_fan", selector: { select: { mode: "dropdown", options: autoTF } } },
-            { name: "fan_animation", selector: { boolean: {} } },
-          ] },
-          { name: "fan_animation_speed", selector: { select: { mode: "dropdown", options: [
-            { value: "dynamic", label: this._t("editor.opt.anim_dynamic") },
-            { value: "constant", label: this._t("editor.opt.anim_constant") },
-            { value: "off", label: this._t("editor.opt.anim_off") },
-          ] } } },
+          { name: "show_fan", selector: { select: { mode: "dropdown", options: autoTF } } },
+          // fan_animation and fan_animation_speed are gone from the GUI. Both drive
+          // the spinning clover, which the dial face does not draw, so the controls
+          // did nothing. Both keys are still READ, so existing YAML is unaffected.
         ] },
 
         { type: "expandable", name: "", title: this._t("editor.section.features"), icon: "mdi:tune", schema: [
