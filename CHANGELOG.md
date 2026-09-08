@@ -105,6 +105,10 @@ every key that shipped before this release still reads the same way.
   finger happened to be over, when the finger was never lifted at all. And a unit
   that went unavailable in the middle of a drag was still written to on release. All
   three now abandon the gesture and put the face back on what the unit reports.
+- The group card's house gauge had the same three, where a release writes every room
+  rather than one setpoint, plus a fourth: a second finger landing on the gauge
+  rebound its move and release handlers and stranded the old pair on the window,
+  where nothing could ever remove them.
 
 ### Changed
 - Every screenshot reshot against this release, and the demo animation rebuilt on the

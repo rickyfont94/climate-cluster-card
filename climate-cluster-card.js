@@ -8047,8 +8047,29 @@ ${FACE.KEYFRAMES}
       return Math.round(d.min + frac * (d.max - d.min));
     }
 
+    /* Whether this event belongs to the finger that started the house drag. The
+       move and up listeners are on WINDOW, so they hear every pointer on the page;
+       the dial's rings carry the same guard for the same reason. */
+    _ownHousePointer(e) {
+      if (!e || e.pointerId == null || this._housePointerId == null) return true;
+      return e.pointerId === this._housePointerId;
+    }
+
+    _houseTeardown() {
+      window.removeEventListener("pointermove", this._onHouseMove);
+      window.removeEventListener("pointerup", this._onHouseUp);
+      window.removeEventListener("pointercancel", this._onHouseUp);
+      this._houseDrag = false;
+      this._housePointerId = null;
+      if (this._houseRaf) { cancelAnimationFrame(this._houseRaf); this._houseRaf = 0; }
+    }
+
     _housePointerDown(e) {
       if (!this._config || this._config.layout === "classic") return;
+      /* A drag already owns the gauge. Re-entering here would rebind _onHouseMove
+         and _onHouseUp, and the OLD closures stay registered on window forever
+         because the removal only ever names the current ones. */
+      if (this._houseDrag) return;
       const band = e.target && e.target.closest ? e.target.closest('[data-act="house"]') : null;
       if (!band) return;
       const t = this._houseTempAt(e);
@@ -8056,9 +8077,10 @@ ${FACE.KEYFRAMES}
       e.preventDefault();
       this._zui = this._zui || {};
       this._houseDrag = true;
+      this._housePointerId = e.pointerId;
       try { e.target.setPointerCapture(e.pointerId); } catch (err) {}
       this._onHouseMove = (ev) => {
-        if (!this._houseDrag) return;
+        if (!this._houseDrag || !this._ownHousePointer(ev)) return;
         const v = this._houseTempAt(ev);
         if (v == null || v === this._zui.houseTarget) return;
         this._zui.houseTarget = v;
@@ -8070,13 +8092,20 @@ ${FACE.KEYFRAMES}
           this._zoneRepaint();
         });
       };
-      this._onHouseUp = () => {
-        window.removeEventListener("pointermove", this._onHouseMove);
-        window.removeEventListener("pointerup", this._onHouseUp);
-        window.removeEventListener("pointercancel", this._onHouseUp);
-        if (!this._houseDrag) return;
-        this._houseDrag = false;
+      this._onHouseUp = (ev) => {
+        if (!this._houseDrag || !this._ownHousePointer(ev)) return;
+        /* pointercancel is the browser taking the gesture, not a release: a scroll
+           won the touch, the app went to the background, a pen left range. Nothing
+           was let go of, so the whole house is not written to, and the dragged
+           value has to come off the gauge with it. */
+        if (ev && ev.type === "pointercancel") {
+          this._houseTeardown();
+          this._zui.houseTarget = null;
+          this._zoneRepaint();
+          return;
+        }
         const v = this._zui.houseTarget;
+        this._houseTeardown();
         if (v != null) this._groupAction("setpoint", String(v));
         // hold the dragged value while the rooms report back, then let go
         const held = v;

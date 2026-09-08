@@ -366,3 +366,66 @@ test("sync: a room that cannot do the majority mode is left alone", () => {
   assert.ok(!el._hass.calls.some((c) => c.service === "set_hvac_mode"),
     "never write a mode the unit does not advertise");
 });
+
+// ------------------------------------------------ the house drag, odd fingers ---
+// Same three defects the dial's rings had, in the card that shipped alongside it:
+// the move and up listeners are on WINDOW, so they hear every pointer on the page,
+// and nothing checked which one or whether the event was a release or a CANCEL.
+// Here it is worse than one setpoint, because a release writes the WHOLE house.
+
+// happy-dom lays nothing out, so a synthetic pointer cannot produce a real angle.
+// The geometry has its own tests; what these drive is the lifecycle around it.
+const houseDown = (el, id, at) => {
+  const band = el.shadowRoot.querySelector('[data-act="house"]');
+  assert.ok(band, "the module draws the band");
+  el._houseTempAt = typeof at === "function" ? at : () => (at == null ? 71 : at);
+  el._housePointerDown({ pointerId: id, clientX: 10, clientY: 10, target: band,
+    preventDefault() {} });
+  return el;
+};
+const sets = (el) => el._hass.calls.filter((c) => c.service === "set_temperature");
+
+test("house: a cancel abandons the drag instead of writing every room", () => {
+  const el = houseDown(makeGroup(), 1, 68);
+  assert.equal(el._zui.houseTarget, 68, "the finger is on 68");
+
+  el._onHouseUp({ type: "pointercancel", pointerId: 1 });
+  assert.deepEqual(el._hass.calls, [], "nothing was released, so nothing is written");
+  assert.equal(el._zui.houseTarget, null, "and the gauge stops showing a value nobody chose");
+  assert.ok(!el._houseDrag);
+});
+
+test("house: a second finger lifting does not commit the house", () => {
+  const el = houseDown(makeGroup(), 1, 68);
+
+  el._onHouseUp({ type: "pointerup", pointerId: 2 });
+  assert.deepEqual(el._hass.calls, [], "a stray pointer cannot end this drag");
+  assert.ok(el._houseDrag, "which is still running");
+
+  el._onHouseUp({ type: "pointerup", pointerId: 1 });
+  assert.ok(sets(el).length >= 1, "the finger that started it does commit");
+  assert.equal(sets(el)[0].data.temperature, 68);
+});
+
+test("house: a stray pointer moving does not drag the house", () => {
+  let v = 68;
+  const el = houseDown(makeGroup(), 1, () => v);
+
+  v = 61;
+  el._onHouseMove({ pointerId: 2, clientX: 900, clientY: 900 });
+  assert.equal(el._zui.houseTarget, 68, "a thumb resting on the dashboard is not the drag");
+
+  el._onHouseMove({ pointerId: 1, clientX: 900, clientY: 900 });
+  assert.equal(el._zui.houseTarget, 61, "the finger that started it still moves it");
+});
+
+test("house: a second pointerdown does not rebind and strand the listeners", () => {
+  const el = houseDown(makeGroup(), 1, 68);
+  const move = el._onHouseMove, up = el._onHouseUp;
+
+  houseDown(el, 2, 80);
+  assert.equal(el._onHouseMove, move, "rebinding would strand the old closure on window");
+  assert.equal(el._onHouseUp, up);
+  assert.equal(el._housePointerId, 1, "the first gesture still owns the gauge");
+  assert.equal(el._zui.houseTarget, 68, "and its value survived");
+});
