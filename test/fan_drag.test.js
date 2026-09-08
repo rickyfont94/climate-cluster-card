@@ -571,3 +571,45 @@ test("named fan: a numeric value picks the name nearest it, by the same rule", (
       names[i] + " is drawn at " + Math.round(f * 100) + "%, so " + Math.round(v) + " is that mode");
   }
 });
+
+// -------------------------------------------------- free value vs named stops ---
+// Measured on the hardware: all five units expose number.<id>_fan_speed declaring
+// min 1, max 100, step 1, so the ring really is a free 1..100 there and must not be
+// quantised to the five names underneath. A unit with ONLY named modes is the
+// opposite case: set_fan_mode takes a name, so showing 47% and sending "medium"
+// would be the card claiming a value the unit cannot hold.
+
+test("free drag: a 1..100 speed entity gives a free value, not a bucket", () => {
+  const c = mCard("cool", "auto", 40);          // number.ac_fan_speed, min 1 max 100
+  assert.ok(c._fanUsesNumber(), "this unit is driven by the number, not by the names");
+  assert.deepEqual(c._fanNumRange(), { min: 1, max: 100, step: 1 });
+
+  // sample the arc finely: every integer from 1 to 100 has to be reachable, which
+  // is what "free" means here. Five named modes would give five values.
+  const seen = new Set();
+  for (let i = 0; i <= 1000; i++) seen.add(c._snapFanValue(i / 1000));
+  assert.equal(seen.size, 100, "one hundred distinct speeds, not five buckets");
+  assert.equal(Math.min(...seen), 1);
+  assert.equal(Math.max(...seen), 100);
+  assert.equal(c._snapFanValue(0), 1);
+  assert.equal(c._snapFanValue(0.47), 48);      // 1 + .47*99
+  assert.equal(c._snapFanValue(1), 100);
+});
+
+test("free drag: the parked value does not narrow the range it can be dragged to", () => {
+  // the unit parks the number OUT of its own range (101, 102) to mean "no speed set";
+  // that is a reading, not a new maximum
+  const c = mCard("cool", "auto", 102);
+  assert.deepEqual(c._fanNumRange(), { min: 1, max: 100, step: 1 });
+  assert.equal(c._snapFanValue(1), 100, "a drag to the end is still 100, not 102");
+});
+
+test("free drag: a unit with only names snaps to its names, it does not fake a percent", () => {
+  const c = liveCard();                          // fan_modes only, no number entity
+  assert.ok(!c._fanUsesNumber());
+  const names = c._fanNamedModes();
+  for (const f of [0, 0.2, 0.4, 0.6, 0.8, 1]) {
+    const i = pickAt(c, f, names.length);
+    assert.ok(names[i], f + " lands on a mode this unit really has: " + names[i]);
+  }
+});
