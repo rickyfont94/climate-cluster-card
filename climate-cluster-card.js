@@ -7230,7 +7230,16 @@ ${ZONE.KEYFRAMES}
         + model.zones.map((z, i) => ZONE.tile(z, i, d)).join("") + "</div></div>";
 
       if (this._config.group_actions !== false) {
-        html += ZONE.footer(ZONE.groupActions(model, d, ui));
+        /* The module offers presets from a hardcoded four. The card asks the entities,
+           the way the shipped bar always has, so a unit with a preset outside that set
+           is offered it and one that rejects a member never sees it. */
+        const acts = ZONE.groupActions(model, d, ui)
+          .filter((a) => String(a.id).indexOf("preset:") !== 0);
+        for (const p of this._sharedPresets().slice(0, 2)) {
+          acts.push({ id: "preset:" + p, lit: true,
+            label: escapeText(String(p).replace(/_/g, " ")) });
+        }
+        html += ZONE.footer(acts);
       }
       if (ui.sheetIndex != null && model.zones[ui.sheetIndex]) {
         html += ZONE.sheet(model.zones[ui.sheetIndex], ui.sheetIndex);
@@ -7246,8 +7255,14 @@ ${ZONE.KEYFRAMES}
     _zoneAct(el) {
       const model = this._zoneModel();
       const ui = this._zui || (this._zui = {});
+      /* A tile scopes itself with data-zone. The SHEET does not: it is a sibling of
+         the tile grid, not a descendant of one tile, so its own room is the one the
+         interface state says is open. Without this every control inside the sheet
+         resolved to no room and did nothing at all. */
       const zoneEl = el.closest("[data-zone]");
-      const idx = zoneEl ? parseInt(zoneEl.dataset.zone, 10) : -1;
+      const inSheet = !!(el.closest('[data-act="panel"]') || el.closest('[data-act="backdrop"]'));
+      const idx = zoneEl ? parseInt(zoneEl.dataset.zone, 10)
+        : (inSheet && ui.sheetIndex != null ? ui.sheetIndex : -1);
       const z = idx >= 0 ? model.zones[idx] : null;
       const act = el.closest("[data-act]");
       const g = el.closest("[data-gact]");
@@ -7260,7 +7275,8 @@ ${ZONE.KEYFRAMES}
         const p = zp.dataset.zpre;
         // PREMAP is the setpoint each preset IMPLIES. Write the preset and let the
         // device report its own setpoint back rather than guessing it here.
-        const real = (this._st(z.id).attributes.preset_modes || [])
+        const st = this._st(z.id);
+        const real = (((st && st.attributes) || {}).preset_modes || [])
           .find((x) => String(x).toUpperCase() === p);
         if (real) this._call("climate", "set_preset_mode", { entity_id: z.id, preset_mode: real });
         return true;
@@ -7271,25 +7287,17 @@ ${ZONE.KEYFRAMES}
         if (sib[kind]) {
           this._call("switch", z[kind] ? "turn_off" : "turn_on", { entity_id: sib[kind] });
         } else if (kind === "swing") {
-          const a = this._st(z.id).attributes || {};
+          const a = ((this._st(z.id) || {}).attributes) || {};
           const list = Array.isArray(a.swing_modes) ? a.swing_modes : [];
           const want = z.swing ? "off" : (list.find((x) => String(x).toLowerCase() !== "off") || "on");
           if (list.length) this._call("climate", "set_swing_mode", { entity_id: z.id, swing_mode: want });
         }
         return true;
       }
-      if (act) {
-        const a = act.dataset.act;
-        if (a === "sheet" && idx >= 0) { this._zui.sheetIndex = idx; this._zoneRepaint(); return true; }
-        if (a === "close" || a === "backdrop") { this._zui.sheetIndex = null; this._zoneRepaint(); return true; }
-        if (a === "panel" || a === "footer" || a === "house") return true; // swallow, never close
-        if ((a === "inc" || a === "dec") && z && z.set != null) {
-          const step = num((this._st(z.id).attributes || {}).target_temp_step) || 1;
-          const v = z.set + (a === "inc" ? step : -step);
-          this._call("climate", "set_temperature", { entity_id: z.id, temperature: v });
-          return true;
-        }
-      }
+      /* The group buttons are checked BEFORE the generic data-act branch. The footer
+         carries data-act="footer" so that a tap on the bar itself is swallowed rather
+         than closing anything, and closest() walks up: from a button inside the bar it
+         reached that swallow first and every group action did nothing. */
       if (g) {
         const id = g.dataset.gact;
         if (id === "alloff") { this._zui.confirmOff = true; this._zoneRepaint(); return true; }
@@ -7316,7 +7324,20 @@ ${ZONE.KEYFRAMES}
           return true;
         }
         if (id.indexOf("preset:") === 0) {
-          this._groupAction("preset", id.slice(7).toLowerCase());
+          // the id carries the entity's OWN spelling, so nothing is re-cased on the way
+          this._groupAction("preset", id.slice(7));
+          return true;
+        }
+      }
+      if (act) {
+        const a = act.dataset.act;
+        if (a === "sheet" && idx >= 0) { this._zui.sheetIndex = idx; this._zoneRepaint(); return true; }
+        if (a === "close" || a === "backdrop") { this._zui.sheetIndex = null; this._zoneRepaint(); return true; }
+        if (a === "panel" || a === "footer" || a === "house") return true; // swallow, never close
+        if ((a === "inc" || a === "dec") && z && z.set != null) {
+          const step = num((((this._st(z.id) || {}).attributes) || {}).target_temp_step) || 1;
+          const v = z.set + (a === "inc" ? step : -step);
+          this._call("climate", "set_temperature", { entity_id: z.id, temperature: v });
           return true;
         }
       }

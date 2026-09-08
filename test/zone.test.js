@@ -211,3 +211,122 @@ test("editor: dropping a room does not resurrect it", () => {
   const ed = makeEditor({ entities: ["climate.sala", { entity: "climate.ricky", name: "Cuarto" }] });
   assert.deepEqual(ed._mergeEntities(["climate.sala"]), ["climate.sala"]);
 });
+
+// ------------------------------------------------------- the controls actually --
+// Every one of these dispatches a real click on a real rendered element and asserts
+// the service call it produced. The sheet opened and looked right while none of its
+// controls did anything, because the tile scopes itself with data-zone and the sheet
+// is a SIBLING of the tile grid rather than a descendant of one tile: a lookup that
+// only walked up to [data-zone] found no room and every branch bailed out silently.
+// "It rendered" cannot see that, so these click.
+
+function click(el, sel) {
+  const node = el.shadowRoot.querySelector(sel);
+  assert.ok(node, "no element matched " + sel);
+  node.dispatchEvent(new Event("click", { bubbles: true, composed: true }));
+  return node;
+}
+function openSheet(el, i) {
+  const tile = el.shadowRoot.querySelectorAll('[data-zone] [data-act="sheet"]')[i || 0];
+  assert.ok(tile, "the room numeral is tappable");
+  tile.dispatchEvent(new Event("click", { bubbles: true, composed: true }));
+  assert.ok(el.shadowRoot.querySelector('[data-act="panel"]'), "the sheet opened");
+  return el;
+}
+
+test("controls: tapping a room number opens that room's sheet, and it names that room", () => {
+  const el = openSheet(makeGroup(), 1);
+  assert.match(el.shadowRoot.querySelector('[data-act="panel"]').textContent, /Ricky/);
+});
+
+test("controls: a mode in the sheet writes to the room the sheet is for", () => {
+  const el = openSheet(makeGroup(), 1);
+  click(el, '[data-zmode="dry"]');
+  assert.deepEqual(el._hass.calls, [{ domain: "climate", service: "set_hvac_mode",
+    data: { entity_id: "climate.ricky", hvac_mode: "dry" } }]);
+});
+
+test("controls: a preset writes the entity's OWN casing, never the button's", () => {
+  const el = openSheet(makeGroup(), 0);
+  click(el, '[data-zpre="ECO"]');
+  // the buttons are upper case, the entity advertises "eco"
+  assert.deepEqual(el._hass.calls, [{ domain: "climate", service: "set_preset_mode",
+    data: { entity_id: "climate.sala", preset_mode: "eco" } }]);
+});
+
+test("controls: a preset the entity does not advertise writes nothing", () => {
+  const noPre = Object.assign({}, states, {
+    "climate.sala": zone("climate.sala", { preset_modes: ["none"], preset_mode: "none" }),
+  });
+  const el = openSheet(makeGroup({}, makeHass(noPre, { entities })), 0);
+  click(el, '[data-zpre="BOOST"]');
+  assert.deepEqual(el._hass.calls, []);
+});
+
+test("controls: swing falls back to the climate entity when there is no sibling switch", () => {
+  const sw = Object.assign({}, states, {
+    "climate.sala": zone("climate.sala", { swing_modes: ["off", "vertical"], swing_mode: "off" }),
+  });
+  const el = openSheet(makeGroup({}, makeHass(sw, { entities })), 0);
+  click(el, '[data-ztog="swing"]');
+  assert.deepEqual(el._hass.calls, [{ domain: "climate", service: "set_swing_mode",
+    data: { entity_id: "climate.sala", swing_mode: "vertical" } }]);
+});
+
+test("controls: a toggle with no entity behind it writes nothing rather than guessing", () => {
+  const el = openSheet(makeGroup(), 0);
+  click(el, '[data-ztog="led"]');
+  assert.deepEqual(el._hass.calls, []);
+});
+
+test("controls: the steppers move THAT room's setpoint by its own step", () => {
+  const el = makeGroup();
+  const tiles = el.shadowRoot.querySelectorAll("[data-zone]");
+  tiles[2].querySelector('[data-act="inc"]')
+    .dispatchEvent(new Event("click", { bubbles: true, composed: true }));
+  assert.deepEqual(el._hass.calls, [{ domain: "climate", service: "set_temperature",
+    data: { entity_id: "climate.elly", temperature: 71 } }]);   // elly is set to 70
+});
+
+test("controls: the close button and the backdrop both shut the sheet", () => {
+  const a = openSheet(makeGroup(), 0);
+  click(a, '[data-act="close"]');
+  assert.equal(a.shadowRoot.querySelector('[data-act="panel"]'), null);
+
+  const b = openSheet(makeGroup(), 0);
+  click(b, '[data-act="backdrop"]');
+  assert.equal(b.shadowRoot.querySelector('[data-act="panel"]'), null);
+});
+
+test("controls: a tap on the panel itself does not shut the sheet under your finger", () => {
+  const el = openSheet(makeGroup(), 0);
+  click(el, '[data-act="panel"]');
+  assert.ok(el.shadowRoot.querySelector('[data-act="panel"]'), "still open");
+});
+
+test("controls: all off arms first and only turns the house off on the second tap", () => {
+  const el = makeGroup();
+  click(el, '[data-gact="alloff"]');
+  assert.deepEqual(el._hass.calls, [], "the first tap writes nothing");
+  const armed = el.shadowRoot.querySelector('[data-gact="confirm"]');
+  assert.ok(armed, "it arms instead");
+  armed.dispatchEvent(new Event("click", { bubbles: true, composed: true }));
+  assert.equal(el._hass.calls.length, 1);
+  assert.equal(el._hass.calls[0].service, "turn_off");
+});
+
+test("controls: sync writes the house target to every room that can take one", () => {
+  const el = makeGroup();
+  click(el, '[data-gact="sync"]');
+  assert.equal(el._hass.calls.length, 1);
+  assert.equal(el._hass.calls[0].service, "set_temperature");
+  // the coldest setpoint of the three is elly's 70
+  assert.equal(el._hass.calls[0].data.temperature, 70);
+});
+
+test("controls: a group preset writes to every room, in each one's own casing", () => {
+  const el = makeGroup();
+  click(el, '[data-gact^="preset:"]');
+  assert.ok(el._hass.calls.length >= 1);
+  assert.ok(el._hass.calls.every((c) => c.service === "set_preset_mode"));
+});
