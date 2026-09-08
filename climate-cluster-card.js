@@ -475,7 +475,7 @@
     cool:     { ink: '#5CD6FF', light: '#bfeeff', word: 'COOL',     status: 'COOLING' },
     heat:     { ink: '#F2933A', light: '#FFD3A1', word: 'HEAT',     status: 'HEATING' },
     dry:      { ink: '#FFD166', light: '#FFE8AE', word: 'DRY',      status: 'DRYING' },
-    fan_only: { ink: '#9FB3C8', light: '#D5E1EC', word: 'FAN ONLY', status: 'CIRCULATING' },
+    fan_only: { ink: '#9FB3C8', light: '#D5E1EC', word: 'FAN', status: 'CIRCULATING' },
     off:      { ink: '#6A7480', light: '#9AA5B1', word: 'OFF',      status: 'IDLE' },
     auto:     { ink: '#7CE0B0', light: '#C8F3E2', word: 'AUTO',     status: 'BALANCING' }
   };
@@ -585,9 +585,13 @@
      digits sit left of the string centre by half the degree glyph. */
   function roomLabel(room, roomAngle) {
     var v = P(173, roomAngle);
+    /* The caption rides the SAME radial as the value, 14 units inboard. The handoff
+       offsets it a flat +15 in screen space, which reads correctly at the top of the
+       arc and swings it sideways into the band near either end. Deliberate deviation. */
+    var c = P(159, roomAngle);
     return '<text x="' + f(v[0]) + '" y="' + f(v[1]) + '" text-anchor="middle" ' +
         'dominant-baseline="central" font-size="21" fill="#eceff7">' + room + '\u00b0</text>' +
-      '<text x="' + f(v[0] - 3.6) + '" y="' + f(v[1] + 15) + '" text-anchor="middle" ' +
+      '<text x="' + f(c[0]) + '" y="' + f(c[1]) + '" text-anchor="middle" ' +
         'dominant-baseline="central" font-size="9.5" font-weight="600" letter-spacing="1.6" ' +
         'fill="rgba(200,215,235,.55)">ROOM</text>';
   }
@@ -754,7 +758,7 @@
     var ink = MODES[mode].ink, end = fanAngle(fanPct), out = fanTrack();
     if (fanPct == null) {
       out += '<path d="' + arcPath(RF, A0, A0 + SPAN) + '" fill="none" stroke="' + rgba(ink, .26) +
-        '" stroke-width="5" stroke-linecap="round" stroke-dasharray="2.5 13" ' +
+        '" stroke-width="5" stroke-linecap="round" stroke-dasharray="3 11" ' +
         'style="animation:creep 2.4s linear infinite"></path>';
     } else {
       var dur = Math.min(3.2, Math.max(0.55, 70 / fanPct));
@@ -1856,6 +1860,10 @@
           this._refs.face.appendChild(g);
         });
       svg.appendChild(this._refs.face);
+      // The face sits above the legacy hit targets, so its cells and steppers
+      // swallow the taps that used to reach them. One delegated handler, since the
+      // markup is regenerated as a string and per-node listeners would not survive.
+      this._refs.face.addEventListener("click", (ev) => this._onFaceClick(ev));
 
       // ---- FAN HANDLE (glass chevron; tip at +Y so rotate(ang) faces inward) ----
       // overflow:hidden on .ct-svg is the hard backstop so the chevron never bleeds.
@@ -4100,22 +4108,22 @@
       const out = [];
       const pct = this._facePct();
       if (this._featureResolved("fan") !== false) {
-        out.push({ value: pct == null ? "AUTO" : pct + "%", caption: "FAN",
+        out.push({ key: "fan", value: pct == null ? "AUTO" : pct + "%", caption: "FAN",
           lit: pct != null, widest: "100%" });
       }
       if (this._featureResolved("swing") !== false) {
         const on = this._featureOn("swing");
-        out.push({ value: on ? "ON" : "OFF", caption: "SWING", lit: on, widest: "OFF" });
+        out.push({ key: "swing", value: on ? "ON" : "OFF", caption: "SWING", lit: on, widest: "OFF" });
       }
       if (this._featureResolved("led") !== false) {
         const on = this._featureOn("led");
-        out.push({ value: on ? "ON" : "OFF", caption: "LED", lit: on, widest: "OFF" });
+        out.push({ key: "led", value: on ? "ON" : "OFF", caption: "LED", lit: on, widest: "OFF" });
       }
-      (this._extraToggles || []).slice(0, 3).forEach((it) => {
+      (this._extraToggles || []).slice(0, 3).forEach((it, i) => {
         const st = this._st(it.entity);
         if (!st) return;
         const on = st.state === "on";
-        out.push({ value: on ? "ON" : "OFF", widest: "OFF", lit: on,
+        out.push({ key: "extra:" + i, value: on ? "ON" : "OFF", widest: "OFF", lit: on,
           caption: String(it.name || it.entity.split(".")[1]).toUpperCase().slice(0, 8) });
       });
       return out;
@@ -4136,7 +4144,9 @@
         room: room == null ? fallback : room,
         min: r.lo, max: r.hi,
         fanPct: this._facePct(),
-        preset: String(a2.preset_mode || "").toUpperCase(),
+        // _presetActive holds the optimistic value, so tapping a preset shows its
+        // glyph immediately instead of waiting for the device to report back.
+        preset: String(this._presetActive() || "").toUpperCase(),
         fanStyle: this._fanStyle || "dash",
         cells: this._faceCells(),
       };
@@ -4162,8 +4172,92 @@
         this._refs.faceFan.innerHTML = (FACE.FAN_STYLES[st.fanStyle] || FACE.fanDash)(st.fanPct, st.mode);
       }
       this._paintFaceMoving(setA, roomA, st);
+      this._faceCellKeys = st.cells.map((c) => c.key);
       this._refs.faceRail.innerHTML = FACE.rail(st.cells, st.mode);
       this._hideLegacyFace();
+    }
+
+    // The status cluster reserves space for the word with a flat 11.6 units per
+    // character. COOLING at 16px with 3.4 tracking is wider than that, so the preset
+    // glyph lands on the G. Measured here instead: the glyph is pushed to 12 units
+    // past the real right edge of the word, then the whole cluster is re-centred on
+    // 300. Font independent, so it survives a custom font too.
+    _fixStatusLine() {
+      const host = this._refs.faceCenter;
+      if (!host) return;
+      const group = host.querySelector("g");
+      if (!group) return;
+      group.removeAttribute("transform");
+      const word = group.querySelector("text");
+      const glyph = group.querySelector("g");
+      if (!word) return;
+      let wb;
+      try { wb = word.getBBox(); } catch (e) { return; }   // not laid out yet
+      if (!wb || !wb.width) return;
+      if (glyph) {
+        const t = /translate\(([-0-9.]+)[ ,]+([-0-9.]+)\)/.exec(glyph.getAttribute("transform") || "");
+        let gb;
+        try { gb = glyph.getBBox(); } catch (e) { gb = null; }
+        if (t && gb && gb.width) {
+          // getBBox on the glyph group returns LOCAL coordinates, before its own
+          // transform, while the word is a plain text in parent space. Add the
+          // translate back in or the two are measured in different spaces and the
+          // shift comes out enormous.
+          const absLeft = parseFloat(t[1]) + gb.x;
+          const shift = (wb.x + wb.width + 12) - absLeft;
+          glyph.setAttribute("transform",
+            "translate(" + (parseFloat(t[1]) + shift).toFixed(1) + "," + t[2] + ")");
+        }
+      }
+      let all;
+      try { all = group.getBBox(); } catch (e) { return; }
+      if (!all || !all.width) return;
+      const dx = CX - (all.x + all.width / 2);
+      group.setAttribute("transform", "translate(" + dx.toFixed(1) + ",0)");
+    }
+
+    _onFaceClick(ev) {
+      const t = ev.target && ev.target.closest ? ev.target : null;
+      if (!t) return;
+      const step = t.closest("[data-act]");
+      if (step) {
+        ev.stopPropagation();
+        this._stepOnce(step.getAttribute("data-act") === "up" ? 1 : -1);
+        return;
+      }
+      const cell = t.closest("[data-cell]");
+      if (!cell) return;
+      ev.stopPropagation();
+      const key = (this._faceCellKeys || [])[+cell.getAttribute("data-cell")];
+      if (!key) return;
+      if (key === "fan") { this._fanCloverTap(); return; }
+      if (key === "swing" || key === "led" || key === "sound") {
+        if (this._featureAvail(key)) this._featureToggle(key);
+        return;
+      }
+      if (key.indexOf("extra:") === 0) this._xTap(+key.slice(6));
+    }
+
+    // The room reading owns its patch of the scale. Any numeral it lands on is
+    // hidden, because the reading already states that value and two numbers on top
+    // of each other state nothing. Measured from the rendered boxes, since the
+    // overlap depends on glyph width and not on the radius alone.
+    _declutterScale() {
+      const scale = this._refs.faceScale, room = this._refs.faceRoom;
+      if (!scale || !room) return;
+      const nums = scale.querySelectorAll("text");
+      nums.forEach((n) => { n.style.visibility = ""; });
+      let box;
+      try { box = room.getBBox(); } catch (e) { return; }   // not laid out yet
+      if (!box || !box.width) return;
+      const pad = 3;
+      nums.forEach((n) => {
+        let b2;
+        try { b2 = n.getBBox(); } catch (e) { return; }
+        const hit = b2.x < box.x + box.width + pad && b2.x + b2.width + pad > box.x
+          && b2.y < box.y + box.height + pad && b2.y + b2.height + pad > box.y;
+        if (hit) n.style.visibility = "hidden";
+      });
     }
 
     // The parts a drag moves. Deliberately small.
@@ -4174,6 +4268,8 @@
       this._refs.faceNeedle.innerHTML = FACE.needle(setA);
       this._refs.faceCenter.innerHTML = FACE.modeWord(st.mode) + FACE.bigNumeral(st.set)
         + FACE.statusLine(st.mode, st.action, st.preset);
+      this._fixStatusLine();
+      this._declutterScale();
     }
 
     // Paint the fan ring for a percent (number.* entity).
@@ -4909,19 +5005,19 @@ ${FACE.KEYFRAMES}
 .ct-pop.open{ opacity:1; visibility:visible; pointer-events:auto; transition:opacity .18s ease; }
 .ct-sheet{
   background:var(--ha-card-background, var(--card-background-color, linear-gradient(180deg, rgba(24,31,40,.92), rgba(12,17,23,.94))));
-  border:1px solid var(--divider-color, rgba(234,235,238,.12)); border-radius:22px; padding:22px;
+  border:1px solid var(--divider-color, rgba(234,235,238,.12)); border-radius:16px; padding:14px;
   -webkit-backdrop-filter:blur(18px) saturate(120%); backdrop-filter:blur(18px) saturate(120%);
   box-shadow:0 24px 60px rgba(0,0,0,.6), inset 0 1px 1px rgba(255,255,255,.05);
-  display:grid; grid-template-columns:repeat(3,1fr); gap:12px;
+  display:grid; grid-template-columns:repeat(3,1fr); gap:8px;
   transform:scale(.92); transition:transform .18s ease;
   font-family:var(--ct-font);
 }
 .ct-pop.open .ct-sheet{ transform:scale(1); }
 .ct-sheet button{
-  min-width:120px; padding:18px 14px; cursor:pointer;
+  min-width:74px; padding:9px 10px; cursor:pointer;
   background:var(--secondary-background-color, rgba(30,40,52,.55)); color:var(--secondary-text-color, #9aa8b6);
   border:1px solid var(--divider-color, rgba(234,235,238,.14)); border-radius:12px;
-  font:inherit; font-size:15px; letter-spacing:2px; text-transform:uppercase; transition:.15s;
+  font:inherit; font-size:13px; letter-spacing:1.4px; text-transform:uppercase; transition:.15s;
 }
 .ct-sheet button:hover{ border-color:color-mix(in srgb, var(--ct-lit, var(--ct-accent)) 45%, transparent); color:var(--primary-text-color, #c6d3df); }
 /* The lit mode button wears its OWN mode color (--ct-lit, set per button in
@@ -4935,7 +5031,7 @@ ${FACE.KEYFRAMES}
 }
 /* Close button: pinned to the sheet corner, never a grid cell. The extra top
    padding is the band it sits in, so it never covers the first row of modes. */
-.ct-sheet{ position:relative; padding-top:52px; }
+.ct-sheet{ position:relative; padding-top:38px; }
 .ct-sheet button.ct-popclose{
   position:absolute; top:10px; right:10px;
   min-width:0; width:36px; height:36px; padding:0;
@@ -4968,8 +5064,8 @@ ${FACE.KEYFRAMES}
   border-top:1px solid rgba(234,235,238,.12);
 }
 .ct-sheet button.ct-preset{
-  min-width:0; padding:10px 18px; border-radius:999px;
-  font-size:13px; letter-spacing:1.5px; line-height:1;
+  min-width:0; padding:7px 13px; border-radius:999px;
+  font-size:12px; letter-spacing:1.2px; line-height:1;
   background:var(--secondary-background-color, rgba(30,40,52,.45));
   color:var(--secondary-text-color, #8a98a6);
   border:1px solid var(--divider-color, rgba(234,235,238,.14));
@@ -4992,8 +5088,8 @@ ${FACE.KEYFRAMES}
 /* Glass toggle chip. Higher specificity than ".ct-sheet button" so it overrides the
    mode-button min-width/padding/font. Dim grey by default; lit accent when .on. */
 .ct-sheet button.ct-toggle{
-  min-width:86px; padding:10px 14px;
-  display:flex; flex-direction:column; align-items:center; gap:6px;
+  min-width:64px; padding:7px 10px;
+  display:flex; flex-direction:column; align-items:center; gap:4px;
   background:var(--secondary-background-color, rgba(30,40,52,.45)); color:var(--secondary-text-color, #8a98a6);
   border:1px solid var(--divider-color, rgba(234,235,238,.14)); border-radius:12px;
   font-size:12px; letter-spacing:1.5px; line-height:1; transition:.15s;

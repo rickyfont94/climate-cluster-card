@@ -48,3 +48,8 @@ lerna-debug.log*
 ehthumbs.db
 Thumbs.db
 desktop.ini
+
+# Local preview build. Generated from climate-cluster-card.js with the element names
+# renamed, because the HACS copy registers the real names first and would win.
+cccdev-*.js
+devname.txt
