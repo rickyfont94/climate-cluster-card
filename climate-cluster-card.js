@@ -1742,6 +1742,10 @@
     return out.replace(/\u0001DEFS(\d+)\u0001/g, (m, i) => defs[Number(i)]);
   }
 
+  // ClimateEntityFeature.TURN_ON. An entity that advertises it can be asked to turn
+  // itself on without the card choosing a mode on its behalf.
+  const CLIMATE_TURN_ON = 128;
+
   const HERO_MAX_W = 166;              // clear span between the two steppers, less air
 
   const CX = 300, CY = 284;            // _cx / _cy
@@ -7797,13 +7801,33 @@ ${ZONE.KEYFRAMES}
           return true;
         }
         if (id === "allon") {
-          // No blanket cool. Each zone goes back to a mode it advertises, preferring
-          // the one it was last seen in; without that there is nothing honest to pick
-          // and the zone is left alone rather than guessed at.
+          /* No blanket cool, but no dead button either. The first version only wrote
+             for zones whose previous mode it had happened to see, and it can only see
+             one by watching that zone turn off. A card opened on an already-off house
+             remembered nothing, so the button did nothing at all, which is exactly
+             when it is the only button on offer.
+
+             Three steps, most informed first: the mode it was last seen in, if the
+             entity still advertises it; then climate.turn_on, which is the device
+             choosing for itself rather than the card guessing; then the entity's own
+             first non-off mode, for a unit too old to have turn_on. */
           const prev = this._zonePrev || {};
           model.zones.forEach((z) => {
+            const st = this._st(z.id);
+            if (!st) return;
+            const a = st.attributes || {};
+            const modes = Array.isArray(a.hvac_modes) ? a.hvac_modes : [];
             const want = prev[z.id];
-            if (want) this._call("climate", "set_hvac_mode", { entity_id: z.id, hvac_mode: want });
+            if (want && (!modes.length || modes.indexOf(want) >= 0)) {
+              this._call("climate", "set_hvac_mode", { entity_id: z.id, hvac_mode: want });
+              return;
+            }
+            if ((num(a.supported_features) || 0) & CLIMATE_TURN_ON) {
+              this._call("climate", "turn_on", { entity_id: z.id });
+              return;
+            }
+            const first = modes.find((m) => String(m).toLowerCase() !== "off");
+            if (first) this._call("climate", "set_hvac_mode", { entity_id: z.id, hvac_mode: first });
           });
           return true;
         }

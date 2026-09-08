@@ -430,3 +430,62 @@ test("theme: the ground is measured, so a plain light theme is covered too", () 
   assert.ok(["light", "dark"].includes(card.getAttribute("data-ink")),
     "the card stamps which way round its ground is");
 });
+
+// ----------------------------------------------------------------- all on ------
+// The button only appears when every room is off, and the first version only wrote
+// for rooms whose previous mode it had happened to see. It can only see one by
+// watching that room turn off, so a card opened on an already-off house remembered
+// nothing and the button did nothing at all.
+
+const offStates = (over) => {
+  const st = {};
+  for (const id of ids) {
+    st[id] = { entity_id: id, state: "off", attributes: Object.assign({
+      friendly_name: "Aire " + id.split(".")[1],
+      hvac_modes: ["off", "cool", "heat"],
+      current_temperature: 76, temperature: 74, min_temp: 61, max_temp: 86,
+    }, over || {}) };
+  }
+  return st;
+};
+const clickG = (el, act) => {
+  const n = el.shadowRoot.querySelector('[data-gact="' + act + '"]');
+  assert.ok(n, "no button for " + act);
+  n.dispatchEvent(new Event("click", { bubbles: true, composed: true }));
+  return el;
+};
+
+test("all on: a card opened on an already-off house still turns it on", () => {
+  const el = makeGroup({}, makeHass(offStates(), { entities }));
+  assert.ok(el.shadowRoot.querySelector('[data-gact="allon"]'), "the button is offered");
+  clickG(el, "allon");
+  assert.equal(el._hass.calls.length, ids.length, "every room gets a command");
+  for (const c of el._hass.calls) assert.equal(c.domain, "climate");
+});
+
+test("all on: it asks the DEVICE to turn on when it can, rather than picking a mode", () => {
+  // supported_features carries ClimateEntityFeature.TURN_ON
+  const el = makeGroup({}, makeHass(offStates({ supported_features: 128 }), { entities }));
+  clickG(el, "allon");
+  assert.ok(el._hass.calls.every((c) => c.service === "turn_on"),
+    "turn_on, not a mode the card chose");
+});
+
+test("all on: a unit without turn_on gets its OWN first non-off mode", () => {
+  const st = offStates();
+  st["climate.sala"].attributes.hvac_modes = ["off", "heat"];   // no cool at all
+  const el = makeGroup({}, makeHass(st, { entities }));
+  clickG(el, "allon");
+  const sala = el._hass.calls.find((c) => c.data.entity_id === "climate.sala");
+  assert.equal(sala.service, "set_hvac_mode");
+  assert.equal(sala.data.hvac_mode, "heat", "never a blanket cool onto a heat-only unit");
+});
+
+test("all on: a room it watched turn off goes back to what it was", () => {
+  const el = makeGroup();                      // alive: cool
+  el.hass = makeHass(offStates(), { entities });   // now off, so prev is remembered
+  clickG(el, "allon");
+  const one = el._hass.calls.find((c) => c.data.entity_id === "climate.sala");
+  assert.equal(one.service, "set_hvac_mode");
+  assert.equal(one.data.hvac_mode, "cool", "restored, not guessed");
+});
