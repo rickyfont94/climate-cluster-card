@@ -7304,8 +7304,14 @@ ${ZONE.KEYFRAMES}
         .filter((p) => typeof p === "string");
       const sib = this._zoneSiblings(z.id);
 
+      /* The sheet publishes the ROOM's mode ink, which is what the shared stylesheet
+         lights a selected preset and a lit toggle with. Without it they fell back to
+         the fixed cyan accent, so a room in AUTO showed a yellow mode button above a
+         cyan preset row while the dial showed both in yellow. Same sheet, and now the
+         same answer to "what colour is this room". */
+      const ink = (ZONE.MODES[z.mode] || ZONE.MODES.off).ink;
       let out = '<div class="ct-pop open" data-act="backdrop">'
-        + '<div class="ct-sheet" data-act="panel">'
+        + '<div class="ct-sheet" data-act="panel" style="--ct-mode-ink:' + ink + '">'
         + '<button type="button" class="ct-popclose" data-act="close" aria-label="'
         + escapeAttr(this._t("close")) + '">'
         + '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">'

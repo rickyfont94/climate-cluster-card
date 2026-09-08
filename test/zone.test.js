@@ -377,3 +377,18 @@ test("controls: a group preset writes to every room, in each one's own casing", 
   assert.ok(el._hass.calls.length >= 1);
   assert.ok(el._hass.calls.every((c) => c.service === "set_preset_mode"));
 });
+
+test("controls: the sheet lights presets and toggles in the ROOM's mode ink", () => {
+  // A room in AUTO showed a yellow mode button above a cyan preset row, because the
+  // shared stylesheet lights those from --ct-mode-ink and the group card published
+  // none, so they fell back to the fixed accent. The dial lights all three the same.
+  const auto = Object.assign({}, states, { "climate.sala": zone("climate.sala") });
+  auto["climate.sala"].state = "auto";
+  const el = openSheet(makeGroup({}, makeHass(auto, { entities })), 0);
+  const sheet = el.shadowRoot.querySelector(".ct-sheet");
+  assert.match(sheet.getAttribute("style") || "", /--ct-mode-ink:\s*rgb\(255,220,90\)/);
+
+  const cool = openSheet(makeGroup(), 0).shadowRoot.querySelector(".ct-sheet");
+  assert.match(cool.getAttribute("style") || "", /--ct-mode-ink:\s*#5CD6FF/i,
+    "and it follows the room, not the card");
+});
