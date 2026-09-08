@@ -62,3 +62,38 @@ test("an unset mode keeps the module's own ink, not the card palette", () => {
   // the card palette would repaint dry from amber to teal, which is a redesign.
   assert.match(card._refs.faceCenter.innerHTML, /5CD6FF/i);
 });
+
+// The humidity line is the fourth line of the ORIGINAL centre stack, and it sat at
+// y 216 with the old numeral starting at 244. The new numeral is 104 tall on a 272
+// baseline, so 216 lands inside the digits: a unit reporting humidity drew "RH 54%"
+// straight across its own setpoint. It shipped that way because no fixture in this
+// suite reported current_humidity, so nothing rendered the collision.
+const withRh = (over) => {
+  const st = JSON.parse(JSON.stringify(fx.states));
+  Object.assign(st["climate.aire_sala"].attributes, { current_humidity: 54 }, over || {});
+  return makeHass(st, { entities: fx.entities });
+};
+
+test("humidity: the RH line clears the new numeral and the status line", () => {
+  const card = liveCard(Object.assign({}, fx.config), withRh());
+  const rh = card._refs.rhCap;
+  assert.notEqual(rh.style.display, "none", "the entity reports it, so it is drawn");
+  const y = Number(rh.getAttribute("y"));
+  assert.ok(y > 272, "below the numeral's baseline, not through the digits: " + y);
+  assert.ok(y < 297, "and above the status line: " + y);
+});
+
+test("humidity: heat_cool keeps the original face, so RH goes back where it was", () => {
+  // starts on the new face, where the line above has just proved it moves
+  const card = liveCard(Object.assign({}, fx.config), withRh());
+  assert.equal(Number(card._refs.rhCap.getAttribute("y")), 288);
+
+  const st = JSON.parse(JSON.stringify(fx.states));
+  st["climate.aire_sala"].state = "heat_cool";
+  Object.assign(st["climate.aire_sala"].attributes, {
+    current_humidity: 54, target_temp_low: 68, target_temp_high: 76, temperature: null,
+  });
+  card.hass = makeHass(st, { entities: fx.entities });
+  assert.equal(Number(card._refs.rhCap.getAttribute("y")), 216,
+    "the original stack has its own room for it");
+});

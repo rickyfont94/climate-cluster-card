@@ -239,3 +239,25 @@ test("bar: the off button keeps all three of its faces under one name", () => {
   assert.ok(el.shadowRoot.querySelector('[data-gact="confirm"]'),
     "arming still works when the bar was named explicitly");
 });
+
+// action_rows is a shipped key, and it worked on the classic layout only. On the
+// layout this release makes the default it was accepted by the editor and then
+// ignored, which is the same defect class as show_scale on the new dial face.
+test("bar: action_rows lays the buttons out in the rows asked for", () => {
+  const loose = makeGroup().shadowRoot.querySelector('[data-act="footer"]');
+  assert.match(loose.getAttribute("style"), /display:flex/, "unset stays a wrapping row");
+
+  const el = makeGroup({ action_rows: 2 });
+  const bar = el.shadowRoot.querySelector('[data-act="footer"]');
+  const n = el.shadowRoot.querySelectorAll("[data-gact]").length;
+  assert.match(bar.getAttribute("style"), /display:grid/, "a row count makes it a grid");
+  assert.ok(bar.getAttribute("style").includes("repeat(" + Math.ceil(n / 2) + ","),
+    "columns worked out from the count: " + bar.getAttribute("style"));
+});
+
+test("bar: a silly action_rows is ignored rather than breaking the bar", () => {
+  for (const bad of ["abc", 0, -2, null]) {
+    const bar = makeGroup({ action_rows: bad }).shadowRoot.querySelector('[data-act="footer"]');
+    assert.match(bar.getAttribute("style"), /display:flex/, JSON.stringify(bad));
+  }
+});

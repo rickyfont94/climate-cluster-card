@@ -4981,6 +4981,15 @@
         const n = this._refs[k];
         if (n && n.style) n.style.display = "none";
       });
+      /* RH is not hidden, it is MOVED. The original face stacked mode, NOW, RH and
+         the numeral down the centre, so RH sat at 216 with the numeral starting at
+         244. The new numeral is 104 tall with its baseline at 272, which puts 216
+         inside the digits: a unit reporting humidity drew "RH 54%" straight across
+         its own setpoint. There is a clear 25 unit band between that baseline and
+         the status line, so it goes there, smaller, as a fourth line rather than a
+         collision. Anything wider than the numeral would not fit, and humidity is
+         always three characters and a sign. */
+      this._placeRh(300, 288, "13", "2");
       // The legacy steppers are kept because they carry the press-and-repeat
       // handlers; only their painted circle and glyph are switched off, and the
       // group stays as the hit target over the new ones.
@@ -4999,9 +5008,21 @@
         const n = this._refs[k];
         if (n && n.style) n.style.display = "";
       });
+      this._placeRh(CX, 216, "15", "2.5");
       (this._refs.steps || []).forEach((x) => {
         [...x.g.childNodes].forEach((n) => { if (n.style) n.style.display = ""; });
       });
+    }
+
+    // Only the geometry. Whether it is drawn at all stays with show_humidity, which
+    // is decided once further down _render for both faces.
+    _placeRh(x, y, size, tracking) {
+      const n = this._refs.rhCap;
+      if (!n) return;
+      n.setAttribute("x", x);
+      n.setAttribute("y", y);
+      n.setAttribute("font-size", size);
+      n.setAttribute("letter-spacing", tracking);
     }
 
     _faceMode() {
@@ -7742,7 +7763,7 @@ ${FACE.KEYFRAMES}
         + model.zones.map((z, i) => ZONE.tile(z, i, d)).join("") + "</div></div>";
 
       if (this._config.group_actions !== false) {
-        html += ZONE.footer(this._zoneActions(model, d, ui));
+        html += this._zoneFooter(this._zoneActions(model, d, ui));
       }
       html += "</div>";
       this._pendingDeclutter = true;
@@ -7863,6 +7884,20 @@ ${FACE.KEYFRAMES}
       const hit = a.x < b.x + b.width && b.x < a.x + a.width
         && a.y < b.y + b.height && b.y < a.y + a.height;
       if (hit) lb.style.display = "none";
+    }
+
+    /* `action_rows` is a shipped key and it worked on the classic layout only, so on
+       the layout this release makes the default it was accepted by the editor and
+       then ignored. The module's bar is a wrapping flex row written as an inline
+       style, and an inline style beats any stylesheet, so the row is rewritten here
+       the same way the zone card's colours are. */
+    _zoneFooter(acts) {
+      const html = ZONE.footer(acts);
+      const forced = this._gridStyle("action_rows", acts.length);
+      if (!forced) return html;
+      const cols = /repeat\((\d+)/.exec(forced);
+      return html.replace("display:flex; flex-wrap:wrap; justify-content:center; ",
+        "display:grid; grid-template-columns:repeat(" + cols[1] + ",minmax(0,1fr)); ");
     }
 
     /* Which buttons the bar carries, and in what order.

@@ -143,10 +143,10 @@ glass_color: "#0E1A24" # tint for the frosted panel
 accent: "#4ADD5F"      # used on the running count and the buttons
 ```
 
-Tap a room's number and that room's sheet opens: its modes, its presets, its fan and
-swing, and its own plus and minus. It is the same sheet the single dial opens, so the
-two cards behave identically once you are inside one. Drag the house gauge to move
-every room at once.
+Tap a room's number and that room's sheet opens: its modes, its presets and its own
+hardware toggles. It is the same object the single dial opens, so the two cards behave
+identically once you are inside one. Plus and minus sit on the tile itself, and
+dragging the house gauge moves every room at once.
 
 **Every option is in the visual editor here too.**
 
@@ -166,7 +166,7 @@ every room at once.
 | `hero` | `average` \| `hottest` | `average` | What the big gauge reads. **`layout: classic` only.** |
 | `tap_zone` | `focus` \| `more-info` | `focus` | What tapping a tile does. **`layout: classic` only.** |
 
-<img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/group-rows.png" alt="Group card with the zones on one row" width="720">
+<img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/group-rows.png" alt="Multi-zone card in its vertical shape" width="470">
 
 **All off** becomes **All on** when the whole house is off, and puts each room back the
 way it was rather than picking a mode for it. **Sync all** matches the temperature *and*
@@ -209,11 +209,11 @@ extra_toggles:
   <td><img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/preview.png" alt="Two-ring dial" width="330"><br><b>Two-ring dial</b>, inner is temp, outer is fan</td>
   <td><img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/view-modes.png" alt="Mode popup" width="330"><br><b>Mode popup</b> with the feature chips</td>
 </tr><tr>
-  <td><img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/theme-light.png" alt="Light theme" width="330"><br><b>Light theme</b></td>
-  <td><img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/theme-dark.png" alt="Dark theme" width="330"><br><b>Dark theme</b></td>
+  <td><img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/zone-sheet.png" alt="A room's sheet on the multi-zone card" width="330"><br><b>A room's sheet</b>, the same object the dial opens</td>
+  <td><img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/theme-dark.png" alt="Preset glyph and an auto fan" width="330"><br><b>Presets</b> read as a glyph beside the status</td>
 </tr><tr>
-  <td><img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/glass-hibiscus.png" alt="Frosted glass, pink accent" width="330"><br><b>Frosted glass</b>, your own tint and accent</td>
-  <td><img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/glass-binnacle.png" alt="Frosted glass, green accent" width="330"><br><b>Frosted glass</b>, a second tint on the same card</td>
+  <td><img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/glass-hibiscus.png" alt="Frosted glass, pink tint" width="330"><br><b>Frosted glass</b>, your own tint over your wallpaper</td>
+  <td><img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/glass-binnacle.png" alt="Frosted glass, teal tint" width="330"><br><b>Frosted glass</b>, a second tint on the same card</td>
 </tr></table>
 
 </details>

@@ -90,6 +90,18 @@ every key that shipped before this release still reads the same way.
 - The spinning glyph collided with the longer status words.
 - The room dot did not breathe, while the dial's status dot did. Both now run from
   one keyframe so they cannot drift to two rates that look almost the same.
+- A unit reporting `current_humidity` drew "RH 54%" straight across its own setpoint.
+  The humidity readout is the fourth line of the ORIGINAL centre stack, at a height
+  the new numeral occupies. It moves to the clear band under the numeral, and goes
+  back where it was on `heat_cool`, which keeps the original face.
+- `action_rows` worked on `layout: classic` only, so on the layout this release makes
+  the default it was accepted by the editor and then ignored.
+
+### Changed
+- Every screenshot reshot against this release, and the demo animation rebuilt on the
+  new dial. The light-theme frame is gone from the gallery: the card still follows a
+  light theme, but the frame was a worse advertisement than the two it sat between.
+  A room's sheet takes its place. The asset directory drops from 8.0 MB to 5.2 MB.
 
 ### Removed
 - The handoff face's dashed fan ring. `fan_style` was never able to select it.
