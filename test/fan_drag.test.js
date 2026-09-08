@@ -25,6 +25,17 @@ const states = {
 };
 const entities = { "climate.ac": { entity_id: "climate.ac", device_id: "d1" } };
 
+/* The animated fan styles draw their flow in an HTML overlay the compositor rotates,
+   one <svg class="ct-fanband"> per band, clipped to the reading by a CSS polygon on the
+   .ct-fanflow wrapper. These read that structure. */
+function bands(card) {
+  return [...card._refs.fanLayer.querySelectorAll("svg.ct-fanband")];
+}
+function fanWindow(card) {
+  const flow = card._refs.fanLayer.querySelector(".ct-fanflow");
+  return flow ? (flow.style.getPropertyValue("clip-path") || flow.getAttribute("style") || "") : "";
+}
+
 function liveCard(extra) {
   const card = document.createElement("climate-cluster-card");
   card.setConfig(Object.assign({ entity: "climate.ac" }, extra || {}));
@@ -69,8 +80,9 @@ test("fan drag: a drag can never land on auto, and settling to auto reads AUTO",
    Assert the invariant, not the mechanism: the window has to come back. */
 test("fan drag: a full render puts the ring back on the committed reading", () => {
   const card = liveCard();
-  const win = () => card._refs.faceFan.querySelector(".ct-fanwin").getAttribute("d");
+  const win = () => fanWindow(card);
   const atRest = win();
+  assert.ok(atRest.startsWith("polygon("), "the flow is clipped to the reading");
 
   card._paintFanNamed(["low", "medium", "high"], "high");
   assert.notEqual(win(), atRest, "the window follows the finger");
@@ -79,10 +91,11 @@ test("fan drag: a full render puts the ring back on the committed reading", () =
   assert.equal(win(), atRest, "and a render off committed state puts it back");
 });
 
-test("fan drag: original has no window, so it still drops the key and restrings", () => {
+test("fan drag: original has no overlay, so it still drops the key and restrings", () => {
   const card = liveCard({ fan_style: "original" });
-  assert.equal(card._refs.faceFan.querySelector(".ct-fanwin"), null,
-    "original is the untouched pre-2.3.0 arc, with no clip window");
+  assert.equal(card._refs.fanLayer.innerHTML, "",
+    "original is the untouched pre-2.3.0 arc, with nothing in the overlay");
+  assert.equal(card._refs.fanLayer.classList.contains("on"), false);
   card._paintFanNamed(["low", "medium", "high"], "high");
   assert.equal(card._faceFanKey, null,
     "what is drawn no longer matches any committed state");
@@ -243,11 +256,18 @@ const ringEnd = (c) => {
   return m ? Math.round(Number(m[1])) : null;
 };
 const railText = (c) => (c._refs.faceRail.textContent.match(/(AUTO|\d+%)/) || ["-"])[0];
+/* "The ring is drawn" is style-aware now. original draws its whole arc in the face
+   SVG. silk and breeze draw only the track and the marker there, and their flow is the
+   rotating bands in the overlay, so for those the overlay has to be on and populated. */
+const ringDrawn = (c) => /stroke-width/.test(c._refs.faceFan.innerHTML) &&
+  (c._refs.fanLayer.classList.contains("on")
+    ? bands(c).length >= 3
+    : c._refs.faceFan.innerHTML.length > 200);
 
 test("fan ring: ALWAYS drawn, in every mode that can carry a fan", () => {
   for (const hvac of ["cool", "fan_only", "auto", "dry", "heat"]) {
     const c = mCard(hvac, "auto", 102);
-    assert.ok(c._refs.faceFan.innerHTML.length > 200,
+    assert.ok(ringDrawn(c),
       hvac + ": the ring is the control you grab, it cannot be missing");
     assert.match(c._refs.faceFan.innerHTML, /stroke-width/,
       hvac + ": with no speed set it is still a drawn ring, not an empty group");
@@ -278,7 +298,7 @@ test("fan marker: no value means no marker, in every ring style", () => {
   // marker parked at the far end there points at a speed the unit will not accept.
   for (const style of ["silk", "breeze", "original"]) {
     const unset = mCard("auto", "auto", 102, { fan_style: style });
-    assert.ok(unset._refs.faceFan.innerHTML.length > 200, style + ": the ring is still drawn");
+    assert.ok(ringDrawn(unset), style + ": the ring is still drawn");
     assert.equal(ringEnd(unset), null, style + ": and carries no marker");
 
     const set = mCard("cool", "high", 80, { fan_style: style });
@@ -653,21 +673,20 @@ function pushFan(card, mode) {
 for (const style of ["silk", "breeze"]) {
   test(`${style}: a new fan reading moves the window and keeps every animation alive`, () => {
     const card = liveCard({ fan_style: style });
-    const ring = card._refs.faceFan;
-    const sel = style === "silk" ? "animate" : "[style*='animation']";
-    const before = [...ring.querySelectorAll(sel)];
-    assert.ok(before.length >= 3, `${style} draws animated nodes to protect`);
-    const winBefore = ring.querySelector(".ct-fanwin").getAttribute("d");
+    const before = bands(card);
+    assert.ok(before.length >= 3, `${style} draws rotating bands to protect`);
+    assert.ok(card._refs.fanLayer.classList.contains("on"), "and the overlay is shown");
+    const winBefore = fanWindow(card);
 
     pushFan(card, "high");
 
-    const after = [...ring.querySelectorAll(sel)];
-    assert.equal(after.length, before.length, "same number of animated nodes");
+    const after = bands(card);
+    assert.equal(after.length, before.length, "same number of bands");
     for (let i = 0; i < before.length; i++) {
       assert.equal(after[i], before[i],
         "the SAME node object, not an equal-looking replacement");
     }
-    assert.notEqual(ring.querySelector(".ct-fanwin").getAttribute("d"), winBefore,
+    assert.notEqual(fanWindow(card), winBefore,
       "but the clip window really did move to the new reading");
   });
 }
@@ -676,9 +695,10 @@ test("silk draws the flow across the whole ring, not up to the reading", () => {
   const low = liveCard({ fan_style: "silk" });
   const high = liveCard({ fan_style: "silk" });
   pushFan(high, "high");
-  assert.equal(high._refs.faceFan.querySelectorAll("animate").length,
-    low._refs.faceFan.querySelectorAll("animate").length,
+  const count = (c) => bands(c).map((b) => b.querySelectorAll("path").length);
+  assert.deepEqual(count(high), count(low),
     "the puff count cannot depend on the reading, or the ring rebuilds when it changes");
+  assert.deepEqual(count(low), [12, 16, 8], "a full circle on each band");
 });
 
 /* fanSilk never reads its mode argument: the puffs are a fixed gradient and their
@@ -689,8 +709,7 @@ test("silk draws the flow across the whole ring, not up to the reading", () => {
 test("silk keeps its flow across a mode change, breeze redraws because it must", () => {
   const bymode = (style, mode) => {
     const card = liveCard({ fan_style: style });
-    const nodes = () => [...card._refs.faceFan.querySelectorAll(
-      style === "silk" ? "animate" : "[style*='animation']")];
+    const nodes = () => bands(card);
     const before = nodes();
     const next = JSON.parse(JSON.stringify(states));
     next["climate.ac"].attributes.hvac_modes = ["off", "cool", "dry"];
@@ -709,58 +728,23 @@ test("silk keeps its flow across a mode change, breeze redraws because it must",
     "breeze strokes its ribbons in the mode ink, so it has to redraw");
 });
 
-/* The silk loop did not close. Each puff walks one pitch over its cycle and then the
-   SMIL element snaps back a pitch upstream, which is only invisible if the puff from
-   the slot behind has arrived at exactly the shape being vacated. The POSITION handoff
-   was always exact; the LENGTH was not, because SILK_VAR gave each element a length it
-   held for the whole cycle, and consecutive entries differ by up to 94 percent. Every
-   path in a band shares dur and phase, so the entire band changed size in one frame,
-   every 1.95 to 3.85 seconds. That is a pop the rebuild fix could never have touched.
-
-   Assert the property that was false: puff k's closing frame must equal puff k+1's
-   opening frame, as an exact string. Before the fix the worst coordinate divergence was
-   around 48 user units on a 600 unit viewBox. */
-function silkBands(card) {
-  // each band is one <g>, and the puffs are its <path> children in slot order
-  return [...card._refs.faceFan.querySelectorAll("g.ct-fanflow > g")].map((g) =>
-    [...g.querySelectorAll("animate")].map((a) => (a.getAttribute("values") || "").split(";")));
-}
-
-test("silk: every puff hands its shape to the next one exactly, so the loop closes", () => {
-  let pairs = 0;
-  for (const fan of ["auto", "low", "medium", "high"]) {
-    const next = JSON.parse(JSON.stringify(states));
-    next["climate.ac"].attributes.fan_mode = fan;
-    const card = document.createElement("climate-cluster-card");
-    card.setConfig({ entity: "climate.ac", fan_style: "silk" });
-    card.hass = makeHass(next, { entities });
-
-    const bands = silkBands(card);
-    assert.equal(bands.length, 3, "silk draws three bands");
-    for (const band of bands) {
-      assert.ok(band.length >= 5, "a band carries several puffs");
-      for (let k = 0; k < band.length - 1; k++) {
-        assert.equal(band[k][band[k].length - 1], band[k + 1][0],
-          "the closing frame must BE the next puff's opening frame");
-        pairs++;
-      }
-    }
-  }
-  assert.ok(pairs >= 80, "checked every handoff on every band at every speed: " + pairs);
-});
-
-/* The interpolated length must never exceed the band pitch, or puffs touch and the
-   grouped blur and grouped opacity stop being equivalent to per-path ones. */
-test("silk: puffs never grow long enough to overlap their neighbour", () => {
-  const card = document.createElement("climate-cluster-card");
-  card.setConfig({ entity: "climate.ac", fan_style: "silk" });
-  card.hass = makeHass(states, { entities });
-  // SILK seg x max(SILK_VAR) against pitch, read off the rendered bands
-  const pitches = [34, 26, 44], segs = [22, 15, 28], maxVar = 1.28;
-  silkBands(card).forEach((band, i) => {
-    assert.ok(segs[i] * maxVar < pitches[i],
-      "band " + i + ": longest puff " + (segs[i] * maxVar) + " must clear pitch " + pitches[i]);
-  });
+/* The flow is a lattice the compositor rotates, so the property that makes it
+   seamless is that the lattice closes on itself: the puff count on each band is a
+   whole number of pitches around the circle AND a whole number of length cycles, so
+   any rotation lands on an identical ring. Puffs must also stay shorter than the pitch,
+   or neighbours touch and the grouped blur and alpha stop matching per-puff ones. */
+test("silk: each band is a lattice that closes on itself, so rotation is seamless", () => {
+  const card = liveCard({ fan_style: "silk" });
+  const bs = bands(card);
+  const counts = bs.map((b) => b.querySelectorAll("path").length);
+  assert.deepEqual(counts, [12, 16, 8]);
+  for (const c of counts) assert.equal(c % 4, 0, "a whole number of length cycles");
+  const pitches = [30, 22.5, 45], segs = [22, 15, 28];
+  pitches.forEach((pitch, i) => assert.ok(segs[i] * 1.28 < pitch,
+    "band " + i + ": longest puff " + (segs[i] * 1.28) + " must clear pitch " + pitch));
+  // every band carries its own period, and they differ, which is the parallax
+  const durs = bs.map((b) => (b.getAttribute("style") || "").match(/animation-duration:([\d.]+)s/)[1]);
+  assert.equal(new Set(durs).size, 3, "three distinct periods: " + durs.join(", "));
 });
 
 /* Same bug class as the fan ring, three inches away. The status dot breathes on a 1.9s
@@ -786,23 +770,6 @@ test("the status dot survives a state change that does not touch this card", () 
   assert.notEqual(dot(), before, "a real change still repaints the cluster");
 });
 
-/* The loop used to run one pitch PAST the window as well as one before it. The leading
-   extra is needed so puffs enter; the trailing one was dead in all seven of its frames,
-   because its start angle never drops back inside the window. Counting is the assertion
-   that works: a clamped puff is not byte-identical frame to frame (the radius still
-   moves with the wave) so "every frame the same" quietly passed either way.
-
-   A0 250, SPAN 220, so the window ends at 470. Slots run from A0 - pitch while
-   slot < 470: pitch 34 gives 216..454 = 8, pitch 26 gives 224..458 = 10, pitch 44 gives
-   206..426 = 6. Before the fix it was 9, 11 and 7. */
-test("silk emits no puff that can never draw", () => {
-  const card = liveCard({ fan_style: "silk" });
-  const bands = [...card._refs.faceFan.querySelectorAll("g.ct-fanflow > g")];
-  assert.deepEqual(bands.map((g) => g.querySelectorAll("animate").length), [8, 10, 6],
-    "one puff per slot inside the ring, and none past its end");
-  assert.equal(card._refs.faceFan.querySelectorAll("animate").length, 24);
-});
-
 /* The stylesheet's reduced-motion rule uses display:none on <animate>, which does
    nothing: display does not apply to SVG animation elements, so the timeline runs
    anyway. silk is the only style in the file that uses <animate>, so it was exactly the
@@ -816,10 +783,10 @@ test("prefers-reduced-motion drops silk to the static ring", () => {
   });
   try {
     const card = liveCard({ fan_style: "silk" });
-    assert.equal(card._refs.faceFan.querySelectorAll("animate").length, 0,
-      "no SMIL timeline may run for a reader who asked for less motion");
-    assert.equal(card._refs.faceFan.querySelector(".ct-fanwin"), null,
-      "and it really is the original ring, which has no clip window");
+    assert.equal(bands(card).length, 0,
+      "no rotating band may exist for a reader who asked for less motion");
+    assert.equal(card._refs.fanLayer.classList.contains("on"), false,
+      "and it really is the original ring, which has no overlay");
   } finally {
     globalThis.window.matchMedia = real;
   }
@@ -830,9 +797,28 @@ test("with no matchMedia at all, the configured style still wins", () => {
   delete globalThis.window.matchMedia;
   try {
     const card = liveCard({ fan_style: "silk" });
-    assert.ok(card._refs.faceFan.querySelectorAll("animate").length > 0,
+    assert.ok(bands(card).length > 0,
       "a missing media query means no preference expressed, never reduce");
   } finally {
     globalThis.window.matchMedia = real;
   }
 });
+
+/* The cost guard. Measured on five idle cards in headless Chrome, SMIL "d" morphing
+   in the face held the renderer at 30 percent of a core and the raster process at 90;
+   a stroke-dashoffset animation, 16 and 92; the static face, 3 and 12. Any per-frame
+   change to SVG geometry repaints the whole layer, so the animated styles must put
+   NOTHING that moves inside the face SVG. Their motion is a CSS transform on the
+   overlay bands, which the compositor carries without a repaint: 2.5 and 14. */
+for (const style of ["silk", "breeze"]) {
+  test(`${style}: nothing in the face SVG animates, the overlay carries the motion`, () => {
+    const card = liveCard({ fan_style: style });
+    const face = card._refs.faceFan.innerHTML;
+    assert.doesNotMatch(face, /<animate/, "no SMIL in the face");
+    assert.doesNotMatch(face, /animation\s*:/, "no CSS animation on face geometry either");
+    for (const b of bands(card)) {
+      assert.match(b.getAttribute("style") || "", /animation-duration:\d/, "each band spins");
+      assert.equal(b.querySelectorAll("animate").length, 0, "and spins as a whole, not by morphing");
+    }
+  });
+}

@@ -203,7 +203,7 @@
       },
       editorHelpers: {
         name: "Card title. Defaults to the entity's friendly name.",
-        fan_style: "Silk and breeze animate; original is the smooth ring every card installed before this release draws. Both animated ones cost more on a wall tablet that never sleeps.",
+        fan_style: "Silk and breeze animate on the compositor, so they cost about what the still ring does; original is the smooth ring every card installed before this release draws.",
         fan_clover: "Brings back the small spinning fan from the original face, beside the status line.",
         rail: "Leave empty for the usual set. Ticking them one at a time sets the order they appear in. A button for something this unit does not have is skipped.",
         appearance: "Theme follows your active Home Assistant theme (works on light and dark). Frosted glass is a translucent panel, in a dark indigo or light finish, that holds its look on any theme.",
@@ -354,7 +354,7 @@
       },
       editorHelpers: {
         name: "Titulo de la tarjeta. Por defecto usa el nombre descriptivo de la entidad.",
-        fan_style: "Silk y breeze se animan; original es el anillo suave que dibuja toda tarjeta instalada antes de este release. Los dos animados cuestan mas en una tablet de pared que nunca duerme.",
+        fan_style: "Silk y breeze se animan en el compositor, asi que cuestan casi lo mismo que el anillo quieto; original es el anillo suave que dibuja toda tarjeta instalada antes de este release.",
         fan_clover: "Trae de vuelta el ventilador pequeno que gira de la cara original, al lado de la linea de estado.",
         rail: "Dejalo vacio para el set de siempre. Marcandolos uno por uno defines el orden. Un boton para algo que esta unidad no tiene se salta.",
         appearance: "Tema sigue el tema activo de Home Assistant (funciona en claro y oscuro). Vidrio esmerilado es un panel translucido, en acabado indigo oscuro o claro, que mantiene su aspecto en cualquier tema.",
@@ -915,41 +915,48 @@
       'stroke="rgba(154,175,210,.10)" stroke-width="7" stroke-linecap="round"></path>';
   }
 
-  /* The window the animated fan styles are clipped to.
+  /* The window the animated fan styles are clipped to, as a CSS polygon in percent.
 
-     The ring used to be REBUILT whenever the fan reading changed, because the puff
-     geometry was generated up to the current angle. Measured on the live house, one
-     Midea unit reports a new fan speed every 6.9 seconds while a silk cycle is 2.6
-     seconds, and an innerHTML rebuild destroys every animated node: a probe showed 0
-     of 21 SMIL timelines surviving one tick from 70 to 71. Every puff snapped back
-     into phase twice a minute, which is what "jumpy, not a constant flow" was.
+     Measured on five cards idle in headless Chrome: the SMIL "d" morphing that used
+     to drive silk held the renderer at 30 percent of a core and the raster process
+     at 90, breeze's stroke-dashoffset animation at 16 and 92, and the same face with
+     original at 3 and 12, which is what the 2.2.1 card costs. Removing the animation
+     elements alone returned silk to 3.5. Any per-frame change to SVG geometry repaints
+     the whole layer every frame; that is the entire cost, and no amount of trimming
+     the geometry changes its class.
 
-     So the flow is now drawn ONCE across the whole ring and this wedge is what moves.
-     Updating a clip path's d does not touch the animated siblings, so the timelines
-     run uninterrupted for as long as the card is on screen.
+     So the flow no longer lives in this SVG. Each band is a static lattice drawn once
+     around the FULL circle in its own <svg> element in an HTML overlay, and the
+     compositor rotates that element: a CSS transform on an HTML replaced element is
+     accelerated in every engine, including WebKit on the iPad, where a transform on an
+     SVG <g> is not guaranteed to be. Measured the same way, the overlay costs 2.4 and
+     14, i.e. the price of the static face. The reading then clips the overlay to this
+     window and moves the handle, and neither touches the rotating layers.
 
-     Sampled rather than built from arc commands, to avoid large-arc and sweep flags
-     on a shape whose angle crosses 180 degrees as the fan is turned up. At the outer
-     radius a 2 degree step is 0.04 user units off the true arc, well under a tenth of
-     a pixel on screen. The start is padded 3 degrees so the round cap at A0 is not
-     shaved; the end is exact, because the end IS the reading. */
-  function fanWindowPath(fanPct) {
-    var a0 = A0 - 3, a1 = fanAngle(fanPct), RI = RF - 26, RO = RF + 26;
+     Percent coordinates are exact because .ct-svg keeps the viewBox aspect by its own
+     CSS (width 100 percent, height auto, and capped mode scales the width by the same
+     ratio), so the overlay box IS the viewBox. 600 units wide, 392 tall, sampled every
+     2 degrees, which is under a tenth of a pixel off the true arc at the outer radius.
+     The inner edge sits at RF - 18 so a blurred puff halo cannot tint the temperature
+     band at RT; the start is padded 3 degrees for the first puff's round tail; the end
+     is exact, because the end IS the reading. */
+  function fanWindowPoly(fanPct) {
+    var a0 = A0 - 3, a1 = fanAngle(fanPct), RI = RF - 18, RO = RF + 26, pts = [], a;
     if (a1 < a0) a1 = a0;
-    var d = '', a, p;
-    for (a = a0; a < a1; a += 2) { p = P(RO, a); d += (d ? 'L' : 'M') + f(p[0]) + ' ' + f(p[1]); }
-    p = P(RO, a1); d += (d ? 'L' : 'M') + f(p[0]) + ' ' + f(p[1]);
-    for (a = a1; a > a0; a -= 2) { p = P(RI, a); d += 'L' + f(p[0]) + ' ' + f(p[1]); }
-    p = P(RI, a0); d += 'L' + f(p[0]) + ' ' + f(p[1]);
-    return d + 'Z';
+    function push(r, ang) {
+      var p = P(r, ang);
+      pts.push((p[0] / 6).toFixed(2) + '% ' + (p[1] / 3.92).toFixed(2) + '%');
+    }
+    for (a = a0; a < a1; a += 2) push(RO, a);
+    push(RO, a1);
+    for (a = a1; a > a0; a -= 2) push(RI, a);
+    push(RI, a0);
+    return 'polygon(' + pts.join(',') + ')';
   }
 
-  /* The two value-driven pieces of an animated ring, kept apart from the flow so the
-     card can rewrite them on every reading without disturbing the animation. */
+  /* The one reading-driven piece still drawn inside the face SVG. */
   function fanValueLayer(fanPct, noHandle) {
-    return '<clipPath id="ctFanWin"><path class="ct-fanwin" d="' +
-      fanWindowPath(fanPct) + '"></path></clipPath>' +
-      '<g class="ct-fanmark">' + fanHandle(noHandle ? null : fanPct) + '</g>';
+    return '<g class="ct-fanmark">' + fanHandle(noHandle ? null : fanPct) + '</g>';
   }
 
   /* the handle is drawn ONLY when a speed is set. AUTO has no handle. */
@@ -974,63 +981,95 @@
     return out + fanHandle(noHandle ? null : fanPct);
   }
 
-  /* a sine wrapped around the ring, sampled every 4 degrees */
-  function wavyArc(r, a0, a1, amp, waveDeg, phase) {
-    if (a1 <= a0 + 0.5) return '';
-    var d = '';
-    for (var a = a0; a <= a1 + 1e-6; a += 4) {
-      var rr = r + amp * Math.sin((a - a0) / waveDeg * Math.PI * 2 + (phase || 0));
-      var p = P(rr, a);
-      d += (d ? 'L' : 'M') + f(p[0]) + ' ' + f(p[1]);
+  /* One band of the overlay: a full-circle lattice in its own <svg>, rotated by the
+     compositor. The period is the time for one revolution. It is set here as an
+     inline animation-duration so the stylesheet owns everything else about the spin.
+     Ids in url() resolve across <svg> elements in one shadow tree, so the bands share
+     the face's own gradient and blur definitions rather than carrying copies. */
+  function fanBandSvg(inner, period, opacity, blur) {
+    return '<svg class="ct-fanband" viewBox="0 0 600 392" aria-hidden="true" ' +
+      'style="animation-duration:' + period.toFixed(2) + 's">' +
+      '<g opacity="' + opacity + '"' + (blur ? ' filter="url(#bSoft)"' : '') + '>' +
+      inner + '</g></svg>';
+  }
+
+  /* A wavy closed ring, and its length. The wave count must divide 360 or the seam
+     shows once per revolution, so every BREEZE wave below does. The length is measured
+     from the ROUNDED points that are actually emitted, because the dash cycle has to
+     divide it exactly: a dash pattern that does not fit the ring an integer number of
+     times leaves one short dash at the seam, and rotation would carry that flaw past
+     the reader once per revolution. */
+  function wavyRing(r, amp, waveDeg) {
+    var pts = [], a, rr, p, d = '', L = 0, i, q, dx, dy;
+    for (a = 0; a < 360; a += 4) {
+      rr = r + amp * Math.sin(a / waveDeg * Math.PI * 2);
+      p = P(rr, a);
+      pts.push([f(p[0]), f(p[1])]);
     }
-    return d;
+    for (i = 0; i < pts.length; i++) {
+      q = pts[(i + 1) % pts.length];
+      d += (i ? 'L' : 'M') + pts[i][0] + ' ' + pts[i][1];
+      dx = q[0] - pts[i][0]; dy = q[1] - pts[i][1];
+      L += Math.sqrt(dx * dx + dy * dy);
+    }
+    return { d: d + 'Z', len: L };
   }
 
-  /* style 2: breeze. Four wave ribbons. Every dash cycle divides 120 evenly (40, 60,
-     30, 24) so @keyframes drift loops seamlessly. */
+  /* style 2: breeze. Four dashed wave ribbons, drifting. The ribbons used to be drawn
+     up to the reading and slid along themselves with a stroke-dashoffset animation,
+     120 units per base x k seconds. Now each is a full ring that ROTATES at the same
+     angular speed: 120 units on a 1420 unit circumference is 30.4 degrees, so one
+     revolution takes 11.84 x base x k seconds. The waves were 26, 34, 19 and 22
+     degrees; they are the nearest divisors of 360 so the ring closes on itself. */
   var BREEZE = [
-    { r: RF - 6, amp: 2.4, wave: 26, dash: '24 16', w: 1.8, lit: .34, dim: .15, k: 1.22 },
-    { r: RF,     amp: 3.4, wave: 34, dash: '34 26', w: 2.8, lit: .58, dim: .24, k: 1.00 },
-    { r: RF,     amp: 1.8, wave: 19, dash: '18 12', w: 1.4, lit: .40, dim: .17, k: 0.78 },
-    { r: RF + 6, amp: 2.8, wave: 22, dash: '14 10', w: 1.5, lit: .26, dim: .13, k: 1.45 }
+    { r: RF - 6, amp: 2.4, wave: 24, on: 24, off: 16, w: 1.8, lit: .34, dim: .15, k: 1.22 },
+    { r: RF,     amp: 3.4, wave: 36, on: 34, off: 26, w: 2.8, lit: .58, dim: .24, k: 1.00 },
+    { r: RF,     amp: 1.8, wave: 18, on: 18, off: 12, w: 1.4, lit: .40, dim: .17, k: 0.78 },
+    { r: RF + 6, amp: 2.8, wave: 20, on: 14, off: 10, w: 1.5, lit: .26, dim: .13, k: 1.45 }
   ];
 
-  /* The ribbons run the WHOLE ring and the clip window decides how much shows. The
-     dash phase is measured from A0 either way, so the visible part is identical to
-     what the old up-to-the-angle version drew, minus the round cap at the end, which
-     the window now cuts square. What it buys is that a new fan reading no longer
-     recreates these nodes, and a CSS animation that is never recreated never jumps.
-
-     The period still comes from the reading, so it is read once at build time. A card
-     left running while the speed changes keeps the speed it was built with until the
-     ring is rebuilt for another reason; that is deliberate, because restarting four
-     ribbons to re-time them is the very stutter this is removing. */
-  function fanBreeze(fanPct, mode, noHandle) {
-    var set = fanPct != null, base = fanPeriod(fanPct);
+  function breezeLayer(fanPct, mode) {
+    var set = fanPct != null, base = fanPeriod(fanPct), out = '';
     var stroke = set ? MODES[mode].light : rgba(MODES[mode].ink, .9);
-    var out = fanTrack() + '<g class="ct-fanflow" clip-path="url(#ctFanWin)">';
     BREEZE.forEach(function (v) {
-      out += '<path d="' + wavyArc(v.r, A0, A0 + SPAN, v.amp, v.wave) + '" fill="none" ' +
-        'stroke="' + stroke + '" stroke-width="' + v.w + '" stroke-linecap="round" ' +
-        'stroke-dasharray="' + v.dash + '" opacity="' + (set ? v.lit : v.dim) + '" ' +
-        'style="animation:drift ' + (base * v.k).toFixed(2) + 's linear infinite"></path>';
+      var ring = wavyRing(v.r, v.amp, v.wave), cyc = v.on + v.off;
+      var n = Math.max(1, Math.round(ring.len / cyc)), sc = ring.len / (n * cyc);
+      out += fanBandSvg(
+        '<path d="' + ring.d + '" fill="none" stroke="' + stroke + '" stroke-width="' + v.w +
+        '" stroke-linecap="round" stroke-dasharray="' + (v.on * sc).toFixed(3) + ' ' +
+        (v.off * sc).toFixed(3) + '"></path>',
+        base * v.k * 11.84, set ? v.lit : v.dim, false);
     });
-    return out + '</g>' + fanValueLayer(fanPct, noHandle);
+    return out;
   }
 
-  /* style 3: silk. Short tapered puffs that TRAVEL. One band is not one ribbon across
-     the whole arc: it is a run of segments on a repeating pitch. */
-  var SILK = [
-    { r: RF,     amp: 3.2, wave: 130, thick: 8, seg: 22, pitch: 34, lit: .85, dim: .34, blur: true,  k: 1.00 },
-    { r: RF + 2, amp: 2.4, wave: 96,  thick: 5, seg: 15, pitch: 26, lit: .55, dim: .22, blur: true,  k: 1.46 },
-    { r: RF - 4, amp: 4,   wave: 160, thick: 3, seg: 28, pitch: 44, lit: .45, dim: .18, blur: false, k: 0.74 }
-  ];
-  var SILK_VAR = [1, 0.66, 1.28, 0.84, 1.12, 0.74];
+  /* What breeze still draws inside the face: the track, and the reading. */
+  function fanBreeze(fanPct, mode, noHandle) {
+    return fanTrack() + fanValueLayer(fanPct, noHandle);
+  }
 
-  /* Fixed sample count so every animation frame has an IDENTICAL point count. Path
-     animation only interpolates smoothly when the shapes match. Samples outside the
-     visible window collapse onto the boundary, which cuts a puff flat at the arc end
-     instead of shrinking it; a puff entirely outside becomes a zero area path. */
+  /* style 3: silk. Short tapered puffs that TRAVEL.
+
+     A band is a lattice of puffs on a pitch that divides 360, so the ring closes on
+     itself and rotating it is seamless at every angle. The puff lengths vary on a
+     four-entry cycle, and every count below is a multiple of four, so the variation
+     closes too: 12, 16 and 8 puffs. Pitches were 34, 26 and 44 degrees; 30, 22.5 and 45
+     are the nearest that divide the circle.
+
+     rev is seconds per revolution per second of base, chosen so the puffs cross the
+     window at exactly the speed they did before: one old pitch per base x k x 1.6
+     seconds, so 360 x k x 1.6 / oldPitch. */
+  var SILK = [
+    { r: RF,     amp: 3.2, wave: 130, thick: 8, seg: 22, pitch: 30,   lit: .85, dim: .34, blur: true,  rev: 16.94 },
+    { r: RF + 2, amp: 2.4, wave: 96,  thick: 5, seg: 15, pitch: 22.5, lit: .55, dim: .22, blur: true,  rev: 32.34 },
+    { r: RF - 4, amp: 4,   wave: 160, thick: 3, seg: 28, pitch: 45,   lit: .45, dim: .18, blur: false, rev: 9.69 }
+  ];
+  var SILK_VAR = [1, 0.66, 1.28, 0.84];
+
+  /* One tapered puff between two ring angles. The wave along it is static now: the
+     puff is rasterised once and carried round by the compositor, so nothing about it
+     can change per frame, which is the whole point. v0 and v1 clamp samples to a
+     window; on the full circle they are the puff's own ends and clamp nothing. */
   function ribbonSeg(r, t0, t1, v0, v1, amp, waveDeg, thick, phase) {
     var N = 16, span = t1 - t0, out = [], back = [], i, u, a, w, c, ca;
     for (i = 0; i <= N; i++) {
@@ -1047,82 +1086,36 @@
     return d + 'Z';
   }
 
-  /* Over one cycle a segment advances exactly one pitch and then the loop restarts it
-     a pitch upstream. That is invisible only because the puff from the slot behind has
-     just arrived at the vacated angle, so the two have to MATCH. The position handoff
-     was always exact. The LENGTH was not: it came from SILK_VAR and was held for the
-     whole cycle, so at the wrap the puff standing at a slot swapped its neighbour's
-     length for its own in a single frame, and consecutive SILK_VAR ratios differ by
-     -34 to +94 percent. Every path in a band shares dur and phase, so the whole band
-     did it at once, every 1.95 to 3.85 seconds depending on band and fan speed.
-
-     Measured rather than argued: diffing puff k's closing frame against puff k+1's
-     opening frame gave a worst coordinate mismatch of 44.9, 37.0 and 47.9 user units
-     on a 600 unit viewBox. With the length interpolated to the successor's, all 120
-     handoff pairs across five fan settings and three bands are byte-identical.
-
-     So the length now belongs to the POSITION on the ring rather than to the element,
-     and a puff breathes as it travels instead of the ring snapping. The interpolated
-     length never exceeds max(seg0, seg1), so puffs still cannot touch and the grouped
-     blur and grouped opacity below stay correct. */
-  function segFrames(band, slot, seg0, seg1, v0, v1) {
-    var frames = [], steps = 6, i, u, t0;
-    for (i = 0; i < steps; i++) {
-      u = i / steps;
-      t0 = slot + u * band.pitch;
-      frames.push(ribbonSeg(band.r, t0, t0 + seg0 + (seg1 - seg0) * u, v0, v1,
-                            band.amp, band.wave, band.thick, -i * 2 * Math.PI / steps));
-    }
-    frames.push(ribbonSeg(band.r, slot + band.pitch, slot + band.pitch + seg1,
-                          v0, v1, band.amp, band.wave, band.thick, 0));
-    return frames;
+  function silkLayer(fanPct) {
+    var set = fanPct != null, base = fanPeriod(fanPct), out = '';
+    SILK.forEach(function (v, bi) {
+      var count = Math.round(360 / v.pitch), paths = '', n, slot, seg;
+      for (n = 0; n < count; n++) {
+        slot = n * v.pitch;
+        seg = v.seg * SILK_VAR[(n + bi) % SILK_VAR.length];
+        paths += '<path d="' + ribbonSeg(v.r, slot, slot + seg, slot, slot + seg, v.amp, v.wave,
+                                          v.thick, (n + bi) * 1.9) + '" fill="url(#bSilk)"></path>';
+      }
+      /* The blur and the opacity sit on the band. Puffs within a band never touch,
+         since the longest is seg x 1.28 against the pitch, so a grouped filter and a
+         grouped alpha composite exactly as per-puff ones would. */
+      out += fanBandSvg(paths, base * v.rev, set ? v.lit : v.dim, v.blur);
+    });
+    return out;
   }
 
-  /* Puffs are laid across the WHOLE ring and the clip window decides how many are
-     visible, instead of generating only as far as the reading. Two things follow.
-
-     The obvious one is that the reading no longer rebuilds anything, so the SMIL
-     timelines survive and the flow is continuous.
-
-     The quieter one is that the puffs no longer need the boundary clamp at the fan
-     end: v1 is the end of the ring, so no sample is ever pushed onto a moving edge
-     and the shapes are the same on every card at every setting. The clamp stays in
-     ribbonSeg because the window still has to be a fixed point count, and because
-     A0 remains a real boundary at the cold end. */
+  /* What silk still draws inside the face: a faint full arc, and the reading. */
   function fanSilk(fanPct, mode, noHandle) {
-    var set = fanPct != null, full = A0 + SPAN, base = fanPeriod(fanPct);
-    var out = '<path d="' + arcPath(RF, A0, full) + '" fill="none" ' +
+    return '<path d="' + arcPath(RF, A0, A0 + SPAN) + '" fill="none" ' +
       'stroke="rgba(154,175,210,.07)" stroke-width="6" stroke-linecap="round"></path>' +
-      '<g class="ct-fanflow" clip-path="url(#ctFanWin)">';
-    SILK.forEach(function (v, bi) {
-      var n = 0, dur = (base * v.k * 1.6).toFixed(2);
-      /* The blur and the opacity sit on the BAND, not on each puff. They were on every
-         path, which asked the renderer for around twenty separate filter regions and
-         re-rastered each one every frame, since the shape under it changes every frame.
-         Per band it is two. The pixels are the same because puffs within a band never
-         touch: the longest segment is seg times the largest SILK_VAR, 28 degrees on the
-         widest band, against a 34 degree pitch, so there is no overlap for a grouped
-         filter or a grouped alpha to composite differently. */
-      out += '<g opacity="' + (set ? v.lit : v.dim) + '"' +
-        (v.blur ? ' filter="url(#bSoft)"' : '') + '>';
-      /* start a pitch early and finish a pitch late so puffs enter and leave */
-      /* One pitch early so puffs enter, but NOT one pitch late. The trailing extra was
-         dead in all seven of its frames: its t0 never drops below the window end, so the
-         clamp in ribbonSeg pinned all 34 points to the same angle and it drew a sliver a
-         tenth of a unit wide that SMIL still interpolated forever. Three of 27 paths,
-         one per band. Ending the loop at the window is the whole fix, and it is a term
-         removed rather than a branch added. */
-      for (var slot = A0 - v.pitch; slot < full; slot += v.pitch, n++) {
-        var seg = v.seg * SILK_VAR[(n + bi) % SILK_VAR.length];
-        var next = v.seg * SILK_VAR[(n + bi + 1) % SILK_VAR.length];
-        var frames = segFrames(v, slot, seg, next, A0, full);
-        out += '<path d="' + frames[0] + '" fill="url(#bSilk)">' +
-          '<animate attributeName="d" values="' + frames.join(';') + '" dur="' + dur + 's" ' +
-          'calcMode="linear" repeatCount="indefinite"></animate></path>';
-      }
-      out += '</g>';
-    });
-    return out + '</g>' + fanValueLayer(fanPct, noHandle);
+      fanValueLayer(fanPct, noHandle);
+  }
+
+  /* The overlay content for a style, or nothing for one that does not move. */
+  function fanLayer(style, fanPct, mode) {
+    if (style === 'silk') return '<div class="ct-fanflow">' + silkLayer(fanPct) + '</div>';
+    if (style === 'breeze') return '<div class="ct-fanflow">' + breezeLayer(fanPct, mode) + '</div>';
+    return '';
   }
 
   var SILK_DEFS =
@@ -1138,7 +1131,6 @@
 
   var KEYFRAMES =
     '@keyframes pulse { 0%, 100% { opacity: .3 } 50% { opacity: 1 } }' +
-    '@keyframes drift { to { stroke-dashoffset: -120 } }' +
     '@keyframes wink { 0%, 100% { opacity: .10 } 18%, 44% { opacity: 1 } }';
 
   /* ------------------------------------------------------------ whole face ---- */
@@ -1165,7 +1157,7 @@
       rail(s.cells || [], s.mode);
   }
 
-    return { face: face, FAN_STYLES: FAN_STYLES, MODES: MODES, KEYFRAMES: KEYFRAMES, DEFS: DEFS, SILK_DEFS: SILK_DEFS, band: band, ticks: ticks, scaleNumerals: scaleNumerals, needle: needle, roomPin: roomPin, roomLabel: roomLabel, deltaSegment: deltaSegment, modeWord: modeWord, bigNumeral: bigNumeral, statusLine: statusLine, presetGlyph: presetGlyph, steppers: steppers, rail: rail, fanPlain: fanPlain, fanBreeze: fanBreeze, fanSilk: fanSilk, fanWindowPath: fanWindowPath, fanHandle: fanHandle, fanAngle: fanAngle, angleOf: angleOf, arcPath: arcPath, P: P };
+    return { face: face, FAN_STYLES: FAN_STYLES, MODES: MODES, KEYFRAMES: KEYFRAMES, DEFS: DEFS, SILK_DEFS: SILK_DEFS, band: band, ticks: ticks, scaleNumerals: scaleNumerals, needle: needle, roomPin: roomPin, roomLabel: roomLabel, deltaSegment: deltaSegment, modeWord: modeWord, bigNumeral: bigNumeral, statusLine: statusLine, presetGlyph: presetGlyph, steppers: steppers, rail: rail, fanPlain: fanPlain, fanBreeze: fanBreeze, fanSilk: fanSilk, fanWindowPoly: fanWindowPoly, fanLayer: fanLayer, fanHandle: fanHandle, fanAngle: fanAngle, angleOf: angleOf, arcPath: arcPath, P: P };
   })();
 
   /* Everything the original face paints that the handoff face repaints itself.
@@ -3216,6 +3208,16 @@
       svg.appendChild(this._refs.drag);
       svg.appendChild(this._refs.fanGrab);
 
+      /* The animated fan styles live here, not in the SVG: three static lattices the
+         compositor rotates. It sits BEFORE the svg at the same z-index, so the face
+         paints over it and the handle stays on top of the puffs, and it is inert to
+         the pointer so every tap and drag still lands on the svg. Sized by aspect
+         ratio rather than by the svg's box, so it is the viewBox at any width. */
+      const fanLayer = document.createElement("div");
+      fanLayer.className = "ct-fanlayer";
+      fanLayer.setAttribute("aria-hidden", "true");
+      card.appendChild(fanLayer);
+      this._refs.fanLayer = fanLayer;
       card.appendChild(svg);
 
       this._onTempDown = (e) => this._ringPointerDown(e, "temp");
@@ -5324,6 +5326,8 @@
        why it has to run before them and not after. */
     _showLegacyFace() {
       this._faceHidden = false;
+      // the overlay belongs to the new face; the original one has no ring to clip
+      if (this._refs.fanLayer) this._refs.fanLayer.classList.remove("on");
       LEGACY_FACE_NODES.forEach((k) => {
         const n = this._refs[k];
         if (n && n.style) n.style.display = "";
@@ -5635,13 +5639,19 @@
        built yet, so fall back to a rebuild rather than silently doing nothing: a fan
        ring frozen at the wrong angle is a worse bug than the one this replaces. */
     _setFanValue(pct, noHandle) {
-      const host = this._refs.faceFan;
-      if (!host) return;
-      const win = host.querySelector(".ct-fanwin");
+      const host = this._refs.faceFan, layer = this._refs.fanLayer;
+      if (!host || !layer) return;
+      const flow = layer.querySelector(".ct-fanflow");
       const mark = host.querySelector(".ct-fanmark");
-      if (!win || !mark) { this._faceFanKey = null; this._paintFace(); return; }
-      win.setAttribute("d", FACE.fanWindowPath(pct));
+      if (!flow || !mark) { this._faceFanKey = null; this._paintFace(); return; }
+      const poly = FACE.fanWindowPoly(pct);
+      flow.style.setProperty("clip-path", poly);
+      flow.style.setProperty("-webkit-clip-path", poly);
       mark.innerHTML = FACE.fanHandle(noHandle ? null : pct);
+    }
+
+    _setFanLayer(html) {
+      if (this._refs.fanLayer) this._refs.fanLayer.innerHTML = html;
     }
 
     /* Guarded, because matchMedia is absent in the test DOM and on old webviews, and a
@@ -5710,9 +5720,10 @@
           ? (FACE.FAN_STYLES[st.fanStyle] || FACE.FAN_STYLES.original)(
               FACE_RING(st.fanPct), st.mode, st.fanPct == null)
           : "";
-      } else if (anim && wantFan) {
-        this._setFanValue(FACE_RING(st.fanPct), st.fanPct == null);
+        this._setFanLayer(wantFan ? FACE.fanLayer(st.fanStyle, st.fanPct, st.mode) : "");
       }
+      if (this._refs.fanLayer) this._refs.fanLayer.classList.toggle("on", !!(anim && wantFan));
+      if (anim && wantFan) this._setFanValue(FACE_RING(st.fanPct), st.fanPct == null);
       this._paintFaceMoving(setA, roomA, st);
       this._faceCellKeys = st.cells.map((c) => c.key);
       this._refs.faceRail.innerHTML = FACE.rail(st.cells, st.mode);
@@ -6522,6 +6533,16 @@ ha-card{ position:relative; display:block; overflow:visible; }
    to a pointercancel (the old "focus square but no popup" bug). overflow:hidden clips the
    svg to its own 600x392 box so the arcs / caps / needle / fan chevron never bleed. */
 .ct-svg{ display:block; width:100%; height:auto; position:relative; z-index:2; touch-action:pan-y; overflow:hidden; }
+/* The rotating fan lattices. Same z-index as the svg and earlier in the DOM, so the
+   face paints over them. aspect-ratio pins the box to the viewBox, which is what makes
+   the percent clip window exact. will-change keeps each band on its own layer, which
+   is the entire fix: a rotating layer is composited, a morphing path is repainted. */
+.ct-fanlayer{ display:none; position:absolute; left:0; top:0; width:100%; aspect-ratio:600/392; z-index:2; pointer-events:none; overflow:hidden; }
+.ct-fanlayer.on{ display:block; }
+.ct-fanflow{ position:absolute; inset:0; }
+.ct-fanband{ position:absolute; inset:0; width:100%; height:100%; display:block; overflow:visible;
+  transform-origin:50% 72.449%; animation:ctFanSpin 20s linear infinite; will-change:transform; }
+@keyframes ctFanSpin{ to{ transform:rotate(360deg); } }
 .ct-svg text{ font-family:var(--ct-font); }
 .nope{ pointer-events:none; }
 /* Interactive grab bands/buttons. touch-action:pan-y matches the root svg so a vertical

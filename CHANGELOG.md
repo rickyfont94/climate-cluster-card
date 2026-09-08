@@ -125,6 +125,14 @@ every key that shipped before this release still reads the same way.
   all of them meaningless, with the friendly name sitting right there unread. The
   caption comes from the friendly name now, with the unit's own name taken off the
   front and `Mode` off the back, so "Aire-Sala Boost Mode" reads BOOST.
+- The animated fan rings cost a third of a core. Measured on five idle cards in Chrome:
+  silk held the renderer at 30 percent and the raster process at 90, breeze at 16 and 92,
+  while the same face with `original` sat at 3 and 12, which is what 2.2.1 costs. Any
+  per-frame change to SVG geometry repaints the whole layer every frame, and both styles
+  were exactly that, one by morphing path data and one by sliding a dash pattern. Each
+  band is now a static lattice drawn once around the full circle in an overlay that the
+  compositor rotates, clipped to the reading. Same puffs, same ribbons, same speeds, and
+  it now costs what the still ring costs: 2.5 and 14 for silk, 4.8 and 15 for breeze.
 - The silk loop never closed, so every band changed size in one frame once per cycle.
   Each puff walks one pitch and the animation then snaps it back a pitch upstream, which
   is invisible only if the puff from the slot behind has arrived at exactly the shape
