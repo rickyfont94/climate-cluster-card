@@ -7763,16 +7763,7 @@ ${FACE.KEYFRAMES}
         + model.zones.map((z, i) => ZONE.tile(z, i, d)).join("") + "</div></div>";
 
       if (this._config.group_actions !== false) {
-        /* The module offers presets from a hardcoded four. The card asks the entities,
-           the way the shipped bar always has, so a unit with a preset outside that set
-           is offered it and one that rejects a member never sees it. */
-        const acts = ZONE.groupActions(model, d, ui)
-          .filter((a) => String(a.id).indexOf("preset:") !== 0);
-        for (const p of this._sharedPresets().slice(0, 2)) {
-          acts.push({ id: "preset:" + p, lit: true,
-            label: escapeText(String(p).replace(/_/g, " ")) });
-        }
-        html += ZONE.footer(acts);
+        html += ZONE.footer(this._zoneActions(model, d, ui));
       }
       html += "</div>";
       this._pendingDeclutter = true;
@@ -7893,6 +7884,52 @@ ${FACE.KEYFRAMES}
       const hit = a.x < b.x + b.width && b.x < a.x + a.width
         && a.y < b.y + b.height && b.y < a.y + a.height;
       if (hit) lb.style.display = "none";
+    }
+
+    /* Which buttons the bar carries, and in what order.
+
+       Unset, it is what it always was: the off/on control, sync, and the first two
+       presets EVERY room advertises. `actions` names them instead, the same shape the
+       rail key uses on the dial, so one idea has one spelling across both cards.
+
+       Presets come from what the entities advertise rather than a hardcoded four, so
+       a unit with a preset outside that set is offered it and one that rejects a
+       member never sees it. A name nothing supports is skipped rather than drawn as a
+       button that cannot act. */
+    _zoneActions(model, d, ui) {
+      const shared = this._sharedPresets();
+      const known = {};
+      ZONE.groupActions(model, d, ui)
+        .filter((a) => String(a.id).indexOf("preset:") !== 0)
+        // one button, three faces: All off, Tap to confirm, All on. `off` names the
+        // control, not whichever face it is wearing at this moment.
+        .forEach((a) => {
+          known[["alloff", "confirm", "allon"].indexOf(a.id) >= 0 ? "off" : a.id] = a;
+        });
+      const preset = (p) => ({ id: "preset:" + p, lit: true,
+        label: escapeText(String(p).replace(/_/g, " ")) });
+
+      const want = this._config && this._config.actions;
+      if (!Array.isArray(want) || !want.length) {
+        const out = [];
+        if (known.off) out.push(known.off);
+        if (known.sync) out.push(known.sync);
+        shared.slice(0, 2).forEach((p) => out.push(preset(p)));
+        return out;
+      }
+      const seen = {};
+      const out = [];
+      want.map((k) => String(k).trim()).forEach((k) => {
+        if (!k || seen[k]) return;
+        seen[k] = true;
+        if (k === "off" && known.off) return void out.push(known.off);
+        if (k === "sync" && known.sync) return void out.push(known.sync);
+        if (k.indexOf("preset:") === 0) {
+          const p = shared.find((x) => String(x).toLowerCase() === k.slice(7).toLowerCase());
+          if (p) out.push(preset(p));
+        }
+      });
+      return out;
     }
 
     _zoneRepaint() { this._sig = null; this._render(); }
@@ -8078,8 +8115,34 @@ ${FACE.KEYFRAMES}
           return true;
         }
         if (id === "sync") {
-          const d = ZONE.derive(model);
-          this._groupAction("setpoint", String(Math.round(d.target)));
+          /* Sync makes the house agree, and a house does not agree on temperature
+             alone: five rooms at 72 with one of them drying and one circulating is
+             not a synced house. It moves the MODE as well, to whichever mode most of
+             the running rooms are already in, so the button reads as "make everything
+             like the majority" rather than like a mode the card invented.
+
+             Only rooms that are ON are touched. Syncing the mode of a room somebody
+             deliberately turned off would be turning it on, which is a different
+             button and a destructive one. */
+          const dd = ZONE.derive(model);
+          const live = model.zones.filter((z) => !z.dead && z.mode !== "off"
+            && z.mode !== "unavailable");
+          const tally = {};
+          live.forEach((z) => { tally[z.mode] = (tally[z.mode] || 0) + 1; });
+          let win = null, best = 0;
+          Object.keys(tally).forEach((m) => { if (tally[m] > best) { best = tally[m]; win = m; } });
+          if (win) {
+            live.forEach((z) => {
+              if (z.mode === win) return;
+              const st = this._st(z.id);
+              const modes = ((st && st.attributes) || {}).hvac_modes;
+              if (Array.isArray(modes) && modes.indexOf(win) < 0) return;  // it cannot
+              this._zoneOptSet(z.id, "mode", win);
+              this._call("climate", "set_hvac_mode", { entity_id: z.id, hvac_mode: win });
+            });
+          }
+          this._groupAction("setpoint", String(Math.round(dd.target)));
+          this._zoneRepaint();
           return true;
         }
         if (id.indexOf("preset:") === 0) {
@@ -8221,6 +8284,26 @@ ${FACE.KEYFRAMES}
       return ids.map((id) => named[id] || id);
     }
 
+    /* The presets EVERY selected room advertises. The card has its own version of
+       this; the editor cannot borrow it, because an editor is not a card, so it asks
+       the same question of the same entities rather than offering a fixed list that
+       might name a preset none of these units has. */
+    _editorPresets() {
+      const hass = this._hass;
+      const ids = this._ids(this._config && this._config.entities);
+      if (!hass || !hass.states || !ids.length) return [];
+      let out = null;
+      for (const id of ids) {
+        const st = hass.states[id];
+        const list = ((st && st.attributes) || {}).preset_modes;
+        if (!Array.isArray(list)) return [];
+        const here = list.filter((p) => String(p).toLowerCase() !== "none");
+        out = out === null ? here
+          : out.filter((p) => here.some((q) => String(q).toLowerCase() === String(p).toLowerCase()));
+      }
+      return out || [];
+    }
+
     _schema() {
       const classic = this._config.layout === "classic";
       const rows = [
@@ -8248,6 +8331,18 @@ ${FACE.KEYFRAMES}
         { name: "group_actions", selector: { boolean: {} } },
         { name: "action_rows", selector: { number: { min: 1, max: 4, mode: "box" } } },
       ];
+      /* The bar's buttons, offered from what the ROOMS actually advertise rather than
+         a fixed list, so a preset no unit here supports is never on the menu. */
+      const presetOpts = this._editorPresets().map((p) => ({
+        value: "preset:" + p,
+        label: String(p).replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase()),
+      }));
+      const bar = [
+        { name: "actions", selector: { select: { multiple: true, mode: "list", options: [
+          { value: "off", label: this._t("editor.opt.act_off") },
+          { value: "sync", label: this._t("editor.opt.act_sync") },
+        ].concat(presetOpts) } } },
+      ];
       const range = [
         { name: "min_temp", selector: { number: { mode: "box" } } },
         { name: "max_temp", selector: { number: { mode: "box" } } },
@@ -8270,6 +8365,7 @@ ${FACE.KEYFRAMES}
       }
       return rows.concat([
         { name: "look", type: "expandable", title: this._t("editor.sec.appearance"), schema: look },
+        { name: "bar", type: "expandable", title: this._t("editor.sec.bar"), schema: bar },
         { name: "grid", type: "expandable", title: this._t("editor.sec.layout"), schema: layout },
         { name: "range", type: "expandable", title: this._t("editor.sec.range"), schema: range },
       ]);
@@ -8291,6 +8387,13 @@ ${FACE.KEYFRAMES}
         "editor.opt.tap_more_info": { en: "Open more-info", es: "Abrir mas informacion" },
         "editor.sec.appearance": { en: "Appearance", es: "Apariencia" },
         "editor.sec.layout": { en: "Layout", es: "Distribucion" },
+        "editor.sec.bar": { en: "Buttons at the bottom", es: "Botones de abajo" },
+        "editor.opt.act_off": { en: "All off / All on", es: "Apagar todo / Encender todo" },
+        "editor.opt.act_sync": { en: "Sync all", es: "Igualar todo" },
+        "label.actions": { en: "Buttons and their order", es: "Botones y su orden" },
+        "helper.actions": {
+          en: "Leave empty for the usual set. Ticking them one at a time sets the order. Presets come from what your rooms report, and Sync all matches the temperature AND the mode of most of the running rooms.",
+          es: "Dejalo vacio para el set de siempre. Marcandolos uno por uno defines el orden. Los presets vienen de lo que reportan tus cuartos, y Igualar todo iguala la temperatura Y el modo de la mayoria de los cuartos encendidos." },
         "editor.sec.range": { en: "Temperature range", es: "Rango de temperatura" },
         "label.entities": { en: "Rooms", es: "Cuartos" },
         "label.name": { en: "Card title", es: "Titulo de la tarjeta" },
@@ -8318,10 +8421,11 @@ ${FACE.KEYFRAMES}
     _valueChanged(ev) {
       ev.stopPropagation();
       const cfg = Object.assign({}, this._config, ev.detail.value);
-      for (const sec of ["look", "grid", "range"]) {
+      for (const sec of ["look", "bar", "grid", "range"]) {
         if (cfg[sec] && typeof cfg[sec] === "object") { Object.assign(cfg, cfg[sec]); delete cfg[sec]; }
       }
       if (Array.isArray(cfg.entities)) cfg.entities = this._mergeEntities(this._ids(cfg.entities));
+      if (Array.isArray(cfg.actions) && !cfg.actions.length) delete cfg.actions;
       // An empty field means "unset", not "the string empty". Leaving it in writes a
       // key the card then has to defend against.
       for (const k of Object.keys(cfg)) {

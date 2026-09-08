@@ -187,7 +187,8 @@ test("editor: the everyday fields are at the top, the rest folded away", () => {
   const top = ed._schema().filter((r) => r.type !== "expandable").map((r) => r.name);
   assert.deepEqual(top, ["entities", "name", "orientation"]);
   const secs = ed._schema().filter((r) => r.type === "expandable").map((r) => r.name);
-  assert.deepEqual(secs, ["look", "grid", "range"]);
+  assert.deepEqual(secs, ["look", "bar", "grid", "range"],
+    "the bottom buttons get their own section, beside appearance and layout");
 });
 
 test("editor: the classic gauges are not offered, only the shape of the zone card", () => {
@@ -695,4 +696,85 @@ test("hero: while dragging, the hero reads the dragged value", () => {
   el._zui = { houseTarget: 68 };
   el._zoneRepaint();
   assert.match(text(el), /68/, "the number under the finger is the one on screen");
+});
+
+// -------------------------------------------------------------- the bottom bar --
+
+const barIds = (cfg, st) => makeGroup(cfg, st)
+  .shadowRoot.querySelectorAll("[data-gact]");
+
+test("bar: unset is the usual set, in the usual order", () => {
+  const got = [...barIds()].map((b) => b.dataset.gact);
+  assert.equal(got[0], "alloff");
+  assert.equal(got[1], "sync");
+  assert.ok(got.slice(2).every((g) => g.indexOf("preset:") === 0));
+});
+
+test("bar: actions names the buttons and their order", () => {
+  const got = [...barIds({ actions: ["preset:eco", "off"] })].map((b) => b.dataset.gact);
+  assert.deepEqual(got, ["preset:eco", "alloff"], "asked for, in that order");
+});
+
+test("bar: a preset no room advertises is skipped, not drawn dead", () => {
+  const got = [...barIds({ actions: ["off", "preset:turbo"] })].map((b) => b.dataset.gact);
+  assert.deepEqual(got, ["alloff"]);
+});
+
+test("bar: the off button keeps all three of its faces under one name", () => {
+  const el = makeGroup({ actions: ["off"] });
+  assert.ok(el.shadowRoot.querySelector('[data-gact="alloff"]'));
+  clickG(el, "alloff");
+  assert.ok(el.shadowRoot.querySelector('[data-gact="confirm"]'),
+    "arming still works when the bar was named explicitly");
+});
+
+test("bar: the editor offers only presets the selected rooms actually have", () => {
+  const ed = makeEditor({ entities: ids });
+  const row = ed._schema().find((r) => r.name === "bar").schema[0];
+  const vals = row.selector.select.options.map((o) => o.value);
+  assert.deepEqual(vals.slice(0, 2), ["off", "sync"]);
+  assert.ok(vals.includes("preset:eco"));
+  assert.ok(!vals.includes("preset:none"), "none is not a preset anyone wants a button for");
+});
+
+// ----------------------------------------------------------------- sync all ----
+
+test("sync: it matches the mode as well as the temperature", () => {
+  // a house at one temperature with one room drying and one circulating is not synced
+  const mixed = JSON.parse(JSON.stringify(states));
+  mixed["climate.sala"].state = "cool";
+  mixed["climate.ricky"].state = "cool";
+  mixed["climate.elly"].state = "dry";
+  const el = makeGroup({}, makeHass(mixed, { entities }));
+  clickG(el, "sync");
+
+  const modes = el._hass.calls.filter((c) => c.service === "set_hvac_mode");
+  assert.equal(modes.length, 1, "only the room that disagreed is moved");
+  assert.equal(modes[0].data.entity_id, "climate.elly");
+  assert.equal(modes[0].data.hvac_mode, "cool", "to the majority, not to a mode the card invented");
+  assert.ok(el._hass.calls.some((c) => c.service === "set_temperature"),
+    "and the temperature still goes out");
+});
+
+test("sync: a room somebody turned off stays off", () => {
+  const mixed = JSON.parse(JSON.stringify(states));
+  mixed["climate.sala"].state = "cool";
+  mixed["climate.ricky"].state = "cool";
+  mixed["climate.elly"].state = "off";
+  const el = makeGroup({}, makeHass(mixed, { entities }));
+  clickG(el, "sync");
+  assert.ok(!el._hass.calls.some((c) => c.data.entity_id === "climate.elly"
+    && c.service === "set_hvac_mode"), "syncing it on would be a different, destructive button");
+});
+
+test("sync: a room that cannot do the majority mode is left alone", () => {
+  const mixed = JSON.parse(JSON.stringify(states));
+  mixed["climate.sala"].state = "cool";
+  mixed["climate.ricky"].state = "cool";
+  mixed["climate.elly"].state = "dry";
+  mixed["climate.elly"].attributes.hvac_modes = ["off", "dry"];   // no cool at all
+  const el = makeGroup({}, makeHass(mixed, { entities }));
+  clickG(el, "sync");
+  assert.ok(!el._hass.calls.some((c) => c.service === "set_hvac_mode"),
+    "never write a mode the unit does not advertise");
 });
