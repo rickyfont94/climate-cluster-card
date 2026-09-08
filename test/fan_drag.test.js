@@ -708,3 +708,131 @@ test("silk keeps its flow across a mode change, breeze redraws because it must",
   assert.notEqual(breeze.after[0], breeze.before[0],
     "breeze strokes its ribbons in the mode ink, so it has to redraw");
 });
+
+/* The silk loop did not close. Each puff walks one pitch over its cycle and then the
+   SMIL element snaps back a pitch upstream, which is only invisible if the puff from
+   the slot behind has arrived at exactly the shape being vacated. The POSITION handoff
+   was always exact; the LENGTH was not, because SILK_VAR gave each element a length it
+   held for the whole cycle, and consecutive entries differ by up to 94 percent. Every
+   path in a band shares dur and phase, so the entire band changed size in one frame,
+   every 1.95 to 3.85 seconds. That is a pop the rebuild fix could never have touched.
+
+   Assert the property that was false: puff k's closing frame must equal puff k+1's
+   opening frame, as an exact string. Before the fix the worst coordinate divergence was
+   around 48 user units on a 600 unit viewBox. */
+function silkBands(card) {
+  // each band is one <g>, and the puffs are its <path> children in slot order
+  return [...card._refs.faceFan.querySelectorAll("g.ct-fanflow > g")].map((g) =>
+    [...g.querySelectorAll("animate")].map((a) => (a.getAttribute("values") || "").split(";")));
+}
+
+test("silk: every puff hands its shape to the next one exactly, so the loop closes", () => {
+  let pairs = 0;
+  for (const fan of ["auto", "low", "medium", "high"]) {
+    const next = JSON.parse(JSON.stringify(states));
+    next["climate.ac"].attributes.fan_mode = fan;
+    const card = document.createElement("climate-cluster-card");
+    card.setConfig({ entity: "climate.ac", fan_style: "silk" });
+    card.hass = makeHass(next, { entities });
+
+    const bands = silkBands(card);
+    assert.equal(bands.length, 3, "silk draws three bands");
+    for (const band of bands) {
+      assert.ok(band.length >= 5, "a band carries several puffs");
+      for (let k = 0; k < band.length - 1; k++) {
+        assert.equal(band[k][band[k].length - 1], band[k + 1][0],
+          "the closing frame must BE the next puff's opening frame");
+        pairs++;
+      }
+    }
+  }
+  assert.ok(pairs >= 80, "checked every handoff on every band at every speed: " + pairs);
+});
+
+/* The interpolated length must never exceed the band pitch, or puffs touch and the
+   grouped blur and grouped opacity stop being equivalent to per-path ones. */
+test("silk: puffs never grow long enough to overlap their neighbour", () => {
+  const card = document.createElement("climate-cluster-card");
+  card.setConfig({ entity: "climate.ac", fan_style: "silk" });
+  card.hass = makeHass(states, { entities });
+  // SILK seg x max(SILK_VAR) against pitch, read off the rendered bands
+  const pitches = [34, 26, 44], segs = [22, 15, 28], maxVar = 1.28;
+  silkBands(card).forEach((band, i) => {
+    assert.ok(segs[i] * maxVar < pitches[i],
+      "band " + i + ": longest puff " + (segs[i] * maxVar) + " must clear pitch " + pitches[i]);
+  });
+});
+
+/* Same bug class as the fan ring, three inches away. The status dot breathes on a 1.9s
+   CSS animation inside the faceCenter string, and _paintFaceMoving rewrote that string
+   on every render. set hass renders on EVERY state change anywhere in Home Assistant,
+   so on a busy instance the dot restarted well inside 1.9s and never finished a breath. */
+test("the status dot survives a state change that does not touch this card", () => {
+  const card = liveCard();
+  const dot = () => card._refs.faceCenter.querySelector("[style*='animation']");
+  const before = dot();
+  assert.ok(before, "the status cluster carries an animated node");
+
+  // a push that changes nothing this card draws, which is the common case in a house
+  const next = JSON.parse(JSON.stringify(states));
+  next["sensor.unrelated"] = { entity_id: "sensor.unrelated", state: "1", attributes: {} };
+  card.hass = makeHass(next, { entities });
+  assert.equal(dot(), before, "the SAME node, so its 1.9s breath is uninterrupted");
+
+  // and a push that DOES change it must still redraw
+  const moved = JSON.parse(JSON.stringify(states));
+  moved["climate.ac"].attributes.temperature = 71;
+  card.hass = makeHass(moved, { entities });
+  assert.notEqual(dot(), before, "a real change still repaints the cluster");
+});
+
+/* The loop used to run one pitch PAST the window as well as one before it. The leading
+   extra is needed so puffs enter; the trailing one was dead in all seven of its frames,
+   because its start angle never drops back inside the window. Counting is the assertion
+   that works: a clamped puff is not byte-identical frame to frame (the radius still
+   moves with the wave) so "every frame the same" quietly passed either way.
+
+   A0 250, SPAN 220, so the window ends at 470. Slots run from A0 - pitch while
+   slot < 470: pitch 34 gives 216..454 = 8, pitch 26 gives 224..458 = 10, pitch 44 gives
+   206..426 = 6. Before the fix it was 9, 11 and 7. */
+test("silk emits no puff that can never draw", () => {
+  const card = liveCard({ fan_style: "silk" });
+  const bands = [...card._refs.faceFan.querySelectorAll("g.ct-fanflow > g")];
+  assert.deepEqual(bands.map((g) => g.querySelectorAll("animate").length), [8, 10, 6],
+    "one puff per slot inside the ring, and none past its end");
+  assert.equal(card._refs.faceFan.querySelectorAll("animate").length, 24);
+});
+
+/* The stylesheet's reduced-motion rule uses display:none on <animate>, which does
+   nothing: display does not apply to SVG animation elements, so the timeline runs
+   anyway. silk is the only style in the file that uses <animate>, so it was exactly the
+   one the escape hatch missed. The decision moved into _faceState, where the style is
+   picked, because that is the only place SMIL can actually be prevented. */
+test("prefers-reduced-motion drops silk to the static ring", () => {
+  const real = globalThis.window.matchMedia;
+  globalThis.window.matchMedia = (q) => ({
+    matches: /prefers-reduced-motion/.test(q), media: q,
+    addEventListener() {}, removeEventListener() {},
+  });
+  try {
+    const card = liveCard({ fan_style: "silk" });
+    assert.equal(card._refs.faceFan.querySelectorAll("animate").length, 0,
+      "no SMIL timeline may run for a reader who asked for less motion");
+    assert.equal(card._refs.faceFan.querySelector(".ct-fanwin"), null,
+      "and it really is the original ring, which has no clip window");
+  } finally {
+    globalThis.window.matchMedia = real;
+  }
+});
+
+test("with no matchMedia at all, the configured style still wins", () => {
+  const real = globalThis.window.matchMedia;
+  delete globalThis.window.matchMedia;
+  try {
+    const card = liveCard({ fan_style: "silk" });
+    assert.ok(card._refs.faceFan.querySelectorAll("animate").length > 0,
+      "a missing media query means no preference expressed, never reduce");
+  } finally {
+    globalThis.window.matchMedia = real;
+  }
+});

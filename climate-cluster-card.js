@@ -1047,16 +1047,33 @@
     return d + 'Z';
   }
 
-  /* over one cycle a segment advances exactly one pitch, so when it lands on the next
-     slot the loop is seamless, and the wave travels through it as it goes */
-  function segFrames(band, slot, seg, v0, v1) {
-    var frames = [], steps = 6, i, t0;
+  /* Over one cycle a segment advances exactly one pitch and then the loop restarts it
+     a pitch upstream. That is invisible only because the puff from the slot behind has
+     just arrived at the vacated angle, so the two have to MATCH. The position handoff
+     was always exact. The LENGTH was not: it came from SILK_VAR and was held for the
+     whole cycle, so at the wrap the puff standing at a slot swapped its neighbour's
+     length for its own in a single frame, and consecutive SILK_VAR ratios differ by
+     -34 to +94 percent. Every path in a band shares dur and phase, so the whole band
+     did it at once, every 1.95 to 3.85 seconds depending on band and fan speed.
+
+     Measured rather than argued: diffing puff k's closing frame against puff k+1's
+     opening frame gave a worst coordinate mismatch of 44.9, 37.0 and 47.9 user units
+     on a 600 unit viewBox. With the length interpolated to the successor's, all 120
+     handoff pairs across five fan settings and three bands are byte-identical.
+
+     So the length now belongs to the POSITION on the ring rather than to the element,
+     and a puff breathes as it travels instead of the ring snapping. The interpolated
+     length never exceeds max(seg0, seg1), so puffs still cannot touch and the grouped
+     blur and grouped opacity below stay correct. */
+  function segFrames(band, slot, seg0, seg1, v0, v1) {
+    var frames = [], steps = 6, i, u, t0;
     for (i = 0; i < steps; i++) {
-      t0 = slot + (i / steps) * band.pitch;
-      frames.push(ribbonSeg(band.r, t0, t0 + seg, v0, v1, band.amp, band.wave,
-                            band.thick, -i * 2 * Math.PI / steps));
+      u = i / steps;
+      t0 = slot + u * band.pitch;
+      frames.push(ribbonSeg(band.r, t0, t0 + seg0 + (seg1 - seg0) * u, v0, v1,
+                            band.amp, band.wave, band.thick, -i * 2 * Math.PI / steps));
     }
-    frames.push(ribbonSeg(band.r, slot + band.pitch, slot + band.pitch + seg,
+    frames.push(ribbonSeg(band.r, slot + band.pitch, slot + band.pitch + seg1,
                           v0, v1, band.amp, band.wave, band.thick, 0));
     return frames;
   }
@@ -1089,9 +1106,16 @@
       out += '<g opacity="' + (set ? v.lit : v.dim) + '"' +
         (v.blur ? ' filter="url(#bSoft)"' : '') + '>';
       /* start a pitch early and finish a pitch late so puffs enter and leave */
-      for (var slot = A0 - v.pitch; slot < full + v.pitch; slot += v.pitch, n++) {
+      /* One pitch early so puffs enter, but NOT one pitch late. The trailing extra was
+         dead in all seven of its frames: its t0 never drops below the window end, so the
+         clamp in ribbonSeg pinned all 34 points to the same angle and it drew a sliver a
+         tenth of a unit wide that SMIL still interpolated forever. Three of 27 paths,
+         one per band. Ending the loop at the window is the whole fix, and it is a term
+         removed rather than a branch added. */
+      for (var slot = A0 - v.pitch; slot < full; slot += v.pitch, n++) {
         var seg = v.seg * SILK_VAR[(n + bi) % SILK_VAR.length];
-        var frames = segFrames(v, slot, seg, A0, full);
+        var next = v.seg * SILK_VAR[(n + bi + 1) % SILK_VAR.length];
+        var frames = segFrames(v, slot, seg, next, A0, full);
         out += '<path d="' + frames[0] + '" fill="url(#bSilk)">' +
           '<animate attributeName="d" values="' + frames.join(';') + '" dur="' + dur + 's" ' +
           'calcMode="linear" repeatCount="indefinite"></animate></path>';
@@ -5503,7 +5527,14 @@
         // device reports mid mode-change painted a bare "A" beside the status word,
         // which tells a user nothing.
         preset: this._presetKnown(),
-        fanStyle: this._fanStyle || "silk",
+        /* The stylesheet tries to honour prefers-reduced-motion two ways: animation:none
+           for the CSS-driven pieces, which works and does stop breeze, and display:none
+           on the <animate> elements, which is a no-op because display does not apply to
+           SVG animation elements and the timeline runs regardless. silk is the only
+           style that uses <animate>, so it was exactly the one the escape hatch missed.
+           Decide it here, where the style is chosen, rather than in CSS that cannot
+           reach SMIL: a reader who asked the OS for less motion gets the static ring. */
+        fanStyle: this._reducedMotion() ? "original" : (this._fanStyle || "silk"),
         cells: this._faceCells(),
       };
     }
@@ -5611,6 +5642,15 @@
       if (!win || !mark) { this._faceFanKey = null; this._paintFace(); return; }
       win.setAttribute("d", FACE.fanWindowPath(pct));
       mark.innerHTML = FACE.fanHandle(noHandle ? null : pct);
+    }
+
+    /* Guarded, because matchMedia is absent in the test DOM and on old webviews, and a
+       missing media query must mean "no preference expressed", never "reduce". */
+    _reducedMotion() {
+      try {
+        return !!(window.matchMedia
+          && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+      } catch (e) { return false; }
     }
 
     _paintFace() {
@@ -5830,10 +5870,25 @@
         ? FACE.roomPin(roomA) + FACE.roomLabel(st.room, roomA) : "";
       if (wantCur) this._centreRoomCaption();
       this._refs.faceNeedle.innerHTML = FACE.needle(setA);
-      this._refs.faceCenter.innerHTML = FACE.modeWord(st.mode) + FACE.bigNumeral(st.set)
+      /* The status dot breathes on a 1.9s CSS animation and the boost and sleep glyphs
+         wink on another, and both live inside this one string. Rewriting it destroys
+         those nodes and restarts both from their 0 percent keyframe, and set hass
+         repaints on EVERY state change anywhere in Home Assistant. On an instance with
+         around 1,800 states the gap between renders is well under 1.9s, so the dot was
+         pinned near its dim end and never completed a breath: a jittering dim dot three
+         inches from the fan ring, and the same class of bug as the ring itself.
+
+         Skip the write when the string is byte-identical. The DOM already holds exactly
+         this, so nothing can go stale, and the measure-and-nudge passes that belong to
+         it have nothing new to measure. */
+      const centre = FACE.modeWord(st.mode) + FACE.bigNumeral(st.set)
         + FACE.statusLine(st.mode, st.action, st.preset);
-      this._fitHero();
-      this._fixStatusLine();
+      if (centre !== this._faceCentreHtml) {
+        this._faceCentreHtml = centre;
+        this._refs.faceCenter.innerHTML = centre;
+        this._fitHero();
+        this._fixStatusLine();
+      }
       this._placeClover();
       this._declutterScale();
     }

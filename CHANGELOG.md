@@ -125,6 +125,28 @@ every key that shipped before this release still reads the same way.
   all of them meaningless, with the friendly name sitting right there unread. The
   caption comes from the friendly name now, with the unit's own name taken off the
   front and `Mode` off the back, so "Aire-Sala Boost Mode" reads BOOST.
+- The silk loop never closed, so every band changed size in one frame once per cycle.
+  Each puff walks one pitch and the animation then snaps it back a pitch upstream, which
+  is invisible only if the puff from the slot behind has arrived at exactly the shape
+  being vacated. The position handoff was always exact; the length was not, because it
+  came from a variation table, was bound to the element and held for the whole cycle,
+  and neighbouring entries differ by up to 94 percent. Measured at up to 47.9 user units
+  of coordinate jump on a 600 unit viewBox, on every path in the band at once, every 1.95
+  to 3.85 seconds. The length now interpolates to its successor's, so it belongs to the
+  position on the ring rather than to the element and a puff breathes as it travels.
+- The status dot and the preset glyphs never finished a breath. Both animate on a 1.9
+  second cycle inside one string that was rewritten on every repaint, and the card
+  repaints on every state change anywhere in Home Assistant, so on a busy instance they
+  restarted well inside their own period. The write is skipped when nothing in it changed.
+- Three of the ring's puffs could never draw anything. The generator ran a pitch past the
+  end of the ring as well as a pitch before it; the leading extra is what lets puffs
+  enter, but the trailing one was clamped to a sliver in all seven of its frames and was
+  interpolated forever regardless.
+- `prefers-reduced-motion` did not reach the fan ring. The stylesheet disabled the CSS
+  driven animations, which stopped breeze, and used `display:none` on the SVG animation
+  elements for the rest, which does nothing at all because display does not apply to
+  them. Silk was the only style built on those elements, so it was exactly the one that
+  escaped. A reader who asks for less motion now gets the static ring.
 - The animated fan rings were not flowing, they were restarting. The ring was keyed on
   the fan READING, so every speed the unit reported rebuilt it, and rebuilding destroys
   every running animation. Measured on a live house: one unit reports a new fan speed
