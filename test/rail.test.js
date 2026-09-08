@@ -93,3 +93,62 @@ test("rail: it does NOT touch the popup chips, which share those keys", () => {
       k + " resolves the same, so its popup chip is untouched");
   }
 });
+
+// ------------------------------------------------ extra toggles on the rail ----
+// The caption fell straight to the entity id when no name was configured, and a
+// Midea switch's object id is the device serial. Five of these cards on one
+// dashboard read 30786325, 15063309, 15063309, 15063309, 15063309: four identical
+// and all meaningless, with the friendly name sitting right there unread.
+
+const xCard = (toggles, over) => {
+  const st = JSON.parse(JSON.stringify(railStates));
+  Object.assign(st, over || {});
+  const el = document.createElement("climate-cluster-card");
+  el.setConfig({ type: "custom:climate-cluster-card", entity: "climate.rail",
+    name: "Aire-Sala", extra_toggles: toggles });
+  st["climate.rail"].attributes.friendly_name = "Aire-Sala";
+  el.hass = makeHass(st, { entities: railEnts });
+  return el;
+};
+const xCap = (el) => (el._faceCellsAvailable().find((c) => c.key === "extra:0") || {}).caption;
+
+const boostSw = {
+  "switch.30786325859366_boost_mode": {
+    entity_id: "switch.30786325859366_boost_mode", state: "on",
+    attributes: { friendly_name: "Aire-Sala Boost Mode" } },
+};
+
+test("extra: the caption is the friendly name, not the device serial", () => {
+  const el = xCard(["switch.30786325859366_boost_mode"], boostSw);
+  assert.equal(xCap(el), "BOOST",
+    "the unit's own name comes off the front and Mode comes off the back");
+});
+
+test("extra: a configured name is used exactly as written", () => {
+  const el = xCard([{ entity: "switch.30786325859366_boost_mode", name: "Turbo" }], boostSw);
+  assert.equal(xCap(el), "TURBO");
+});
+
+test("extra: a name too long for the cell keeps the word that identifies it", () => {
+  // these read "<unit> <feature> Mode", so the LAST word is the one that says what
+  // the toggle does; a blind left slice called Aire-Master Boost "AIRE-MAS"
+  const sw = { "switch.x_boost": { entity_id: "switch.x_boost", state: "off",
+    attributes: { friendly_name: "Aire-Master Boost Mode" } } };
+  assert.equal(xCap(xCard(["switch.x_boost"], sw)), "BOOST");
+
+  const m = { "switch.x_mildew": { entity_id: "switch.x_mildew", state: "off",
+    attributes: { friendly_name: "Anti Mildew" } } };
+  assert.equal(xCap(xCard(["switch.x_mildew"], m)), "MILDEW");
+});
+
+test("extra: a short name is left alone", () => {
+  const sw = { "switch.x_ion": { entity_id: "switch.x_ion", state: "off",
+    attributes: { friendly_name: "Ionizer" } } };
+  assert.equal(xCap(xCard(["switch.x_ion"], sw)), "IONIZER");
+});
+
+test("extra: a switch with no friendly name at all still says something", () => {
+  const sw = { "switch.plain": { entity_id: "switch.plain", state: "off", attributes: {} } };
+  const cap = xCap(xCard(["switch.plain"], sw));
+  assert.ok(cap && cap.length, "never blank: " + JSON.stringify(cap));
+});

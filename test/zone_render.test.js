@@ -350,3 +350,29 @@ test("tiles: the caption gives up size before it gives up letters", () => {
   assert.match(nm("Living Room"), /letter-spacing:\.08em/, "and lose the wide tracking");
   assert.match(nm("Downstairs Annexe"), /font:600 11px/, "and a long one steps down again");
 });
+
+test("hero: a stacked label pair still clears the band", () => {
+  // a narrow spread puts both ring ends near twelve o'clock, which is the case that
+  // forces two lines. The band is 13 wide at r 104, so its top edge is y 97.5, and a
+  // second line pushed DOWN from a tight shared baseline lands on it.
+  const tight = JSON.parse(JSON.stringify(states));
+  tight["climate.sala"].attributes.friendly_name = "Living Room";
+  tight["climate.sala"].attributes.current_temperature = 78;
+  tight["climate.ricky"].attributes.friendly_name = "Master";
+  tight["climate.ricky"].attributes.current_temperature = 74;
+  tight["climate.elly"].attributes.friendly_name = "Bedroom";
+  tight["climate.elly"].attributes.current_temperature = 77;
+
+  const svg = html(makeGroup({}, makeHass(tight, { entities })));
+  const ys = [...svg.matchAll(/class="cg-ringlab"[^>]*y="([-0-9.]+)"/g)].map((m) => Number(m[1]));
+  assert.equal(ys.length, 2);
+  assert.notEqual(ys[0], ys[1], "this spread is too narrow to sit them side by side");
+
+  const HALF = 4.75;                 // half of the 9.5px label, centred on its baseline
+  const BAND_TOP = 97.5, MARGIN = 2;
+  assert.ok(Math.max(...ys) + HALF <= BAND_TOP - MARGIN,
+    "the lower line must clear the band's top edge, not graze it, got y="
+    + Math.max(...ys));
+  assert.ok(Math.min(...ys) - HALF >= 71,
+    "and the upper one must stay inside the viewBox, got y=" + Math.min(...ys));
+});

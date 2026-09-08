@@ -119,6 +119,14 @@ every key that shipped before this release still reads the same way.
   finger on "low" drew the ring a third of the way round and the marker stepped
   forward the moment it lifted. Both now come from one pair of functions, and the
   round trip is asserted for every stop count.
+- An extra toggle with no configured `name` captioned itself with the entity id, and
+  a Midea switch's object id is the device serial: five of these cards on one dashboard
+  read 30786325, 15063309, 15063309, 15063309 and 15063309, four of them identical and
+  all of them meaningless, with the friendly name sitting right there unread. The
+  caption comes from the friendly name now, with the unit's own name taken off the
+  front and `Mode` off the back, so "Aire-Sala Boost Mode" reads BOOST.
+- A stacked pair of ring labels was pushed DOWN from an already tight baseline and
+  landed on the band. The pair moves up instead.
 - Real room names broke three layouts, found by shooting the release screenshots with
   a real house in them instead of the short names every earlier capture used.
   (a) The two ring labels ran through each other: near a narrow spread both ends sit
@@ -139,10 +147,14 @@ every key that shipped before this release still reads the same way.
   detaches and re-attaches cards freely, entering edit mode does it.
 
 ### Changed
-- Every screenshot reshot against this release, and the demo animation rebuilt on the
-  new dial. The light-theme frame is gone from the gallery: the card still follows a
-  light theme, but the frame was a worse advertisement than the two it sat between.
-  A room's sheet takes its place. The asset directory drops from 8.0 MB to 5.2 MB.
+- Every screenshot reshot against this release on the frosted-glass appearance over a
+  wallpaper, which is what the panel actually looks like in use, with five rooms in
+  five different states. The demo animation was rebuilt on the new dial: it sweeps in
+  one direction and holds, rather than bouncing, and it runs at 2.5 frames a second
+  instead of 7. The light-theme frame is gone from the gallery, replaced by a room's
+  sheet and by the modes and presets the dial actually draws. Stills ship as WebP
+  because a shader wallpaper behind frosted glass is fine detail that PNG cannot pack;
+  the asset directory drops from 8.0 MB to 1.3 MB.
 
 ### Removed
 - The handoff face's dashed fan ring. `fan_style` was never able to select it.

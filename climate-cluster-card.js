@@ -1359,7 +1359,14 @@
     var cold = ringLabelBox(coldText, lo, y);
     var GAP = 6;
     var clear = cold.x1 + GAP <= warm.x0 || warm.x1 + GAP <= cold.x0;
-    if (!clear) warm.y = y + 12;
+    if (!clear) {
+      /* Two lines, and the PAIR moves up rather than the lower one moving down: the
+         band is 13 wide at r=104, so its top edge is at y 97.5, and a second line
+         pushed down from a tight shared baseline lands on it. */
+      var top = Math.max(76, y - 6);
+      cold.y = top;
+      warm.y = top + 13;
+    }
     return ringLabelDraw(cold, '#8b95a2') + ringLabelDraw(warm, '#27d3ff');
   }
 
@@ -4473,6 +4480,39 @@
       const fn = st && st.attributes && st.attributes.friendly_name;
       return fn || (String(it.entity).split(".")[1] || it.entity).replace(/_/g, " ");
     }
+    /* The caption under an extra toggle on the rail.
+
+       It fell straight to the entity id when no name was configured, and a Midea
+       switch's object id is the device serial: five of these cards on one dashboard
+       read 30786325, 15063309, 15063309, 15063309, 15063309. Four identical, all
+       meaningless, and the friendly name was sitting right there unread.
+
+       The friendly name needs two things taken off it before it fits in eight
+       characters. It repeats the unit's own name, and it ends in a word that is true
+       of every toggle, so "Aire-Sala Boost Mode" has to come out as BOOST and not as
+       AIRE-SAL. An explicitly configured name is left exactly as written. */
+    _xCaption(it) {
+      if (it.name) return String(it.name).toUpperCase().slice(0, 8);
+      let n = String(this._xName(it) || "");
+      const st = this._st(this._config && this._config.entity);
+      const own = [(st && st.attributes && st.attributes.friendly_name) || "",
+        (this._config && this._config.name) || ""];
+      for (const p of own) {
+        if (p && n.length > p.length && n.toLowerCase().indexOf(p.toLowerCase()) === 0) {
+          n = n.slice(p.length);
+          break;
+        }
+      }
+      n = n.replace(/^[\s\-_.]+/, "").replace(/\s+mode$/i, "").trim();
+      /* Still too long means the prefix did not match, which happens whenever the
+         card is renamed away from the unit. These names read "<unit> <feature> Mode",
+         so the word that identifies the toggle is the LAST one: "Aire-Master Boost"
+         is BOOST, and a blind left slice would have called it AIRE-MAS. */
+      if (n.length > 8 && n.indexOf(" ") > 0) n = n.slice(n.lastIndexOf(" ") + 1);
+      if (!n) n = String(this._xName(it) || "");
+      return n.toUpperCase().slice(0, 8);
+    }
+
     _xIcon(it) {
       if (it.icon) return it.icon;
       const st = this._st(it.entity);
@@ -5350,7 +5390,7 @@
         if (!st) return;
         const on = st.state === "on";
         out.push({ key: "extra:" + i, value: on ? "ON" : "OFF", widest: "OFF", lit: on,
-          caption: String(it.name || it.entity.split(".")[1]).toUpperCase().slice(0, 8) });
+          caption: this._xCaption(it) });
       });
       return out;
     }

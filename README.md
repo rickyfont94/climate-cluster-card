@@ -127,7 +127,7 @@ that carries the coldest and warmest room on its ring, and a live tile per room 
 it. From 2.3.0 that is the default. The gauge-per-room grid that shipped before it is
 still there as `layout: classic`.
 
-<img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/group-card.png" alt="Multi-zone group card" width="820">
+<img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/group-card.webp" alt="Multi-zone group card" width="820">
 
 ```yaml
 type: custom:climate-cluster-group-card
@@ -166,7 +166,7 @@ dragging the house gauge moves every room at once.
 | `hero` | `average` \| `hottest` | `average` | What the big gauge reads. **`layout: classic` only.** |
 | `tap_zone` | `focus` \| `more-info` | `focus` | What tapping a tile does. **`layout: classic` only.** |
 
-<img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/group-rows.png" alt="Multi-zone card in its vertical shape" width="470">
+<img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/group-rows.webp" alt="Multi-zone card in its vertical shape" width="470">
 
 **All off** becomes **All on** when the whole house is off, and puts each room back the
 way it was rather than picking a mode for it. **Sync all** matches the temperature *and*
@@ -206,15 +206,19 @@ extra_toggles:
 <details><summary><b>More screenshots</b></summary>
 
 <table border="0"><tr>
-  <td><img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/preview.png" alt="Two-ring dial" width="330"><br><b>Two-ring dial</b>, inner is temp, outer is fan</td>
-  <td><img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/view-modes.png" alt="Mode popup" width="330"><br><b>Mode popup</b> with the feature chips</td>
+  <td><img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/preview.webp" alt="Two-ring dial" width="330"><br><b>Two-ring dial</b>, inner is temp, outer is fan</td>
+  <td><img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/view-modes.webp" alt="Mode popup" width="330"><br><b>Mode popup</b> with the feature chips</td>
 </tr><tr>
-  <td><img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/zone-sheet.png" alt="A room's sheet on the multi-zone card" width="330"><br><b>A room's sheet</b>, the same object the dial opens</td>
-  <td><img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/theme-dark.png" alt="Preset glyph and an auto fan" width="330"><br><b>Presets</b> read as a glyph beside the status</td>
+  <td><img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/zone-sheet.webp" alt="A room's sheet on the multi-zone card" width="330"><br><b>A room's sheet</b>, the same object the dial opens</td>
+  <td><img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/dial-auto.webp" alt="The dial in auto with a comfort preset" width="330"><br><b>Auto</b> in its own colour, preset as a glyph</td>
 </tr><tr>
-  <td><img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/glass-hibiscus.png" alt="Frosted glass, pink tint" width="330"><br><b>Frosted glass</b>, your own tint over your wallpaper</td>
-  <td><img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/glass-binnacle.png" alt="Frosted glass, teal tint" width="330"><br><b>Frosted glass</b>, a second tint on the same card</td>
+  <td><img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/dial-boost.webp" alt="The dial in cool with the boost preset" width="330"><br><b>Boost</b>, and a hardware switch on the rail</td>
+  <td><img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/dial-fan.webp" alt="The dial in fan only" width="330"><br><b>Fan only</b>, with nothing to cool</td>
 </tr></table>
+
+Every shot is `appearance: glass-dark` over a wallpaper, which is what the frosted panel
+looks like in use. On the default `theme` appearance the same card is opaque and follows
+your Home Assistant colours instead.
 
 </details>
 
