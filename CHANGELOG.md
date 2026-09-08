@@ -147,9 +147,12 @@ every key that shipped before this release still reads the same way.
   detaches and re-attaches cards freely, entering edit mode does it.
 
 ### Changed
-- Two legend sheets in the README: every hvac mode side by side in its own colour,
-  and every preset glyph side by side beside the status word. Both are captured from
-  real cards in one stage, so neither can drift from the card it describes.
+- Three legend sheets in the README: every hvac mode side by side in its own colour,
+  the four preset symbols shown large and named, and the same four in place on the
+  dial. All are lifted out of real rendered cards rather than redrawn, so none of them
+  can drift from the card it describes. The symbol sheet is animated, because two of
+  the four glyphs move: boost's chevrons climb in turn and sleep's z's fade in
+  sequence, and a still frame catches both mid-fade.
 - Every screenshot reshot against this release on the frosted-glass appearance over
   the plain dark ground the dashboard actually runs on, with five rooms in five
   different states. The demo animation was rebuilt on the new dial: it sweeps in

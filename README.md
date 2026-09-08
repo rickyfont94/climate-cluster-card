@@ -129,9 +129,16 @@ lit rail cell, the fan ring stroke and the comfort glyph. It never touches the t
 gradients, the needle, the room pin, the delta segment or the steppers, which is why
 six modes still read as one instrument. Override any of them with `mode_colors`.
 
-<img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/presets.webp" alt="Every preset glyph on the dial" width="820">
+<img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/presets-anim.webp" alt="The four preset symbols" width="820">
 
-Each preset keeps its own colour so it reads the same in any mode. Comfort is the one
+Eco, comfort, boost and sleep are a live row in the pop-up, and whichever one is set
+wears its own symbol beside the status word, where you read it without opening
+anything. Two of the four move: boost's chevrons climb in turn and sleep's z's fade in
+sequence, both on the same 1.9s the status dot breathes on.
+
+<img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/presets.webp" alt="Every preset glyph shown on the dial" width="820">
+
+Each keeps its own colour so it reads the same in any mode. Comfort is the one
 exception and borrows the mode ink, because it means the normal state of that mode. A
 preset the card does not recognise draws nothing rather than falling back to its own
 first letter.
