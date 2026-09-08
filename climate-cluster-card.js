@@ -542,9 +542,9 @@
       var seg = 'M' + f(p[0]) + ' ' + f(p[1]) + 'L' + f(q[0]) + ' ' + f(q[1]);
       if (isMaj) major += seg; else minor += seg;
     }
-    return '<path d="' + minor + '" fill="none" stroke="rgba(200,215,235,.26)" ' +
+    return '<path d="' + minor + '" fill="none" style="stroke:var(--ct-face-tick, rgba(200,215,235,.26))" ' +
              'stroke-width="1.4" stroke-linecap="round"></path>' +
-           '<path d="' + major + '" fill="none" stroke="rgba(200,215,235,.60)" ' +
+           '<path d="' + major + '" fill="none" style="stroke:var(--ct-face-tick-major, rgba(200,215,235,.60))" ' +
              'stroke-width="2.2" stroke-linecap="round"></path>';
   }
 
@@ -556,7 +556,7 @@
       var p = P(162, angleOf(v, min, max));
       out += '<text x="' + f(p[0]) + '" y="' + f(p[1]) + '" text-anchor="middle" ' +
         'dominant-baseline="central" font-size="12.5" font-weight="600" ' +
-        'letter-spacing=".6" fill="rgba(200,215,235,.52)">' + v + '</text>';
+        'letter-spacing=".6" style="fill:var(--ct-face-dim, rgba(200,215,235,.52))">' + v + '</text>';
     }
     return out;
   }
@@ -600,10 +600,10 @@
        arc and swings it sideways into the band near either end. Deliberate deviation. */
     var c = P(159, roomAngle);
     return '<text x="' + f(v[0]) + '" y="' + f(v[1]) + '" text-anchor="middle" ' +
-        'dominant-baseline="central" font-size="21" fill="#eceff7">' + room + '\u00b0</text>' +
+        'dominant-baseline="central" font-size="21" style="fill:var(--ct-face-ink, #eceff7)">' + room + '\u00b0</text>' +
       '<text x="' + f(c[0]) + '" y="' + f(c[1]) + '" text-anchor="middle" ' +
         'dominant-baseline="central" font-size="9.5" font-weight="600" letter-spacing="1.6" ' +
-        'fill="rgba(200,215,235,.55)">ROOM</text>';
+        'style="fill:var(--ct-face-sub, rgba(200,215,235,.55))">ROOM</text>';
   }
 
   /* ---------------------------------------------------------- delta segment ---- */
@@ -614,23 +614,24 @@
     if (Math.abs(delta) < 0.5) return '';
     var lo = Math.min(setAngle, roomAngle), hi = Math.max(setAngle, roomAngle);
     var d = P(216, setAngle);
-    return '<path d="' + arcPath(216, lo, hi) + '" fill="none" stroke="#ffffff" ' +
+    return '<path d="' + arcPath(216, lo, hi) + '" fill="none" style="stroke:var(--ct-face-delta, #ffffff)" ' +
         'stroke-width="4.5" stroke-linecap="round" opacity=".5"></path>' +
-      '<circle cx="' + f(d[0]) + '" cy="' + f(d[1]) + '" r="3.4" fill="#ffffff" opacity=".72"></circle>' +
+      '<circle cx="' + f(d[0]) + '" cy="' + f(d[1]) + '" r="3.4" opacity=".72" style="fill:var(--ct-face-delta, #ffffff)"></circle>' +
       '<text x="470" y="112" text-anchor="start" font-size="13" font-weight="600" ' +
-        'letter-spacing="1.4" fill="#eceff7">' + (delta >= 0 ? '+' : '') + Math.round(delta) + '</text>';
+        'letter-spacing="1.4" style="fill:var(--ct-face-ink, #eceff7)">' + (delta >= 0 ? '+' : '') + Math.round(delta) + '</text>';
   }
 
   /* ---------------------------------------------------------------- centre ---- */
 
   function modeWord(mode) {
     return '<text x="300" y="176" text-anchor="middle" font-size="25" font-weight="600" ' +
-      'letter-spacing="7" fill="' + MODES[mode].ink + '">' + MODES[mode].word + '</text>';
+      'letter-spacing="7" style="fill:var(--ct-face-mode-text, ' + MODES[mode].ink + ')">' +
+      MODES[mode].word + '</text>';
   }
 
   function bigNumeral(set) {
     return '<text x="300" y="272" text-anchor="middle" font-size="104" ' +
-      'fill="#f7f9fc">' + set + '</text>';
+      'style="fill:var(--ct-face-hero, #f7f9fc)">' + set + '</text>';
   }
 
   /* the cluster centres itself as a unit so it stays on the vertical axis whatever the
@@ -645,7 +646,7 @@
       '<circle cx="' + f(x0 + 5) + '" cy="303" r="4.5" fill="' + ink + '" ' +
         'style="animation:pulse 1.9s ease-in-out infinite"></circle>' +
       '<text x="' + f(x0 + 21) + '" y="309" font-size="16" font-weight="600" ' +
-        'letter-spacing="3.4" fill="' + ink + '">' + word + '</text>' +
+        'letter-spacing="3.4" style="fill:var(--ct-face-mode-text, ' + ink + ')">' + word + '</text>' +
       presetGlyph(preset, ink, x0 + 21 + tw + 12, 303) + '</g>';
   }
 
@@ -695,7 +696,7 @@
 
   function steppers() {
     var c = 'fill="rgba(154,175,210,.10)" stroke="rgba(92,214,255,.5)" stroke-width="1.6"';
-    var g = 'stroke="#eceff7" stroke-width="2.6" stroke-linecap="round"';
+    var g = 'style="stroke:var(--ct-face-ink, #eceff7)" stroke-width="2.6" stroke-linecap="round"';
     return '<g data-act="down" style="cursor:pointer">' +
         '<circle cx="186" cy="250" r="27" ' + c + '></circle>' +
         '<path d="M 172 250 H 200" ' + g + '></path></g>' +
@@ -722,14 +723,14 @@
       var x = Math.round(x0 + i * (w + gap)), tx = x + w / 2;
       var fill = c.lit ? rgba(ink, .14) : 'rgba(154,175,210,.09)';
       var stroke = c.lit ? ink : 'rgba(154,175,210,.20)';
-      var tint = c.lit ? light : '#eceff7';
+      var tint = c.lit ? 'var(--ct-face-lit, ' + light + ')' : 'var(--ct-face-ink, #eceff7)';
       out += '<g data-cell="' + i + '" style="cursor:pointer">' +
         '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="27" rx="8" ' +
           'fill="' + fill + '" stroke="' + stroke + '"></rect>' +
         '<text x="' + f(tx) + '" y="' + (y + 14) + '" text-anchor="middle" font-size="14" ' +
-          'font-weight="600" letter-spacing="1.1" fill="' + tint + '">' + c.value + '</text>' +
+          'font-weight="600" letter-spacing="1.1" style="fill:' + tint + '">' + c.value + '</text>' +
         '<text x="' + f(tx) + '" y="' + (y + 23.5) + '" text-anchor="middle" font-size="8" ' +
-          'font-weight="600" letter-spacing="1.5" fill="rgba(200,215,235,.55)">' +
+          'font-weight="600" letter-spacing="1.5" style="fill:var(--ct-face-sub, rgba(200,215,235,.55))">' +
           c.caption + '</text></g>';
     });
     return out;
@@ -4184,9 +4185,35 @@
     }
 
     // Full repaint, from _render. Not from a drag.
+    /* Which way round is the ground? The face's neutral ink already follows
+       --primary-text-color, but two things cannot: the rail's LIT value, which the
+       module lifts toward white so it clears its own tinted fill, and the mode word,
+       whose ink is a saturated cyan or amber picked against a dark card. Both wash
+       out on a light theme. CSS alone cannot tell the two cases apart, because HA
+       sets no light/dark flag and prefers-color-scheme does not follow a hand-picked
+       HA theme, so read the resolved text colour back and stamp the answer. .ct-card
+       carries color:var(--ct-face-ink) purely so this returns a resolved rgb(). */
+    _inkGround(card) {
+      try {
+        const m = /([0-9.]+)[^0-9.]+([0-9.]+)[^0-9.]+([0-9.]+)/.exec(getComputedStyle(card).color);
+        if (!m) return "dark";
+        // Rec.709 on the TEXT colour: dark text means a light ground.
+        const l = (0.2126 * +m[1] + 0.7152 * +m[2] + 0.0722 * +m[3]) / 255;
+        return l < 0.5 ? "light" : "dark";
+      } catch (e) { return "dark"; }
+    }
+
     _paintFace() {
       if (!this._refs.face) return;
+      const inkCard = this.shadowRoot && this.shadowRoot.querySelector(".ct-card");
       const st = this._faceState();
+      if (inkCard) {
+        inkCard.setAttribute("data-ink", this._inkGround(inkCard));
+        // the light-ground rule mixes the mode word toward the card ink, so it needs
+        // the module's ink for THIS mode, not the card's own accent map.
+        inkCard.style.setProperty("--ct-mode-ink",
+          (FACE.MODES[st.mode] || FACE.MODES.off).ink);
+      }
       const key = st.min + ":" + st.max;
       const setA = FACE.angleOf(st.set, st.min, st.max);
       const roomA = FACE.angleOf(st.room, st.min, st.max);
@@ -4849,10 +4876,45 @@ ha-card{ position:relative; display:block; overflow:visible; }
   --ct-font:${FONT_STACK};
   /* card-colored halo behind the gesture hint glyphs so they read over the fan-arc. */
   --ct-hint-knockout: var(--ha-card-background, var(--card-background-color, #16181d));
+  /* Face ink. The handoff module ships dark-theme literals inline; every neutral one
+     is emitted as var(<token>, <that literal>) so this block is the only place they
+     are decided. They resolve from the SAME theme properties the legacy face used,
+     so a light theme stays readable and the glass variants (which pin both text
+     properties on this element) keep working. Mode ink, gradients, the needle and
+     the preset glyphs are deliberately NOT here: those are the design, not the ground. */
+  --ct-face-hero: var(--primary-text-color, #f7f9fc);
+  --ct-face-ink:  var(--primary-text-color, #eceff7);
+  --ct-face-delta: var(--primary-text-color, #ffffff);
+  --ct-face-sub: var(--secondary-text-color, rgba(200,215,235,.55));
+  /* the same two percentages the legacy .ct-tk-major/.ct-tk-minor rules use, so the
+     new ticks land on the exact colours the shipped card already drew. */
+  --ct-face-dim: color-mix(in srgb, var(--secondary-text-color, rgb(200,215,235)) 52%, transparent);
+  --ct-face-tick: color-mix(in srgb, var(--secondary-text-color, rgb(200,215,235)) 26%, transparent);
+  --ct-face-tick-major: color-mix(in srgb, var(--secondary-text-color, rgb(200,215,235)) 60%, transparent);
+  /* read back by _inkGround() to decide which way round the ground is. Nothing
+     inherits this: every face string sets its own fill. */
+  color: var(--ct-face-ink);
   /* pan-y (NOT none): a vertical swipe over the card still scrolls the dashboard;
      only the .ct-hit grab bands below opt out so a ring drag owns the gesture. */
   touch-action:pan-y;
   /* NEVER put backdrop-filter here or on :host: it would re-anchor the fixed .ct-pop. */
+}
+/* Light ground. Set by _inkGround() from the resolved text colour, because HA
+   publishes no light/dark flag and prefers-color-scheme does not track a
+   hand-picked HA theme. Only the two colours that cannot follow the text
+   property are re-decided here: everything else already resolves correctly.
+   On a dark ground neither token is defined and the module literals stand, so
+   the shipped dark rendering is untouched. */
+.ct-card[data-ink="light"]{
+  /* the rail lit value: the module lifts it toward white to clear its own tinted
+     fill, which is invisible on a pale card. Same answer the mode popup already
+     gives its lit button: the theme text colour, with the mode colour kept in the
+     border and the fill. */
+  --ct-face-lit: var(--ct-face-ink);
+  /* the mode word and the status word: cyan on white is about 1.6:1. Pull the ink
+     down toward the card ink rather than replacing it, so HEAT still reads amber
+     and COOL still reads blue. */
+  --ct-face-mode-text: color-mix(in srgb, var(--ct-mode-ink, currentColor) 62%, var(--ct-face-ink));
 }
 /* height-capped mode: width follows the arc viewBox aspect (600/392 = 1.5306), centered. */
 .ct-card[data-capped]{ width:min(100%, calc(var(--ct-max-h) * 1.5306)); }
