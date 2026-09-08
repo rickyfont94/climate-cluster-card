@@ -2356,8 +2356,7 @@
       if (!names.length) return null;
       const r = this._fanNumRange() || { min: FAN_MIN, max: FAN_MAX };
       const frac = clamp((value - r.min) / ((r.max - r.min) || 1), 0, 1);
-      const i = clamp(Math.round(frac * (names.length - 1)), 0, names.length - 1);
-      return names[i];
+      return names[this._fanFracToIndex(frac, names.length)];
     }
     // Value label: integer unless the step has a fractional part.
     _fmtFan(v, step) {
@@ -3204,11 +3203,34 @@
       if (f == null) return null;
       return this._snapFanValue(f);
     }
+    /* Where a named stop sits on the ring, as a fraction of the arc.
+
+       There is one right answer and the card held two. The SETTLED reading, and
+       the "33%" the rail prints under FAN, put stop i at (i + 1) / n, so on a three
+       speed unit low is a third of the way round. The PICK put it at i / (n - 1),
+       so low was the very start. The two agree only on the top stop, which is why
+       the marker jumped forward the instant the finger lifted: the finger chose by
+       one rule and the ring drew by the other.
+
+       (i + 1) / n is the one that survives, because the lowest speed of a running
+       fan is not "no fan" and must not draw an empty ring. */
+    _fanNamedFrac(i, n) {
+      if (n <= 0) return 1;
+      return clamp((i + 1) / n, 0, 1);
+    }
+
+    /* Its exact inverse: the stop nearest the finger. Round-half-up puts the
+       boundary midway between two drawn stops, so what the finger picks is always
+       the stop it is closest to on screen. */
+    _fanFracToIndex(f, n) {
+      if (n <= 1) return 0;
+      return clamp(Math.round(clamp(f, 0, 1) * n) - 1, 0, n - 1);
+    }
+
     _eventToFanIndex(e, n) {
       const f = this._eventToFrac(e);
       if (f == null) return null;
-      if (n <= 1) return 0;
-      return clamp(Math.round(f * (n - 1)), 0, n - 1);
+      return this._fanFracToIndex(f, n);
     }
 
     // ============================================================================
@@ -5190,7 +5212,7 @@
       if (!list.length) return null;
       const i = list.findIndex((x) => String(x).toLowerCase() === String(name).toLowerCase());
       if (i < 0) return null;
-      return clamp(Math.round(((i + 1) / list.length) * 100), 1, 100);
+      return clamp(Math.round(this._fanNamedFrac(i, list.length) * 100), 1, 100);
     }
 
     /* Which buttons the bottom row carries, and in what order.
@@ -5598,7 +5620,7 @@
       if (String(curName).toLowerCase() === "auto") { this._paintFanAuto(); return; }
       let i = names.findIndex((m) => String(m).toLowerCase() === String(curName).toLowerCase());
       if (i < 0) i = 0;
-      const frac = n <= 1 ? 1 : i / (n - 1);
+      const frac = this._fanNamedFrac(i, n);
       const ang = START_ANG + SPAN * clamp(frac, 0, 1);
       this._refs.fanFill.setAttribute("d", arcPath(CX, CY, R_FAN, START_ANG, Math.max(START_ANG + 0.01, ang)));
       this._refs.fanFill.style.opacity = "1";
@@ -5609,12 +5631,13 @@
          derived the same way _facePct derives it for a settled state, or the two
          disagree by one step the moment the finger lifts. auto never arrives here:
          it returns above, and _fanNamedModes filters it out of the drag list. */
-      const named = clamp(Math.round(((i + 1) / n) * 100), 1, 100);
+      const named = clamp(Math.round(frac * 100), 1, 100);
       this._paintFaceFan(named, named + "%");
       this._refs.fanPct.textContent = this._fanModeName(names[i]); // localized via HA (issue #19)
       this._refs.fanName.textContent = "";
-      const pctEq = n <= 1 ? 100 : (i / (n - 1)) * 100;
-      this._applyFanSpin(pctEq, false);
+      // the glyph spins at the position it is drawn at, or the lowest speed of a
+      // running fan would show a stopped one
+      this._applyFanSpin(frac * 100, false);
       // a11y: report the named stop as a 1..n slider position (issue #5).
       if (this._refs.fanGrab) {
         this._refs.fanGrab.setAttribute("aria-valuemin", "1");

@@ -498,3 +498,76 @@ test("fingers: a temp drag still commits on release", () => {
   assert.equal(c._hass.calls[0].data.temperature, 71);
   assert.equal(c._active, null, "and the gesture is torn down after the write");
 });
+
+// ------------------------------------------------- named fan: one convention ----
+// The card held two ideas of where a named stop sits on the ring. The settled
+// reading, and the "33%" the rail prints under FAN, put stop i at (i+1)/n. The PICK
+// put it at i/(n-1). They agree only on the top stop, so the marker jumped forward
+// the instant the finger lifted: the finger chose by one rule, the ring drew by the
+// other.
+
+// _eventToFrac is the geometry and happy-dom cannot lay anything out, so it is
+// stubbed; what these drive is the mapping on top of it.
+const pickAt = (c, f, n) => { c._eventToFrac = () => f; return c._eventToFanIndex({}, n); };
+const drawnFrac = (c, names, name) => {
+  c._paintFanNamed(names, name);
+  return Number(/(\d+)%/.exec(c._refs.faceRail.innerHTML)[1]) / 100;
+};
+
+test("named fan: the stop under the finger is the stop the ring draws there", () => {
+  const c = liveCard();
+  const names = c._fanNamedModes();
+  assert.deepEqual(names, ["low", "medium", "high"]);
+
+  for (let i = 0; i < names.length; i++) {
+    const f = drawnFrac(c, names, names[i]);
+    assert.equal(pickAt(c, f, names.length), i,
+      names[i] + " is drawn at " + Math.round(f * 100) + "%, so a finger there must pick it");
+  }
+});
+
+test("named fan: the ends of the arc are the lowest and the highest speed", () => {
+  const c = liveCard();
+  assert.equal(pickAt(c, 0, 3), 0, "the start of the arc is the slowest stop");
+  assert.equal(pickAt(c, 1, 3), 2, "and the end is the fastest");
+});
+
+test("named fan: the boundary sits midway between two drawn stops", () => {
+  const c = liveCard();
+  // low is drawn at 33 and medium at 67, so 50 is the changeover
+  assert.equal(pickAt(c, 0.49, 3), 0, "just under is still low");
+  assert.equal(pickAt(c, 0.51, 3), 1, "just over is medium");
+  // medium 67, high 100 -> 83.5
+  assert.equal(pickAt(c, 0.82, 3), 1);
+  assert.equal(pickAt(c, 0.85, 3), 2);
+});
+
+test("named fan: the slowest speed still draws a ring, it is not empty", () => {
+  const c = liveCard();
+  assert.ok(drawnFrac(c, c._fanNamedModes(), "low") > 0,
+    "a running fan on its lowest setting is not a fan that is off");
+});
+
+test("named fan: a two-stop and a one-stop unit round-trip too", () => {
+  const c = liveCard();
+  for (const n of [1, 2, 4, 6]) {
+    for (let i = 0; i < n; i++) {
+      const f = c._fanNamedFrac(i, n);
+      assert.equal(c._fanFracToIndex(f, n), i, "n=" + n + " stop " + i);
+    }
+  }
+});
+
+test("named fan: a numeric value picks the name nearest it, by the same rule", () => {
+  // the auto-pull turns a speed number into a fan_mode; it has to land on the same
+  // stop a finger at that position would
+  const c = mCard("cool", "auto", 50);
+  const names = c._fanNamedModes();            // silent low medium high full
+  const r = c._fanNumRange();
+  for (let i = 0; i < names.length; i++) {
+    const f = c._fanNamedFrac(i, names.length);
+    const v = r.min + f * (r.max - r.min);
+    assert.equal(c._nearestFanMode(v), names[i],
+      names[i] + " is drawn at " + Math.round(f * 100) + "%, so " + Math.round(v) + " is that mode");
+  }
+});

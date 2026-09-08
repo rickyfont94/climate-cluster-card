@@ -105,6 +105,13 @@ every key that shipped before this release still reads the same way.
   finger happened to be over, when the finger was never lifted at all. And a unit
   that went unavailable in the middle of a drag was still written to on release. All
   three now abandon the gesture and put the face back on what the unit reports.
+- On a unit with named fan speeds the marker sat one stop ahead of the finger. The
+  card held two ideas of where a stop sits on the ring: the settled reading, and the
+  percentage the rail prints under FAN, put stop i at (i + 1) / n, while the PICK put
+  it at i / (n - 1). They agree only on the top stop, so on a three speed unit a
+  finger on "low" drew the ring a third of the way round and the marker stepped
+  forward the moment it lifted. Both now come from one pair of functions, and the
+  round trip is asserted for every stop count.
 - The group card's house gauge had the same three, where a release writes every room
   rather than one setpoint, plus a fourth: a second finger landing on the gauge
   rebound its move and release handlers and stranded the old pair on the window,
