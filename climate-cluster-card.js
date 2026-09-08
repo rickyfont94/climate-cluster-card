@@ -6805,6 +6805,9 @@ ${POPUP_CSS}
    positioned element paints above static blocks, so without a positioned wrapper
    of its own the slab would sit on top of every zone tile and the title. */
 .cg-inner{ position:relative; z-index:1; }
+/* No position, no z-index, no filter, on purpose: anything here would trap the fixed
+   room sheet inside a stacking context and paint it behind the dashboard. */
+.cg-sheet-host{ display:contents; }
 .cg-head{ display:flex; align-items:baseline; justify-content:space-between; gap:12px;
   padding-bottom:8px; border-bottom:1px solid var(--divider-color, rgba(127,127,127,.2)); }
 .cg-title{ font-size:22px; font-weight:600; letter-spacing:3px; text-transform:uppercase;
@@ -7157,6 +7160,9 @@ ${ZONE.KEYFRAMES}
       }
       const ui = this._zui || {};
       parts.push("ui:" + (ui.sheetIndex == null ? "-" : ui.sheetIndex) + ":" + (ui.confirmOff ? 1 : 0));
+      // a held value is state the card shows, so it belongs in what decides a repaint
+      const zo = this._zoneOpt || {};
+      for (const id in zo) parts.push("o:" + id + ":" + JSON.stringify(zo[id]));
       return parts.join(";");
     }
 
@@ -7298,6 +7304,22 @@ ${ZONE.KEYFRAMES}
       inner.className = "cg-inner";
       card.appendChild(inner);
       this._inner = inner;
+      /* The room sheet lives HERE, a sibling of the content rather than inside it.
+         .cg-inner carries z-index:1, and a positioned element with a z-index is a
+         stacking context, so a fixed overlay inside it can never rise above anything
+         outside this card however high its own z-index goes. It was painting behind
+         the dashboard. This host sets no position, no z-index and no filter, so it
+         creates no context of its own and the overlay reaches the viewport.
+
+         Keeping it separate also means a state push rewrites the card body WITHOUT
+         destroying and rebuilding the open sheet underneath the finger, which is what
+         made its buttons miss taps. */
+      const sheetHost = document.createElement("div");
+      sheetHost.className = "cg-sheet-host";
+      card.appendChild(sheetHost);
+      this._sheetHost = sheetHost;
+      this._bodyHtml = null;
+      this._sheetHtml = null;
       root.appendChild(card);
       card.addEventListener("click", (e) => this._onClick(e));
       this._built = true;
@@ -7541,6 +7563,31 @@ ${ZONE.KEYFRAMES}
        module concatenates names straight into markup, so a friendly_name carrying a
        quote or an angle bracket would otherwise break the card, and a crafted one
        would inject. Escaping at the edge means the module stays verbatim. */
+    /* What a tap looks like before the unit answers.
+
+       The dial has had this since it shipped; the zone card had none, so every tap on
+       a mode, a preset, a toggle or a stepper sat there doing nothing visible until
+       Home Assistant reported the change back. On these units that is seconds, and it
+       reads as a card that ignored you. So people tap again, which is worse.
+
+       Held per room and per field, cleared the moment the live value agrees, and
+       expiring on the same timer the dial uses so a refused command cannot leave a
+       lie on screen indefinitely. */
+    _zoneOptSet(id, field, value) {
+      this._zoneOpt = this._zoneOpt || {};
+      const o = this._zoneOpt[id] || (this._zoneOpt[id] = {});
+      o[field] = value;
+      o.until = Date.now() + OPT_HOLD_MS;
+    }
+    _zoneOptGet(id, field, live) {
+      const o = this._zoneOpt && this._zoneOpt[id];
+      if (!o || !o.until || Date.now() >= o.until) return live;
+      if (!(field in o)) return live;
+      // reality caught up: drop it rather than hold a value that is now just the value
+      if (o[field] === live) { delete o[field]; return live; }
+      return o[field];
+    }
+
     _zoneModel() {
       const r = this._range();
       /* Every zone here is called "Aire <Room>". Without this the shared prefix eats
@@ -7561,19 +7608,20 @@ ${ZONE.KEYFRAMES}
           return t ? t.state === "on" : false;
         };
         const rawName = z.name || a.friendly_name || z.entity;
+        const opt = (f, live) => this._zoneOptGet(z.entity, f, live);
         return {
           id: z.entity,
           name: escapeText(short[zi] || rawName),
           title: escapeText(rawName),
           room: dead ? null : num(a.current_temperature),
-          set: dead ? null : this._setpoint(st),
-          mode: dead ? "unavailable" : st.state,
-          preset: this._zonePreset(a),
+          set: dead ? null : opt("set", this._setpoint(st)),
+          mode: dead ? "unavailable" : opt("mode", st.state),
+          preset: opt("preset", this._zonePreset(a)),
           fan: this._zoneFanPct(a),
-          swing: sib.swing ? sw("swing") : (a.swing_mode != null &&
-            String(a.swing_mode).toLowerCase() !== "off"),
-          led: sw("led"),
-          sound: sw("sound"),
+          swing: opt("swing", sib.swing ? sw("swing") : (a.swing_mode != null &&
+            String(a.swing_mode).toLowerCase() !== "off")),
+          led: opt("led", sw("led")),
+          sound: opt("sound", sw("sound")),
           dead,
           // the sheet only offers what this unit actually advertises
           modes: Array.isArray(a.hvac_modes) && a.hvac_modes.length ? a.hvac_modes.slice() : null,
@@ -7654,13 +7702,23 @@ ${ZONE.KEYFRAMES}
         html += ZONE.footer(acts);
       }
       html += "</div>";
-      // The sheet is the card's own markup and already themed, so only the module's
-      // half is rewritten.
-      html = themeZone(html);
-      if (ui.sheetIndex != null && model.zones[ui.sheetIndex]) {
-        html += this._zoneSheetHtml(model.zones[ui.sheetIndex], ui.sheetIndex);
+
+      /* Two independent writes, each skipped when nothing changed. Rebuilding the
+         whole card on every state push in the house meant re-running the theme pass
+         over the markup and re-creating every tile, every glass surface and the open
+         sheet, several times a second on a busy house. The sheet is the card's own
+         markup and already themed, so only the module's half goes through themeZone. */
+      if (html !== this._rawHtml) {
+        this._rawHtml = html;
+        const themed = themeZone(html);
+        if (themed !== this._bodyHtml) { this._bodyHtml = themed; this._inner.innerHTML = themed; }
       }
-      this._inner.innerHTML = html;
+      const sheetHtml = (ui.sheetIndex != null && model.zones[ui.sheetIndex])
+        ? this._zoneSheetHtml(model.zones[ui.sheetIndex], ui.sheetIndex) : "";
+      if (sheetHtml !== this._sheetHtml) {
+        this._sheetHtml = sheetHtml;
+        this._sheetHost.innerHTML = sheetHtml;
+      }
     }
 
 
@@ -7759,7 +7817,12 @@ ${ZONE.KEYFRAMES}
       const zp = el.closest("[data-zpre]");
       const zt = el.closest("[data-ztog]");
 
-      if (zm && z) { this._call("climate", "set_hvac_mode", { entity_id: z.id, hvac_mode: zm.dataset.zmode }); return true; }
+      if (zm && z) {
+        this._zoneOptSet(z.id, "mode", zm.dataset.zmode);
+        this._zoneRepaint();
+        this._call("climate", "set_hvac_mode", { entity_id: z.id, hvac_mode: zm.dataset.zmode });
+        return true;
+      }
       if (zp && z) {
         const p = zp.dataset.zpre;
         // PREMAP is the setpoint each preset IMPLIES. Write the preset and let the
@@ -7771,19 +7834,29 @@ ${ZONE.KEYFRAMES}
         const list = ((st && st.attributes) || {}).preset_modes || [];
         const real = list.find((x) => String(x) === p)
           || list.find((x) => String(x).toUpperCase() === String(p).toUpperCase());
-        if (real) this._call("climate", "set_preset_mode", { entity_id: z.id, preset_mode: real });
+        if (real) {
+          this._zoneOptSet(z.id, "preset", String(real).toUpperCase());
+          this._zoneRepaint();
+          this._call("climate", "set_preset_mode", { entity_id: z.id, preset_mode: real });
+        }
         return true;
       }
       if (zt && z) {
         const kind = zt.dataset.ztog;
         const sib = this._zoneSiblings(z.id);
         if (sib[kind]) {
+          this._zoneOptSet(z.id, kind, !z[kind]);
+          this._zoneRepaint();
           this._call("switch", z[kind] ? "turn_off" : "turn_on", { entity_id: sib[kind] });
         } else if (kind === "swing") {
           const a = ((this._st(z.id) || {}).attributes) || {};
           const list = Array.isArray(a.swing_modes) ? a.swing_modes : [];
           const want = z.swing ? "off" : (list.find((x) => String(x).toLowerCase() !== "off") || "on");
-          if (list.length) this._call("climate", "set_swing_mode", { entity_id: z.id, swing_mode: want });
+          if (list.length) {
+            this._zoneOptSet(z.id, "swing", !z.swing);
+            this._zoneRepaint();
+            this._call("climate", "set_swing_mode", { entity_id: z.id, swing_mode: want });
+          }
         }
         return true;
       }
@@ -7850,6 +7923,8 @@ ${ZONE.KEYFRAMES}
         if ((a === "inc" || a === "dec") && z && z.set != null) {
           const step = num((((this._st(z.id) || {}).attributes) || {}).target_temp_step) || 1;
           const v = z.set + (a === "inc" ? step : -step);
+          this._zoneOptSet(z.id, "set", v);
+          this._zoneRepaint();
           this._call("climate", "set_temperature", { entity_id: z.id, temperature: v });
           return true;
         }
@@ -7873,6 +7948,9 @@ ${ZONE.KEYFRAMES}
         }
       }
       if (this._config.layout !== "classic") { this._renderZoneCard(); return; }
+      // the classic path writes _inner itself, so the zone caches no longer describe it
+      this._rawHtml = this._bodyHtml = this._sheetHtml = null;
+      if (this._sheetHost) this._sheetHost.innerHTML = "";
 
       const zones = this._zones.map((z) => this._live(z));
       const shortened = this._shortNames(zones.map((z) => z.name));

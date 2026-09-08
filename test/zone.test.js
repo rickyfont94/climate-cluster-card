@@ -16,6 +16,7 @@ const zone = (id, over) => ({
     hvac_modes: ["off", "auto", "cool", "dry", "fan_only"],
     preset_modes: ["none", "comfort", "eco", "boost", "sleep"], preset_mode: "none",
     fan_modes: ["auto", "low", "medium", "high"], fan_mode: "auto",
+    swing_modes: ["off", "vertical"], swing_mode: "off",
     current_temperature: 76, temperature: 74, min_temp: 61, max_temp: 86,
   }, over || {}),
 });
@@ -488,4 +489,72 @@ test("all on: a room it watched turn off goes back to what it was", () => {
   const one = el._hass.calls.find((c) => c.data.entity_id === "climate.sala");
   assert.equal(one.service, "set_hvac_mode");
   assert.equal(one.data.hvac_mode, "cool", "restored, not guessed");
+});
+
+// ------------------------------------------------------- feels immediate -------
+// The dial has had optimistic paint since it shipped; the zone card had none, so a
+// tap sat there doing nothing visible until Home Assistant reported the change back.
+// On these units that is seconds, and it reads as a card that ignored you.
+
+test("feel: a mode tap lights the new mode before the unit answers", () => {
+  const el = openSheet(makeGroup(), 1);
+  click(el, '[data-zmode="dry"]');
+  const sheet = el.shadowRoot.querySelector('[data-zmode="dry"]');
+  assert.match(sheet.getAttribute("class") || "", /active/,
+    "the button you pressed is lit immediately, not in two seconds");
+  assert.equal(el._hass.calls.length, 1, "and the command still went out");
+});
+
+test("feel: a preset and a toggle do the same", () => {
+  const a = openSheet(makeGroup(), 0);
+  click(a, '[data-zpre="eco"]');
+  assert.match(a.shadowRoot.querySelector('[data-zpre="eco"]').getAttribute("class") || "",
+    /active/);
+
+  const b = openSheet(makeGroup(), 0);
+  const before = b.shadowRoot.querySelector('[data-ztog="swing"]').className;
+  click(b, '[data-ztog="swing"]');
+  assert.notEqual(b.shadowRoot.querySelector('[data-ztog="swing"]').className, before,
+    "the toggle flips under the finger");
+});
+
+test("feel: a stepper moves the number it is attached to", () => {
+  const el = makeGroup();
+  const tile = el.shadowRoot.querySelectorAll("[data-zone]")[2];
+  tile.querySelector('[data-act="inc"]')
+    .dispatchEvent(new Event("click", { bubbles: true, composed: true }));
+  assert.match(el.shadowRoot.querySelector(".cg-inner").textContent, /71/,
+    "elly was 70, the tile reads 71 straight away");
+});
+
+test("feel: reality wins as soon as it arrives", () => {
+  const el = openSheet(makeGroup(), 1);
+  click(el, '[data-zmode="dry"]');
+  assert.equal(el._zoneModel().zones[1].mode, "dry", "held while the unit is quiet");
+
+  const live = JSON.parse(JSON.stringify(states));
+  live["climate.ricky"].state = "dry";
+  el.hass = makeHass(live, { entities });
+  assert.equal(el._zoneOpt["climate.ricky"].mode, undefined,
+    "the hold is dropped once it is just the value");
+});
+
+// ----------------------------------------------------------- the sheet host ----
+
+test("sheet: it sits outside the stacking context, or it paints behind the dashboard", () => {
+  const el = openSheet(makeGroup(), 0);
+  const inner = el.shadowRoot.querySelector(".cg-inner");
+  assert.equal(inner.querySelector(".ct-pop"), null,
+    ".cg-inner carries z-index:1, so a fixed overlay inside it can never rise above anything outside this card");
+  assert.ok(el.shadowRoot.querySelector(".cg-sheet-host .ct-pop"), "it lives in its own host");
+});
+
+test("sheet: a state push does not rebuild the open sheet under your finger", () => {
+  const el = openSheet(makeGroup(), 0);
+  const node = el.shadowRoot.querySelector('[data-act="panel"]');
+  const other = JSON.parse(JSON.stringify(states));
+  other["climate.elly"].attributes.current_temperature = 69;   // an unrelated room
+  el.hass = makeHass(other, { entities });
+  assert.equal(el.shadowRoot.querySelector('[data-act="panel"]'), node,
+    "the very same node survived, so a tap mid-push cannot miss");
 });
