@@ -484,3 +484,17 @@ test("fingers: a plain drag still commits exactly once", () => {
   lift(c, 1);
   assert.equal(c._hass.calls.length, 1, "a second up on a finished drag writes nothing");
 });
+
+test("fingers: a temp drag still commits on release", () => {
+  // the commit block was rewritten to read the gesture BEFORE the teardown clears
+  // it, so the ordinary path needs an assertion of its own
+  const c = downAt(liveCard(), "temp", 1);
+  c._dragging = true;
+  c._pendingTemp = 71;
+
+  lift(c, 1);
+  assert.equal(c._hass.calls.length, 1);
+  assert.equal(c._hass.calls[0].service, "set_temperature");
+  assert.equal(c._hass.calls[0].data.temperature, 71);
+  assert.equal(c._active, null, "and the gesture is torn down after the write");
+});

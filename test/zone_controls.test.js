@@ -429,3 +429,17 @@ test("house: a second pointerdown does not rebind and strand the listeners", () 
   assert.equal(el._housePointerId, 1, "the first gesture still owns the gauge");
   assert.equal(el._zui.houseTarget, 68, "and its value survived");
 });
+
+test("house: a card removed mid-drag comes back with a working gauge", () => {
+  // Lovelace detaches and re-attaches cards freely, entering edit mode does it. A
+  // teardown that only removed the listeners would leave _houseDrag true, and the
+  // one-gesture guard reads that as "a drag already owns the gauge", forever.
+  const el = houseDown(makeGroup(), 1, 68);
+  el.disconnectedCallback();
+  assert.ok(!el._houseDrag, "the gesture is dropped with the element");
+  assert.equal(el._zui.houseTarget, null, "and so is the value it was showing");
+
+  houseDown(el, 2, 74);
+  assert.ok(el._houseDrag, "so the next drag is accepted");
+  assert.equal(el._housePointerId, 2);
+});

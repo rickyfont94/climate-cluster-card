@@ -2197,6 +2197,7 @@
       this._dragging = false;
       this._ringArmed = false;
       this._ringStart = null;
+      this._ringPointerId = null;
       this._touchOnRing = false;
       // Capturing touch guards live on the svg; tear them down here.
       if (this._svg) {
@@ -7202,6 +7203,16 @@ ${FACE.KEYFRAMES}
       this._config = null;
       this._focus = null;   // entity_id currently promoted into the hero, or null
       this._sig = null;     // last painted state signature (dirty check)
+    }
+
+    /* A card removed from the DOM mid-drag left its move and release handlers on
+       window with nothing to remove them, and left _houseDrag true, which the
+       one-gesture guard reads as "a drag already owns the gauge" for the life of
+       the element. Lovelace detaches and re-attaches cards freely (entering edit
+       mode does it), so this is not a rare path. Mirrors the dial's own teardown. */
+    disconnectedCallback() {
+      if (this._houseDrag || this._onHouseUp) this._houseTeardown();
+      if (this._zui) this._zui.houseTarget = null;
     }
 
     setConfig(config) {

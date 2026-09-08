@@ -108,7 +108,9 @@ every key that shipped before this release still reads the same way.
 - The group card's house gauge had the same three, where a release writes every room
   rather than one setpoint, plus a fourth: a second finger landing on the gauge
   rebound its move and release handlers and stranded the old pair on the window,
-  where nothing could ever remove them.
+  where nothing could ever remove them. The group card also had no teardown at all,
+  so a card removed from the dashboard mid-drag left those handlers behind; Lovelace
+  detaches and re-attaches cards freely, entering edit mode does it.
 
 ### Changed
 - Every screenshot reshot against this release, and the demo animation rebuilt on the
