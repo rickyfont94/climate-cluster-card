@@ -147,9 +147,12 @@ every key that shipped before this release still reads the same way.
   detaches and re-attaches cards freely, entering edit mode does it.
 
 ### Changed
-- Every screenshot reshot against this release on the frosted-glass appearance over a
-  wallpaper, which is what the panel actually looks like in use, with five rooms in
-  five different states. The demo animation was rebuilt on the new dial: it sweeps in
+- Two legend sheets in the README: every hvac mode side by side in its own colour,
+  and every preset glyph side by side beside the status word. Both are captured from
+  real cards in one stage, so neither can drift from the card it describes.
+- Every screenshot reshot against this release on the frosted-glass appearance over
+  the plain dark ground the dashboard actually runs on, with five rooms in five
+  different states. The demo animation was rebuilt on the new dial: it sweeps in
   one direction and holds, rather than bouncing, and it runs at 2.5 frames a second
   instead of 7. The light-theme frame is gone from the gallery, replaced by a room's
   sheet and by the modes and presets the dial actually draws. Stills ship as WebP

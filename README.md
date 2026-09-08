@@ -120,6 +120,22 @@ max_height: 34vh
 
 </details>
 
+### Modes and presets at a glance
+
+<img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/modes.webp" alt="Every hvac mode on the dial" width="820">
+
+Mode ink is spent on exactly five things: the mode word, the status dot and word, the
+lit rail cell, the fan ring stroke and the comfort glyph. It never touches the two arc
+gradients, the needle, the room pin, the delta segment or the steppers, which is why
+six modes still read as one instrument. Override any of them with `mode_colors`.
+
+<img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/presets.webp" alt="Every preset glyph on the dial" width="820">
+
+Each preset keeps its own colour so it reads the same in any mode. Comfort is the one
+exception and borrows the mode ink, because it means the normal state of that mode. A
+preset the card does not recognise draws nothing rather than falling back to its own
+first letter.
+
 ## Multi-zone card
 
 `custom:climate-cluster-group-card` puts the whole house on one card: a house gauge
