@@ -127,3 +127,66 @@ test("fan in auto reads AUTO even when a speed entity holds a number underneath"
   assert.equal(card._facePct(), null, "auto is the absence of a value");
   assert.match(card._refs.faceRail.innerHTML, /AUTO/);
 });
+
+// A NUMERIC fan, which is the Midea shape: a climate entity plus a number entity on
+// the same device. In auto the driver parks the number OUTSIDE its own range (101 on
+// a 1..100 number), and that out-of-range reading is what says "no speed". Keying it
+// on the MODE WORD instead left the ring stuck showing auto after a speed had been
+// set, because writing a speed moves the number while the mode can keep reporting
+// auto: the drag looked like it did nothing.
+
+const numStates = (fanMode, speed) => ({
+  "climate.ac": {
+    entity_id: "climate.ac", state: "cool",
+    attributes: {
+      friendly_name: "AC", hvac_modes: ["off", "auto", "cool"],
+      fan_modes: ["low", "medium", "high", "auto"], fan_mode: fanMode,
+      current_temperature: 78, temperature: 75, min_temp: 61, max_temp: 86,
+    },
+  },
+  "number.ac_fan_speed": {
+    entity_id: "number.ac_fan_speed", state: String(speed),
+    attributes: { friendly_name: "AC fan speed", min: 1, max: 100, step: 1 },
+  },
+});
+const numEntities = {
+  "climate.ac": { entity_id: "climate.ac", device_id: "d1" },
+  "number.ac_fan_speed": { entity_id: "number.ac_fan_speed", device_id: "d1" },
+};
+function numCard(fanMode, speed) {
+  const c = document.createElement("climate-cluster-card");
+  c.setConfig({ entity: "climate.ac" });
+  c.hass = makeHass(numStates(fanMode, speed), { entities: numEntities });
+  return c;
+}
+
+test("numeric fan: parked out of range is no speed, and reads AUTO", () => {
+  const c = numCard("auto", 101);
+  assert.equal(c._facePct(), null);
+  assert.match(c._refs.faceRail.innerHTML, /AUTO/);
+});
+
+test("numeric fan: a REAL speed shows even while the mode still reports auto", () => {
+  // the exact case that made the ring look stuck: the number moved, the mode did not
+  const c = numCard("auto", 41);
+  assert.equal(c._facePct(), 40);
+  assert.match(c._refs.faceRail.innerHTML, /40%/);
+});
+
+test("numeric fan: switching hvac mode does not strand the ring in auto", () => {
+  const c = numCard("auto", 101);
+  assert.match(c._refs.faceRail.innerHTML, /AUTO/);
+
+  const live = numStates("auto", 55);
+  live["climate.ac"].state = "cool";
+  c.hass = makeHass(live, { entities: numEntities });
+  assert.match(c._refs.faceRail.innerHTML, /5[45]%/, "the speed that was set has to show");
+});
+
+test("numeric fan: a missing speed entity is no speed, not a crash", () => {
+  const only = { "climate.ac": numStates("auto", 50)["climate.ac"] };
+  const c = document.createElement("climate-cluster-card");
+  c.setConfig({ entity: "climate.ac" });
+  c.hass = makeHass(only, { entities: { "climate.ac": { entity_id: "climate.ac", device_id: "d1" } } });
+  assert.doesNotThrow(() => c._facePct());
+});

@@ -4855,17 +4855,28 @@
       if (optActive && this._optimisticFanName != null) {
         return this._faceNamedPct(this._optimisticFanName, a2);
       }
-      if (rng) {
-        // auto is a state, not a ring position, whatever the number entity reads
-        if (String(a2.fan_mode).toLowerCase() === "auto") return null;
-        const fs = this._fanNumState();
-        const v = fs ? num(fs.state) : null;
-        if (v == null) return null;
-        return clamp(Math.round(((v - rng.min) / ((rng.max - rng.min) || 1)) * 100), 1, 100);
-      }
+      if (rng) return this._faceNumPct(rng);
       const fm = a2.fan_mode;
       if (!fm || String(fm).toLowerCase() === "auto") return null;
       return this._faceNamedPct(fm, a2);
+    }
+
+    /* A numeric fan has no speed when its own entity is parked OUTSIDE its declared
+       range, which is how these drivers say auto: the speed entity reads 101 against
+       a 1..100 number. Keying this on the MODE WORD instead was wrong, and it is what
+       left the ring stuck in the auto state after a speed had been set: writing a
+       speed moves the number, and the mode can still report auto for a while
+       afterwards, or on some units for good. A real speed is a real speed whatever
+       the mode says. */
+    _faceNumUnset(rng) {
+      const fs = this._fanNumState();
+      const v = fs ? num(fs.state) : null;
+      return v == null || v < rng.min || v > rng.max;
+    }
+    _faceNumPct(rng) {
+      if (this._faceNumUnset(rng)) return null;
+      const v = num((this._fanNumState() || {}).state);
+      return clamp(Math.round(((v - rng.min) / ((rng.max - rng.min) || 1)) * 100), 1, 100);
     }
 
     // position in the entity's own list, auto excluded, as a percentage
@@ -5552,8 +5563,9 @@
         this._refs.fanIconHit.setAttribute("aria-pressed", isAutoNow ? "true" : "false");
         if (useNum) {
           const r = this._fanNumRange();
-          const fanIsAuto = String(attr.fan_mode).toLowerCase() === "auto";
-          if (fanIsAuto && !fanOptPct) {
+          // the same test the face uses, so the two cannot disagree about whether
+          // this fan has a speed at all
+          if (this._faceNumUnset(r) && !fanOptPct) {
             this._paintFanAuto();
           } else {
             const liveP = num((this._fanNumState() || {}).state);
