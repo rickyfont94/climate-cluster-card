@@ -22,6 +22,19 @@ function countFields(schema) {
   }
   return n;
 }
+function fieldNames(rows, out) {
+  out = out || [];
+  rows.forEach((r) => { if (r.name) out.push(r.name); if (r.schema) fieldNames(r.schema, out); });
+  return out;
+}
+function findField(rows, name) {
+  for (const r of rows) {
+    if (r.name === name) return r;
+    if (r.schema) { const hit = findField(r.schema, name); if (hit) return hit; }
+  }
+  return null;
+}
+
 function topLevelRows(schema) {
   return schema.length;
 }
@@ -31,14 +44,14 @@ test("editor: a first-time user sees a handful of rows, not the whole surface", 
   const ed = makeEditor(fx.config, hass);
 
   const basic = ed._schema(hass, fx.config);
-  // Was 4. fan_style is deliberately the fifth, ABOVE the advanced switch: the three
-  // rings differ only by how they move, so hiding the choice behind a curtain hides
-  // the whole decision, and someone who never opens advanced never learns the
-  // original look is still available. The guard is kept, only its number moves.
+  // Was 4. The Fan section is the fifth, ABOVE the advanced switch, because the ring
+  // style is the control a person is most likely to want and hiding it behind a
+  // curtain hides the whole decision. It sits in the Fan section rather than loose at
+  // the top, so there is one place that owns fan settings. The guard moves, not goes.
   assert.equal(topLevelRows(basic), 5,
-    "entity, name, fan style, Appearance and the advanced switch");
-  const names = basic.map((r) => r.name).filter(Boolean);
-  assert.ok(names.includes("fan_style"), "the fan ring choice is not behind advanced");
+    "entity, name, Fan, Appearance and the advanced switch");
+  assert.ok(fieldNames(basic).includes("fan_style"),
+    "the fan ring choice is reachable without opening advanced");
 
   ed._showAdvanced = true;
   const full = ed._schema(hass, fx.config);
@@ -142,7 +155,7 @@ test("editor: preset_names round-trips through the pn__ display fields", () => {
 test("editor: fan_style offers the shipped ring plus the two animations", () => {
   const hass = makeHass(fx.states, { entities: fx.entities });
   const ed = makeEditor(fx.config, hass);
-  const row = ed._schema(hass, fx.config).find((r) => r.name === "fan_style");
+  const row = findField(ed._schema(hass, fx.config), "fan_style");
   assert.ok(row, "fan_style is present without opening advanced");
   const sel = row.selector.select;
   // mode list renders radios. A dropdown hides two of the three choices behind a

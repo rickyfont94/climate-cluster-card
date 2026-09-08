@@ -5262,14 +5262,23 @@ ${FACE.KEYFRAMES}
         { name: "entity", required: true, selector: { entity: { domain: "climate" } } },
         { name: "name", selector: { text: {} } },
 
-        // Visible radios, not a dropdown: the three rings differ only by how they
-        // move, so a closed dropdown hides the entire decision. The migration promise
-        // rides the option label rather than a helper sentence underneath it.
-        { name: "fan_style", selector: { select: { mode: "list", options: [
-          { value: "original", label: this._t("editor.opt.fan_style_original") },
-          { value: "breeze", label: this._t("editor.opt.fan_style_breeze") },
-          { value: "silk", label: this._t("editor.opt.fan_style_silk") },
-        ] } } },
+
+        // Fan lives at the TOP LEVEL, not behind "Show all options". The ring style
+        // is the one control a person is most likely to want, and it belongs beside
+        // the other fan settings rather than floating above the sections on its own.
+        { type: "expandable", name: "", title: this._t("editor.section.fan"), icon: "mdi:fan",
+          expanded: true, schema: [
+          // Visible radios, not a dropdown: the three rings differ only by how they
+          // move, so a closed dropdown hides the entire decision. The migration promise
+          // rides the option label rather than a helper sentence underneath it.
+          { name: "fan_style", selector: { select: { mode: "list", options: [
+            { value: "original", label: this._t("editor.opt.fan_style_original") },
+            { value: "breeze", label: this._t("editor.opt.fan_style_breeze") },
+            { value: "silk", label: this._t("editor.opt.fan_style_silk") },
+          ] } } },
+          { name: "show_fan", selector: { select: { mode: "dropdown", options: autoTF } } },
+          { name: "fan_entity", selector: { entity: { domain: "number" } } },
+        ] },
 
         { type: "expandable", name: "", title: this._t("editor.section.appearance"), icon: "mdi:palette", schema: [
           { name: "appearance", selector: { select: { mode: "dropdown", options: [
@@ -5325,13 +5334,6 @@ ${FACE.KEYFRAMES}
           })),
         ] },
 
-        { type: "expandable", name: "", title: this._t("editor.section.fan"), icon: "mdi:fan", schema: [
-          { name: "fan_entity", selector: { entity: { domain: "number" } } },
-          { name: "show_fan", selector: { select: { mode: "dropdown", options: autoTF } } },
-          // fan_animation and fan_animation_speed are gone from the GUI. Both drive
-          // the spinning clover, which the dial face does not draw, so the controls
-          // did nothing. Both keys are still READ, so existing YAML is unaffected.
-        ] },
 
         { type: "expandable", name: "", title: this._t("editor.section.features"), icon: "mdi:tune", schema: [
           { name: "swing_entity", selector: { entity: { domain: "switch" } } },
