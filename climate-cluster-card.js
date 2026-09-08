@@ -1167,10 +1167,12 @@
        measured because this returns a string, and 5.6 per character at 9.5px with
        this tracking is close enough to decide which way is safe. */
     var w = String(text).length * 5.6;
-    var anchor = left ? 'end' : 'start';
-    if (left && p[0] - w < 48) anchor = 'start';
-    if (!left && p[0] + w > 296) anchor = 'end';
-    return '<text class="cg-ringlab" x="' + f(p[0]) + '" y="' + f(p[1]) + '" text-anchor="' +
+    var anchor = left ? 'end' : 'start', dy = 0;
+    /* Flipped, the label runs back across its own ring end, and at the low end of
+       the range that is exactly where the needle stands. Lift it clear. */
+    if (left && p[0] - w < 48) { anchor = 'start'; dy = -11; }
+    if (!left && p[0] + w > 296) { anchor = 'end'; dy = -11; }
+    return '<text class="cg-ringlab" x="' + f(p[0]) + '" y="' + f(p[1] + dy) + '" text-anchor="' +
       anchor + '" dominant-baseline="central" font-size="9.5" ' +
       'font-weight="600" letter-spacing="1.2" fill="' + ink + '">' + text + '</text>';
   }
@@ -6654,13 +6656,23 @@ ${ZONE.KEYFRAMES}
    same one the single dial gives its room reading. */
 .cg-ringlab{ paint-order:stroke; stroke:var(--ha-card-background, var(--card-background-color, #16181d));
   stroke-width:3px; stroke-linejoin:round; }
-/* The module sizes itself for a wide card. Below this the hero column and the tile
-   row cannot both hold their minimums, so the hero goes full width and the tiles
-   wrap under it rather than compressing to slivers. */
-@media (max-width:760px){
+/* The module sizes itself for a wide card, and below that the hero column and the
+   tile row cannot both hold their minimums. The breakpoint has to be about the CARD,
+   not the window: this card is routinely narrow inside a wide viewport, in the
+   editor preview, in a sections column, in a phone-width grid cell. A media query
+   measures the viewport and so never fired in any of those, which is how five tiles
+   ended up stacked on top of each other with their names overprinted. */
+.cg-zonecard{ container-type:inline-size; }
+@container (max-width:700px){
   .cg-zonecard-body{ grid-template-columns:1fr !important; }
-  .cg-zonecard-body > div:last-child{ height:auto !important; align-self:auto !important; }
+  .cg-zonecard-tiles{ min-height:0 !important; align-self:auto !important; }
+  /* Stacked, the hero would otherwise take the full card width and stand taller
+     than every tile put together. It is one reading, not the whole card. */
+  .cg-zonecard-body > svg{ max-width:300px; margin:0 auto; }
 }
+/* Browsers without container queries still get something readable: the tile track
+   has a real minimum, so tiles wrap rather than compress. */
+.cg-zonecard-tiles{ min-width:0; }
 `;
 
   class ClimateClusterGroupCard extends HTMLElement {
@@ -7186,10 +7198,15 @@ ${ZONE.KEYFRAMES}
       const ui = this._zui || (this._zui = {});
       // The module hard-codes one column per zone. That is right for five and
       // unreadable for nine, and it also drops zone_rows, which is a shipped key.
+      /* The module hard-codes one column per zone, which is right for five and
+         unreadable for nine, and squashes at any width. auto-fit with a real minimum
+         is the shipped card's own idiom: it gives one row when the row fits and wraps
+         when it does not. zone_rows still overrides it, because it is a shipped key
+         and someone asked for that shape on purpose. */
       const forced = this._gridStyle("zone_rows", model.zones.length);
       const cols = forced
         ? forced.replace(/^ style="/, "").replace(/"$/, "")
-        : "grid-template-columns:repeat(" + model.zones.length + ",minmax(0,1fr))";
+        : "grid-template-columns:repeat(auto-fit,minmax(126px,1fr))";
 
       let html = '<div class="cg-zonecard" style="position:relative; font-family:' + FONT_STACK + ';">';
       html += '<div style="display:flex; align-items:baseline; justify-content:space-between;'
@@ -7208,8 +7225,8 @@ ${ZONE.KEYFRAMES}
       html += '<div class="cg-zonecard-body" style="display:grid;'
         + ' grid-template-columns:236px minmax(0,1fr); gap:18px; align-items:stretch;'
         + ' margin-top:10px;">' + ZONE.hero(model, d)
-        + '<div style="display:grid; ' + cols + '; gap:10px; min-width:0;'
-        + ' align-self:center; height:' + ZONE.arcRatio() + ';">'
+        + '<div class="cg-zonecard-tiles" style="display:grid; ' + cols + '; gap:10px;'
+        + ' align-self:center; min-height:' + ZONE.arcRatio() + ';">'
         + model.zones.map((z, i) => ZONE.tile(z, i, d)).join("") + "</div></div>";
 
       if (this._config.group_actions !== false) {
@@ -7388,9 +7405,180 @@ ${ZONE.KEYFRAMES}
     }
   }
 
+
+  /* --------------------------------------------------------------------------
+     Group card editor. The card had none: Home Assistant showed "Visual editor not
+     supported" and left YAML as the only way in, which for a card whose whole point
+     is a list of entities is not an editing experience.
+
+     Same shape as the dial's: one ha-form, the everyday fields at the top, the rest
+     folded into sections that start closed. Fields that only mean something on one
+     layout are only offered on that layout, rather than sitting there inert.
+     ----------------------------------------------------------------------- */
+  class ClimateClusterGroupCardEditor extends HTMLElement {
+    setConfig(config) {
+      this._config = Object.assign({}, config);
+      this._update();
+    }
+    set hass(h) { this._hass = h; this._update(); }
+
+    // entities may be bare ids or { entity, name } objects. The picker speaks ids, so
+    // the objects are remembered here and merged back on the way out: converting them
+    // to ids would silently drop every per-zone name the user typed.
+    _ids(list) {
+      return (Array.isArray(list) ? list : []).map((e) =>
+        (e && typeof e === "object") ? e.entity : e).filter((x) => typeof x === "string");
+    }
+    _mergeEntities(ids) {
+      const prev = Array.isArray(this._config.entities) ? this._config.entities : [];
+      const named = {};
+      for (const e of prev) if (e && typeof e === "object" && e.entity) named[e.entity] = e;
+      return ids.map((id) => named[id] || id);
+    }
+
+    _schema() {
+      const classic = this._config.layout === "classic";
+      const rows = [
+        { name: "entities", required: true,
+          selector: { entity: { domain: "climate", multiple: true } } },
+        { name: "name", selector: { text: {} } },
+        { name: "layout", selector: { select: { mode: "list", options: [
+          { value: "zones", label: this._t("editor.opt.layout_zones") },
+          { value: "classic", label: this._t("editor.opt.layout_classic") },
+        ] } } },
+      ];
+      const look = [
+        { name: "appearance", selector: { select: { mode: "dropdown", options: [
+          { value: "theme", label: this._t("editor.opt.appearance_theme") },
+          { value: "glass-dark", label: this._t("editor.opt.appearance_glass_dark") },
+          { value: "glass-light", label: this._t("editor.opt.appearance_glass_light") },
+        ] } } },
+        { name: "accent", selector: { text: {} } },
+        { name: "glass_color", selector: { text: {} } },
+        { name: "glass_opacity", selector: { number: { min: 0, max: 1, step: 0.02, mode: "slider" } } },
+      ];
+      const layout = [
+        { name: "zone_rows", selector: { number: { min: 1, max: 6, mode: "box" } } },
+        { name: "group_actions", selector: { boolean: {} } },
+        { name: "action_rows", selector: { number: { min: 1, max: 4, mode: "box" } } },
+      ];
+      const range = [
+        { name: "min_temp", selector: { number: { mode: "box" } } },
+        { name: "max_temp", selector: { number: { mode: "box" } } },
+        { name: "temperature_unit", selector: { select: { mode: "dropdown", options: [
+          { value: "F", label: "F" }, { value: "C", label: "C" },
+        ] } } },
+      ];
+      // hero selection and tap-to-focus are drawn by the classic layout only. Offering
+      // them on the zone layout would be offering a control that does nothing.
+      if (classic) {
+        layout.push({ name: "hero", selector: { select: { mode: "dropdown", options: [
+          { value: "average", label: this._t("editor.opt.hero_average") },
+          { value: "hottest", label: this._t("editor.opt.hero_hottest") },
+        ] } } });
+        layout.push({ name: "tap_zone", selector: { select: { mode: "dropdown", options: [
+          { value: "focus", label: this._t("editor.opt.tap_focus") },
+          { value: "more-info", label: this._t("editor.opt.tap_more_info") },
+        ] } } });
+      }
+      return rows.concat([
+        { name: "look", type: "expandable", title: this._t("editor.sec.appearance"), schema: look },
+        { name: "grid", type: "expandable", title: this._t("editor.sec.layout"), schema: layout },
+        { name: "range", type: "expandable", title: this._t("editor.sec.range"), schema: range },
+      ]);
+    }
+
+    _t(k) {
+      const M = {
+        "editor.opt.layout_zones": { en: "Zones (new)", es: "Zonas (nuevo)" },
+        "editor.opt.layout_classic": { en: "Classic gauges", es: "Medidores clasicos" },
+        "editor.opt.appearance_theme": { en: "Theme (follows Home Assistant)", es: "Tema (sigue a Home Assistant)" },
+        "editor.opt.appearance_glass_dark": { en: "Frosted glass, dark", es: "Vidrio esmerilado, oscuro" },
+        "editor.opt.appearance_glass_light": { en: "Frosted glass, light", es: "Vidrio esmerilado, claro" },
+        "editor.opt.hero_average": { en: "Average of the zones", es: "Promedio de las zonas" },
+        "editor.opt.hero_hottest": { en: "The hottest room", es: "El cuarto mas caliente" },
+        "editor.opt.tap_focus": { en: "Focus it into the hero", es: "Enfocarla en el medidor" },
+        "editor.opt.tap_more_info": { en: "Open more-info", es: "Abrir mas informacion" },
+        "editor.sec.appearance": { en: "Appearance", es: "Apariencia" },
+        "editor.sec.layout": { en: "Layout", es: "Distribucion" },
+        "editor.sec.range": { en: "Temperature range", es: "Rango de temperatura" },
+        "label.entities": { en: "Rooms", es: "Cuartos" },
+        "label.name": { en: "Card title", es: "Titulo de la tarjeta" },
+        "label.layout": { en: "Layout", es: "Distribucion" },
+        "label.accent": { en: "Accent color", es: "Color de acento" },
+        "label.zone_rows": { en: "Rows of rooms", es: "Filas de cuartos" },
+        "label.action_rows": { en: "Rows of buttons", es: "Filas de botones" },
+        "label.group_actions": { en: "Show the button bar", es: "Mostrar la barra de botones" },
+        "helper.zone_rows": { en: "Leave empty to let the rooms wrap on their own.",
+          es: "Dejalo vacio para que los cuartos fluyan solos." },
+        "helper.entities": { en: "Every room this card controls. Order is the order they appear.",
+          es: "Cada cuarto que controla esta tarjeta. El orden es el que se muestra." },
+      };
+      const row = M[k] || {};
+      return row[langOf(this._hass)] || row.en || k;
+    }
+
+    _valueChanged(ev) {
+      ev.stopPropagation();
+      const cfg = Object.assign({}, this._config, ev.detail.value);
+      for (const sec of ["look", "grid", "range"]) {
+        if (cfg[sec] && typeof cfg[sec] === "object") { Object.assign(cfg, cfg[sec]); delete cfg[sec]; }
+      }
+      if (Array.isArray(cfg.entities)) cfg.entities = this._mergeEntities(this._ids(cfg.entities));
+      // An empty field means "unset", not "the string empty". Leaving it in writes a
+      // key the card then has to defend against.
+      for (const k of Object.keys(cfg)) {
+        if (cfg[k] === "" || cfg[k] === null || cfg[k] === undefined) delete cfg[k];
+      }
+      if (cfg.layout === "zones") delete cfg.layout;   // the default is not a key
+      const changed = JSON.stringify(cfg) !== JSON.stringify(this._config);
+      this._config = cfg;
+      if (changed) {
+        this.dispatchEvent(new CustomEvent("config-changed",
+          { detail: { config: cfg }, bubbles: true, composed: true }));
+      }
+      this._update();
+    }
+
+    _update() {
+      if (!this._hass || !this._config) return;
+      if (!this._form) {
+        this._form = document.createElement("ha-form");
+        this._form.addEventListener("value-changed", (e) => this._valueChanged(e));
+        this._form.computeLabel = (sc) => this._t("label." + sc.name) !== "label." + sc.name
+          ? this._t("label." + sc.name) : (sc.title || prettifyName(sc.name));
+        this._form.computeHelper = (sc) => this._t("helper." + sc.name) !== "helper." + sc.name
+          ? this._t("helper." + sc.name) : "";
+        const root = this.shadowRoot || this.attachShadow({ mode: "open" });
+        const style = document.createElement("style");
+        style.textContent = "ha-form{display:block;padding:8px 4px;}";
+        root.appendChild(style);
+        root.appendChild(this._form);
+      }
+      const data = Object.assign({}, this._config, {
+        entities: this._ids(this._config.entities),
+        layout: this._config.layout === "classic" ? "classic" : "zones",
+      });
+      this._form.hass = this._hass;
+      this._form.schema = this._schema();
+      this._form.data = data;
+    }
+  }
+
   if (!customElements.get("climate-cluster-group-card")) {
     customElements.define("climate-cluster-group-card", ClimateClusterGroupCard);
   }
+  if (!customElements.get("climate-cluster-group-card-editor")) {
+    customElements.define("climate-cluster-group-card-editor", ClimateClusterGroupCardEditor);
+  }
+  ClimateClusterGroupCard.getConfigElement = function () {
+    return document.createElement("climate-cluster-group-card-editor");
+  };
+  ClimateClusterGroupCard.getStubConfig = function (hass) {
+    const ids = hass && hass.states
+      ? Object.keys(hass.states).filter((id) => id.startsWith("climate.")).slice(0, 4) : [];
+    return { entities: ids.length ? ids : ["climate.example"] };
+  };
 
   window.customCards = window.customCards || [];
   window.customCards.push({
