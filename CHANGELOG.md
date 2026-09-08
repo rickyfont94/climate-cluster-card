@@ -96,6 +96,15 @@ every key that shipped before this release still reads the same way.
   back where it was on `heat_cool`, which keeps the original face.
 - `action_rows` worked on `layout: classic` only, so on the layout this release makes
   the default it was accepted by the editor and then ignored.
+- Three ways a ring drag wrote a value nobody chose. The move and release listeners
+  live on the window, so they hear every pointer on the page, and nothing checked
+  which one: a second finger lifting anywhere ended the drag and committed while the
+  first was still down, and a stray pointer moving dragged the ring on its way past.
+  Nothing checked the event TYPE either, so a `pointercancel` (a scroll winning the
+  touch, the app going to the background, a pen leaving range) committed whatever the
+  finger happened to be over, when the finger was never lifted at all. And a unit
+  that went unavailable in the middle of a drag was still written to on release. All
+  three now abandon the gesture and put the face back on what the unit reports.
 
 ### Changed
 - Every screenshot reshot against this release, and the demo animation rebuilt on the

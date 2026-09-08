@@ -369,3 +369,118 @@ test("a unit that dies keeps no live reading on the face", () => {
     "the handoff face is not repainted on this path, so it must not stay on screen");
   assert.notEqual(c._refs.bigNum.style.display, "none", "the original dead face is back");
 });
+
+// ------------------------------------------------------ one gesture, one finger --
+// The move and up listeners live on WINDOW, so they hear every pointer on the page.
+// Nothing checked which one, and nothing checked whether the event was a release or
+// a CANCEL, so three real gestures wrote a value the user never chose: a second
+// finger lifting anywhere committed while the first was still down, a scroll that
+// stole the touch committed whatever the finger was last over, and a unit that went
+// unavailable mid-drag was written to anyway.
+
+const downAt = (c, ring, id) => {
+  const el = ring === "fan" ? c._refs.fanGrab : c._refs.drag;
+  c._ringPointerDown({ pointerId: id, clientX: 10, clientY: 10, target: el,
+    currentTarget: el, preventDefault() {}, stopPropagation() {} }, ring);
+  return c;
+};
+// a drag that has crossed the threshold and is sitting on "high", without needing
+// geometry happy-dom cannot give us
+const heldAt = (c, name) => {
+  c._dragging = true;
+  c._fanPendingName = name;
+  c._optimisticFanName = name;
+  c._optimisticFanUntil = Date.now() + 5000;
+  c._paintFanNamed(c._fanNamedModes(), name);
+  return c;
+};
+const lift = (c, id, type) => c._ringPointerUp({ type: type || "pointerup", pointerId: id });
+
+test("fingers: a second finger lifting does not end the drag or commit it", () => {
+  const c = heldAt(downAt(liveCard(), "fan", 1), "high");
+
+  lift(c, 2);
+  assert.ok(c._ringArmed, "the drag belongs to finger 1 and is still running");
+  assert.deepEqual(c._hass.calls, [], "and nothing was written");
+
+  lift(c, 1);
+  assert.ok(!c._ringArmed, "the finger that started it does end it");
+  assert.equal(c._hass.calls.length, 1, "and that release commits");
+  assert.equal(c._hass.calls[0].data.fan_mode, "high");
+});
+
+test("fingers: a second finger moving never reaches the drag", () => {
+  // happy-dom hands back a zero-size rect, so the value a move computes is null
+  // either way. What has to be asserted is that the stray pointer is turned away
+  // BEFORE the drag runs, which is the thing the guard actually does.
+  const c = heldAt(downAt(liveCard(), "fan", 1), "high");
+  let applied = 0;
+  c._applyRingDrag = () => { applied++; };
+
+  c._ringPointerMove({ pointerId: 2, clientX: 900, clientY: 900 });
+  assert.equal(applied, 0, "a stray pointer cannot drag the ring");
+
+  c._ringPointerMove({ pointerId: 1, clientX: 900, clientY: 900 });
+  assert.equal(applied, 1, "the finger that started it still does");
+});
+
+test("fingers: a second pointerdown does not restart the gesture on the other ring", () => {
+  const c = heldAt(downAt(liveCard(), "fan", 1), "high");
+  downAt(c, "temp", 2);
+  assert.equal(c._active, "fan", "the first gesture still owns the rings");
+  assert.equal(c._ringPointerId, 1);
+  assert.equal(c._fanPendingName, "high", "and its pending value survived");
+});
+
+test("fingers: a cancel abandons the drag, it does not commit it", () => {
+  const c = heldAt(downAt(liveCard(), "fan", 1), "high");
+  assert.match(c._refs.faceRail.innerHTML, /100%/, "the face is showing the drag");
+
+  lift(c, 1, "pointercancel");
+  assert.deepEqual(c._hass.calls, [], "a cancel is the browser taking the gesture away");
+  assert.ok(!c._ringArmed);
+  assert.equal(c._optimisticFanName, null,
+    "and the optimistic paint goes with it, or it sits there for the whole hold");
+  assert.match(c._refs.faceRail.innerHTML, /33%/, "the face is back on what the unit reports");
+});
+
+test("fingers: a temp cancel does not write a setpoint either", () => {
+  const c = downAt(liveCard(), "temp", 1);
+  c._dragging = true;
+  c._pendingTemp = 68;
+  c._optimisticTarget = 68;
+  c._optimisticUntil = Date.now() + 5000;
+
+  lift(c, 1, "pointercancel");
+  assert.deepEqual(c._hass.calls, []);
+  assert.equal(c._optimisticTarget, null);
+});
+
+test("fingers: a unit that dies mid-drag is not written to on release", () => {
+  const c = heldAt(downAt(liveCard(), "fan", 1), "high");
+  c.hass = makeHass({ "climate.ac": { entity_id: "climate.ac", state: "unavailable",
+    attributes: {} } }, { entities });
+
+  lift(c, 1);
+  assert.deepEqual(c._hass.calls, [], "there is nothing there to take it");
+  assert.ok(!c._ringArmed);
+});
+
+test("fingers: a move after the unit dies abandons rather than painting on", () => {
+  const c = heldAt(downAt(liveCard(), "fan", 1), "high");
+  c.hass = makeHass({ "climate.ac": { entity_id: "climate.ac", state: "unavailable",
+    attributes: {} } }, { entities });
+
+  c._ringPointerMove({ pointerId: 1, clientX: 200, clientY: 40 });
+  assert.ok(!c._ringArmed, "the gesture is dropped at the first move after the death");
+  assert.deepEqual(c._hass.calls, []);
+});
+
+test("fingers: a plain drag still commits exactly once", () => {
+  const c = heldAt(downAt(liveCard(), "fan", 1), "medium");
+  lift(c, 1);
+  assert.equal(c._hass.calls.length, 1);
+  assert.equal(c._hass.calls[0].data.fan_mode, "medium");
+  lift(c, 1);
+  assert.equal(c._hass.calls.length, 1, "a second up on a finished drag writes nothing");
+});

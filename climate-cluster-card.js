@@ -3375,6 +3375,11 @@
       const s = this._st(this._config.entity);
       if (!s || s.state === "off" || s.state === "unavailable" || s.state === "unknown") return;
       if (this._popOpen) return;
+      /* A drag already owns the rings. A second finger landing on the other band
+         used to re-arm the gesture from scratch: _active flipped, the first
+         finger's pending value was thrown away, and the release wrote whatever the
+         SECOND finger was over. One gesture at a time. */
+      if (this._ringArmed) return;
       // Two-ring radius classification (temp inner / fan outer); fall back to the
       // band that received the event.
       const rad = this._eventToRadius(e);
@@ -3391,6 +3396,12 @@
       e.stopPropagation();
       this._ringArmed = true;
       this._dragging = false;
+      /* The move and up listeners are on WINDOW, so they hear every pointer on the
+         page, not just this one. Without this any second finger anywhere - a thumb
+         resting on the dashboard, a stylus, a mouse - moved the marker on its way
+         past and ENDED the drag when it lifted, committing while the real finger
+         was still down. */
+      this._ringPointerId = e.pointerId;
       this._ringStart = { x: e.clientX, y: e.clientY };
       this._pendingTemp = null;
       this._fanPendingPct = null;
@@ -3421,6 +3432,11 @@
     }
     _ringPointerMove(e) {
       if (!this._ringArmed) return;
+      if (!this._ownPointer(e)) return;
+      // A unit that goes unavailable or off mid-drag cannot take the value the
+      // finger is over, so the gesture is abandoned rather than carried to a
+      // release that writes to something that is not there.
+      if (!this._ringStillLive()) { this._ringAbandon(); return; }
       if (!this._dragging) {
         // tap-vs-drag gate: nothing paints or commits until travel crosses the
         // threshold (same ~8px the fan clover uses). The gesture is ALREADY claimed
@@ -3432,33 +3448,48 @@
       }
       this._applyRingDrag(e);
     }
-    _ringPointerUp() {
-      if (!this._ringArmed) return;
-      const wasDragging = this._dragging;
+    /* Whether this event belongs to the finger that started the drag. A pointerId
+       of undefined is a synthetic event from a test or a very old browser; those
+       are taken at their word rather than dropped. */
+    _ownPointer(e) {
+      if (!e || e.pointerId == null || this._ringPointerId == null) return true;
+      return e.pointerId === this._ringPointerId;
+    }
+
+    _ringStillLive() {
+      const s = this._st(this._config && this._config.entity);
+      if (!s || s.state === "off" || s.state === "unavailable" || s.state === "unknown") return false;
+      return this._active !== "fan" || this._fanSettable();
+    }
+
+    /* Drop the gesture without writing anything.
+
+       The optimistic fields have to go with it. _applyRingDrag sets them on EVERY
+       move so the marker survives a state push mid-drag, which means an abandoned
+       drag that only cleared the pending value would leave whatever the finger was
+       last over sitting on the face for the length of the hold and then snap back
+       to the real value five seconds later, with no service call to explain it. */
+    _ringAbandon() {
+      this._ringTeardown();
+      this._optimisticTarget = null;
+      this._optimisticUntil = 0;
+      this._optimisticLow = null;
+      this._optimisticHigh = null;
+      this._optimisticHcUntil = 0;
+      this._optimisticFanPct = null;
+      this._optimisticFanName = null;
+      this._optimisticFanUntil = 0;
+      this._render();
+    }
+
+    _ringTeardown() {
       this._ringArmed = false;
       this._dragging = false;
       this._ringStart = null;
+      this._ringPointerId = null;
       window.removeEventListener("pointermove", this._onRingMove);
       window.removeEventListener("pointerup", this._onRingUp);
       window.removeEventListener("pointercancel", this._onRingUp);
-      // COMMIT ONCE on release -- but only for a real drag. A pure tap never
-      // crossed the threshold (no pending value, wasDragging false) so it is
-      // discarded and cannot change the setpoint (issue #4).
-      if (wasDragging) {
-        if (this._active === "temp") {
-          if (this._hcHandle) {
-            // heat_cool: write the low/high pair (issue #14).
-            if (this._hcPendingLow != null && this._hcPendingHigh != null) {
-              this._commitHeatCool(this._hcPendingLow, this._hcPendingHigh);
-            }
-          } else if (this._pendingTemp != null && isFinite(this._pendingTemp)) {
-            this._commitTemp(this._pendingTemp);
-          }
-        } else if (this._active === "fan") {
-          if (this._fanPendingPct != null) this._commitFanPct(this._fanPendingPct);
-          else if (this._fanPendingName != null) this._commitFanName(this._fanPendingName);
-        }
-      }
       this._active = null;
       this._pendingTemp = null;
       this._hcHandle = null;
@@ -3466,6 +3497,43 @@
       this._hcPendingHigh = null;
       this._fanPendingPct = null;
       this._fanPendingName = null;
+    }
+
+    _ringPointerUp(e) {
+      if (!this._ringArmed) return;
+      if (!this._ownPointer(e)) return;
+      /* pointercancel is the browser TAKING the gesture: a scroll won the touch, the
+         app went to the background, a pen left range, another element captured the
+         pointer. The finger was never lifted, so there is nothing to commit. The
+         rest of the card already reads it this way (the clover and the centre tap
+         both check e.type); the rings were the one place a cancel wrote a value. */
+      if (e && e.type === "pointercancel") { this._ringAbandon(); return; }
+      const wasDragging = this._dragging;
+      // A unit that died under the finger takes the abandon path too: there is no
+      // point writing a setpoint to something that stopped answering mid-gesture.
+      if (wasDragging && !this._ringStillLive()) { this._ringAbandon(); return; }
+      // Read the gesture before the teardown clears it.
+      const active = this._active;
+      const hcHandle = this._hcHandle;
+      const hcLow = this._hcPendingLow, hcHigh = this._hcPendingHigh;
+      const temp = this._pendingTemp;
+      const fanPct = this._fanPendingPct, fanName = this._fanPendingName;
+      this._ringTeardown();
+      // COMMIT ONCE on release -- but only for a real drag. A pure tap never
+      // crossed the threshold (no pending value, wasDragging false) so it is
+      // discarded and cannot change the setpoint (issue #4).
+      if (!wasDragging) return;
+      if (active === "temp") {
+        if (hcHandle) {
+          // heat_cool: write the low/high pair (issue #14).
+          if (hcLow != null && hcHigh != null) this._commitHeatCool(hcLow, hcHigh);
+        } else if (temp != null && isFinite(temp)) {
+          this._commitTemp(temp);
+        }
+      } else if (active === "fan") {
+        if (fanPct != null) this._commitFanPct(fanPct);
+        else if (fanName != null) this._commitFanName(fanName);
+      }
     }
     _applyRingDrag(e) {
       if (this._active === "temp") {
