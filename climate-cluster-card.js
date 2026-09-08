@@ -154,6 +154,7 @@
         entity: "Climate entity",
         name: "Name",
         fan_style: "Fan ring",
+        fan_clover: "Spinning fan glyph",
         appearance: "Background",
         reset_styling: "Reset styling to defaults",
         glass_color: "Glass tint",
@@ -195,7 +196,8 @@
       },
       editorHelpers: {
         name: "Card title. Defaults to the entity's friendly name.",
-        fan_style: "Original is the smooth ring the card has always drawn. The other two animate, and both cost more on a wall tablet that never sleeps.",
+        fan_style: "Silk and breeze animate; original is the smooth ring every card installed before this release draws. Both animated ones cost more on a wall tablet that never sleeps.",
+        fan_clover: "Brings back the small spinning fan from the original face, beside the status line.",
         appearance: "Theme follows your active Home Assistant theme (works on light and dark). Frosted glass is a translucent panel, in a dark indigo or light finish, that holds its look on any theme.",
         reset_styling: "Clears the appearance, glass, accent, font and per-mode color settings back to their defaults. Your entity, range, modes and other options are kept.",
         glass_color: "Tints the frosted glass panel. Applies only to the frosted glass backgrounds.",
@@ -295,6 +297,7 @@
         entity: "Entidad de clima",
         name: "Nombre",
         fan_style: "Anillo del ventilador",
+        fan_clover: "Ventilador que gira",
         appearance: "Fondo",
         reset_styling: "Restablecer estilo a los valores por defecto",
         glass_color: "Tinte del vidrio",
@@ -336,7 +339,8 @@
       },
       editorHelpers: {
         name: "Titulo de la tarjeta. Por defecto usa el nombre descriptivo de la entidad.",
-        fan_style: "Original es el anillo suave de siempre. Los otros dos se animan y cuestan mas en una tablet de pared que nunca duerme.",
+        fan_style: "Silk y breeze se animan; original es el anillo suave que dibuja toda tarjeta instalada antes de este release. Los dos animados cuestan mas en una tablet de pared que nunca duerme.",
+        fan_clover: "Trae de vuelta el ventilador pequeno que gira de la cara original, al lado de la linea de estado.",
         appearance: "Tema sigue el tema activo de Home Assistant (funciona en claro y oscuro). Vidrio esmerilado es un panel translucido, en acabado indigo oscuro o claro, que mantiene su aspecto en cualquier tema.",
         reset_styling: "Borra los ajustes de apariencia, vidrio, acento, fuente y colores por modo a sus valores por defecto. Se conservan la entidad, el rango, los modos y las demas opciones.",
         glass_color: "Tinta el panel de vidrio esmerilado. Solo aplica a los fondos de vidrio esmerilado.",
@@ -1634,6 +1638,13 @@
       KEYFRAMES: KEYFRAMES, HERO_DEFS: HERO_DEFS, angleOf: angleOf, arcPath: arcPath, P: P };
   })();
 
+  /* What the fan RING is drawn at, as opposed to what the rail READS.
+     A fan with no speed set still needs a visible ring, because the ring is the
+     control you grab to set one: every style dims itself when handed null, which on a
+     dark card means there is nothing to aim at. The rail carries the word AUTO, so
+     the distinction is still on screen, in the place that is made of words. */
+  const FACE_RING = (pct) => (pct == null ? 100 : pct);
+
   const HERO_MAX_W = 166;              // clear span between the two steppers, less air
 
   const CX = 300, CY = 284;            // _cx / _cy
@@ -1943,7 +1954,9 @@
       // Fan ring style. dash is the shipped look and the DEFAULT, so an update
       // changes nothing for anyone who does not opt in. Unknown values fall back.
       const _fs = this._config.fan_style;
-      this._fanStyle = (_fs === "breeze" || _fs === "silk") ? _fs : "original";
+      /* silk by default. The plain gradient arc is still there under `original`,
+         because it is what every card installed before this release drew. */
+      this._fanStyle = (_fs === "breeze" || _fs === "original") ? _fs : "silk";
 
       const _gc = colorToRgb(this._config.glass_color);
       this._glassColorRgb = _gc ? _gc.join(",") : null;
@@ -3174,7 +3187,15 @@
             this._optimisticFanUntil = 0;
           }
         } else if (this._optimisticFanName != null) {
-          if (String(attr.fan_mode).toLowerCase() === String(this._optimisticFanName).toLowerCase()) {
+          const nameAgrees = String(attr.fan_mode).toLowerCase()
+            === String(this._optimisticFanName).toLowerCase();
+          /* On a numeric fan the mode word and the speed entity land a beat apart, so
+             agreeing on the word alone releases the hold while the speed still reads
+             the old value, and the ring jumps through it. Both have to agree. */
+          const rng = this._fanNumRange();
+          const numAgrees = !rng || (String(this._optimisticFanName).toLowerCase() === "auto"
+            ? this._faceNumUnset(rng) : !this._faceNumUnset(rng));
+          if (nameAgrees && numAgrees) {
             this._optimisticFanName = null;
             this._optimisticFanUntil = 0;
           }
@@ -3675,9 +3696,14 @@
       const fm = (s && s.attributes && s.attributes.fan_modes) || [];
       const autoMode = fm.length ? fm.find((m) => String(m).toLowerCase() === "auto") : "auto";
       if (!autoMode) { this._render(); return; } // list exists but carries no auto member
-      this._optimisticFanUntil = 0; // drop any stale optimism so AUTO paints
+      /* Hold AUTO until the device says so. Dropping optimism here meant the very
+         next render read the speed entity, which still held the last real speed for a
+         second or two, and the marker flicked back to it before the unit reported
+         itself parked. Measured: on this hardware set_fan_mode auto lands and the
+         speed entity goes out of range about a second later. */
       this._optimisticFanPct = null;
-      this._optimisticFanName = null;
+      this._optimisticFanName = autoMode;
+      this._optimisticFanUntil = Date.now() + OPT_HOLD_MS;
       this._paintFanAuto();
       this._announce(this._t("fan") + " " + this._t("automatic"));
       // No optimistic value to revert here (AUTO drops optimism above); on
@@ -4797,7 +4823,11 @@
     // revertible by deleting one list.
     _hideLegacyFace() {
       this._faceHidden = true;
-      LEGACY_FACE_NODES.forEach((k) => {
+      /* The little spinning fan is the one piece of the original face worth keeping
+         on the new one, so it is switched off by default and kept by asking. It sits
+         at 212,296, clear of the status line and above the rail. */
+      const keepClover = this._config && this._config.fan_clover === true;
+      LEGACY_FACE_NODES.filter((k) => !(keepClover && k === "clover")).forEach((k) => {
         const n = this._refs[k];
         if (n && n.style) n.style.display = "none";
       });
@@ -4940,7 +4970,7 @@
         // device reports mid mode-change painted a bare "A" beside the status word,
         // which tells a user nothing.
         preset: this._presetKnown(),
-        fanStyle: this._fanStyle || "original",
+        fanStyle: this._fanStyle || "silk",
         cells: this._faceCells(),
       };
     }
@@ -5014,7 +5044,7 @@
       this._faceFanKey = null;
       if (this._config.show_fan !== false) {
         const draw = FACE.FAN_STYLES[st.fanStyle] || FACE.FAN_STYLES.original;
-        this._refs.faceFan.innerHTML = draw(pct, st.mode);
+        this._refs.faceFan.innerHTML = draw(FACE_RING(pct), st.mode);
       }
       // the rail's FAN cell is the same reading in words
       if (this._refs.faceRail) {
@@ -5059,7 +5089,7 @@
       if (this._faceFanKey !== fanKey) {
         this._faceFanKey = fanKey;
         this._refs.faceFan.innerHTML = wantFan
-          ? (FACE.FAN_STYLES[st.fanStyle] || FACE.FAN_STYLES.original)(st.fanPct, st.mode)
+          ? (FACE.FAN_STYLES[st.fanStyle] || FACE.FAN_STYLES.original)(FACE_RING(st.fanPct), st.mode)
           : "";
       }
       this._paintFaceMoving(setA, roomA, st);
@@ -6113,11 +6143,13 @@ ${POPUP_CSS}
           // Visible radios, not a dropdown: the three rings differ only by how they
           // move, so a closed dropdown hides the entire decision. The migration promise
           // rides the option label rather than a helper sentence underneath it.
+          // the default first, so the list reads as a default plus its alternatives
           { name: "fan_style", selector: { select: { mode: "list", options: [
-            { value: "original", label: this._t("editor.opt.fan_style_original") },
-            { value: "breeze", label: this._t("editor.opt.fan_style_breeze") },
             { value: "silk", label: this._t("editor.opt.fan_style_silk") },
+            { value: "breeze", label: this._t("editor.opt.fan_style_breeze") },
+            { value: "original", label: this._t("editor.opt.fan_style_original") },
           ] } } },
+          { name: "fan_clover", selector: { boolean: {} } },
           { name: "show_fan", selector: { select: { mode: "dropdown", options: autoTF } } },
           { name: "fan_entity", selector: { entity: { domain: "number" } } },
         ] },

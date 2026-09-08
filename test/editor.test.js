@@ -161,12 +161,20 @@ test("editor: fan_style offers the shipped ring plus the two animations", () => 
   // mode list renders radios. A dropdown hides two of the three choices behind a
   // click, and the owner's complaint was specifically about dropdowns.
   assert.equal(sel.mode, "list");
-  // NOT "dash". The handoff module has a dashed style, but the released card draws a
-  // smooth gradient ring with no dashes, so dash cannot be offered as the unchanged
-  // option. It stays as a config alias for anyone who wrote it against the branch.
-  assert.deepEqual(sel.options.map((o) => o.value), ["original", "breeze", "silk"]);
-  assert.match(sel.options[0].label, /original/i,
-    "the migration promise rides the label, not a helper sentence");
+  // silk leads because it is the default from 2.3.0, so the list reads as a default
+  // and its alternatives. NOT "dash": the handoff has a dashed style, but the
+  // released card draws a smooth gradient ring, so dash is a config alias only.
+  assert.deepEqual(sel.options.map((o) => o.value), ["silk", "breeze", "original"]);
+  assert.ok(sel.options.some((o) => /original/i.test(o.label)),
+    "the ring every installed card draws today is still offered by name");
+});
+
+test("editor: the original spinning fan glyph is offered, off by default", () => {
+  const hass = makeHass(fx.states, { entities: fx.entities });
+  const ed = makeEditor(fx.config, hass);
+  const row = findField(ed._schema(hass, fx.config), "fan_clover");
+  assert.ok(row, "reachable without opening advanced, beside the ring choice");
+  assert.ok(row.selector.boolean, "a plain on/off, not a dropdown");
 });
 
 test("editor: the retired clover animation keys are gone from the GUI but still read", () => {

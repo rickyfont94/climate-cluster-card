@@ -190,3 +190,64 @@ test("numeric fan: a missing speed entity is no speed, not a crash", () => {
   c.hass = makeHass(only, { entities: { "climate.ac": { entity_id: "climate.ac", device_id: "d1" } } });
   assert.doesNotThrow(() => c._facePct());
 });
+
+// The full matrix, measured against the real unit's behaviour: it refuses every fan
+// command while its HVAC mode is auto, and in cool it accepts them and keeps
+// fan_mode and the speed entity in step. In auto the speed entity parks OUT of its
+// own range (101 / 102 on a 1..100 number), which is the only honest signal that no
+// speed is set.
+const M = (hvac, fan, speed) => {
+  const st = {
+    "climate.ac": { entity_id: "climate.ac", state: hvac, attributes: {
+      friendly_name: "AC", hvac_modes: ["off", "auto", "cool", "fan_only"],
+      fan_modes: ["silent", "low", "medium", "high", "full", "auto"], fan_mode: fan,
+      current_temperature: 78, temperature: 75, min_temp: 61, max_temp: 86 } },
+  };
+  if (speed !== undefined) {
+    st["number.ac_fan_speed"] = { entity_id: "number.ac_fan_speed", state: String(speed),
+      attributes: { friendly_name: "AC fan speed", min: 1, max: 100, step: 1 } };
+  }
+  return st;
+};
+const mEnts = { "climate.ac": { entity_id: "climate.ac", device_id: "d1" },
+  "number.ac_fan_speed": { entity_id: "number.ac_fan_speed", device_id: "d1" } };
+function mCard(hvac, fan, speed, cfg) {
+  const c = document.createElement("climate-cluster-card");
+  c.setConfig(Object.assign({ entity: "climate.ac" }, cfg || {}));
+  c.hass = makeHass(M(hvac, fan, speed), { entities: mEnts });
+  return c;
+}
+// the handle is the last rotate() in the ring markup; 250 is empty, 470 is full
+const ringEnd = (c) => {
+  const m = [...c._refs.faceFan.innerHTML.matchAll(/rotate\(([-0-9.]+)\)/g)].pop();
+  return m ? Math.round(Number(m[1])) : null;
+};
+const railText = (c) => (c._refs.faceRail.textContent.match(/(AUTO|\d+%)/) || ["-"])[0];
+
+test("fan ring: ALWAYS drawn, in every mode that can carry a fan", () => {
+  for (const hvac of ["cool", "fan_only", "auto", "dry", "heat"]) {
+    const c = mCard(hvac, "auto", 102);
+    assert.ok(c._refs.faceFan.innerHTML.length > 200,
+      hvac + ": the ring is the control you grab, it cannot be missing");
+    assert.equal(ringEnd(c), 470, hvac + ": with no speed set it reads full, not empty");
+    assert.equal(railText(c), "AUTO", hvac + ": and the WORD carries the distinction");
+  }
+});
+
+test("fan ring: a set speed draws to that speed, not to full", () => {
+  assert.equal(ringEnd(mCard("cool", "high", 80)), 426);
+  assert.equal(railText(mCard("cool", "high", 80)), "80%");
+  assert.equal(ringEnd(mCard("cool", "low", 20)), 292);
+});
+
+test("fan ring: no speed entity at all falls back to the named position", () => {
+  assert.equal(railText(mCard("cool", "high", undefined)), "80%");
+  assert.equal(railText(mCard("cool", "auto", undefined)), "AUTO");
+});
+
+test("fan: the spinning glyph is off by default and comes back on request", () => {
+  const off = mCard("cool", "high", 80);
+  assert.equal(off._refs.clover.style.display, "none");
+  const on = mCard("cool", "high", 80, { fan_clover: true });
+  assert.notEqual(on._refs.clover.style.display, "none");
+});

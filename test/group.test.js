@@ -369,7 +369,7 @@ test("card: show_fan false hides the ring AND its rail cell, not just the button
   assert.ok(!/FAN/.test(rail.textContent || ""), "no FAN cell either");
 });
 
-test("card: the fan style falls back to the shipped ring, never to the dashed one", () => {
+test("card: silk is the default ring, and the shipped arc is still reachable", () => {
   const mk = (style) => {
     const el = document.createElement("climate-cluster-card");
     const cfg = { type: "custom:climate-cluster-card", entity: "climate.living" };
@@ -378,8 +378,10 @@ test("card: the fan style falls back to the shipped ring, never to the dashed on
     el.hass = makeHass(states);
     return el;
   };
-  assert.equal(mk()._fanStyle, "original", "unset means the shipped ring");
-  assert.equal(mk("nonsense")._fanStyle, "original", "an unknown value falls back, not to dash");
+  assert.equal(mk()._fanStyle, "silk", "unset means silk from 2.3.0");
+  assert.equal(mk("nonsense")._fanStyle, "silk", "an unknown value falls back to the default");
   assert.equal(mk("silk")._fanStyle, "silk");
   assert.equal(mk("breeze")._fanStyle, "breeze");
+  assert.equal(mk("original")._fanStyle, "original",
+    "the plain arc every installed card draws today is still reachable by name");
 });
