@@ -1650,6 +1650,82 @@
      fanHandle already drew nothing for a null value; handing the styles 100 for the
      ARC brought it back, so the styles take the two apart. */
 
+
+  /* ---------------------------------------------------------------------------
+     Zone card theming.
+
+     The handoff module writes every colour as an inline style attribute, and an
+     inline style beats any stylesheet, so the usual approach of shipping CSS that
+     overrides it cannot work. The markup is rewritten on the way out instead: one
+     map, applied once per render, turning each NEUTRAL literal into the theme
+     property the rest of this card already uses, with the module's own literal as
+     the fallback so a card with no theme looks exactly as it did.
+
+     Only neutrals and the accent are in here. Mode ink, the two arc gradients and
+     the preset glyph colours are the instrument's identity and are left alone; they
+     are the same literals the single dial uses.
+
+     Ordered longest-first: a short literal that is a prefix of a longer one would
+     otherwise corrupt it.
+     ------------------------------------------------------------------------- */
+  const ZONE_INK = [
+    // --- surfaces and chrome, which is what `glass` actually tints -------------
+    ["rgba(255,255,255,.11)", "var(--ct-zone-surface-hi, rgba(255,255,255,.11))"],
+    ["rgba(255,255,255,.09)", "var(--ct-zone-edge, rgba(255,255,255,.09))"],
+    ["rgba(255,255,255,.07)", "var(--ct-zone-surface, rgba(255,255,255,.07))"],
+    ["rgba(255,255,255,.16)", "var(--ct-zone-edge-hi, rgba(255,255,255,.16))"],
+    ["rgba(255,255,255,.14)", "var(--ct-zone-inset, rgba(255,255,255,.14))"],
+    ["rgba(255,255,255,.10)", "var(--ct-zone-surface, rgba(255,255,255,.10))"],
+    ["rgba(255,255,255,.035)", "var(--ct-zone-surface-lo, rgba(255,255,255,.035))"],
+    ["rgba(255,255,255,.025)", "var(--ct-zone-surface-lo, rgba(255,255,255,.025))"],
+    ["rgba(255,255,255,.015)", "var(--ct-zone-surface-lo, rgba(255,255,255,.015))"],
+    ["rgba(255,255,255,.05)", "var(--ct-zone-inset-lo, rgba(255,255,255,.05))"],
+    ["rgba(255,255,255,.03)", "var(--ct-zone-surface-lo, rgba(255,255,255,.03))"],
+    ["rgba(255,255,255,.02)", "var(--ct-zone-surface-lo, rgba(255,255,255,.02))"],
+    ["rgba(255,255,255,.20)", "var(--ct-zone-inset, rgba(255,255,255,.20))"],
+    ["rgba(255,255,255,.13)", "var(--ct-zone-edge, rgba(255,255,255,.13))"],
+    // --- ink ------------------------------------------------------------------
+    ["#f2f5f8", "var(--primary-text-color, #f2f5f8)"],
+    ["#f6f8fa", "var(--primary-text-color, #f6f8fa)"],
+    ["#e1e5ea", "var(--primary-text-color, #e1e5ea)"],
+    ["#8b95a2", "var(--secondary-text-color, #8b95a2)"],
+    ["#9aa5b1", "var(--secondary-text-color, #9aa5b1)"],
+    ["#6f7a88", "var(--disabled-text-color, #6f7a88)"],
+    ["#c3cbd4", "var(--secondary-text-color, #c3cbd4)"],
+    ["#546070", "var(--divider-color, #546070)"],
+    ["#1b222c", "var(--ha-card-background, var(--card-background-color, #1b222c))"],
+    ["rgba(200,215,235,.55)", "var(--secondary-text-color, rgba(200,215,235,.55))"],
+    ["rgba(195,203,212,.26)", "var(--divider-color, rgba(195,203,212,.26))"],
+    // --- ticks, tracks and hairlines -----------------------------------------
+    ["rgba(154,165,177,.45)", "var(--ct-zone-tick, rgba(154,165,177,.45))"],
+    ["rgba(154,165,177,.14)", "var(--ct-zone-track, rgba(154,165,177,.14))"],
+    ["rgba(225,231,237,.28)", "var(--ct-zone-bar-off, rgba(225,231,237,.28))"],
+    ["rgba(225,231,237,.20)", "var(--ct-zone-ring, rgba(225,231,237,.20))"],
+    ["rgba(225,231,237,.16)", "var(--divider-color, rgba(225,231,237,.16))"],
+    ["rgba(225,231,237,.12)", "var(--divider-color, rgba(225,231,237,.12))"],
+    ["rgba(225,231,237,.10)", "var(--ct-zone-track, rgba(225,231,237,.10))"],
+    ["rgba(225,231,237,.05)", "var(--ct-zone-surface, rgba(225,231,237,.05))"],
+    // --- the accent, which is a real config key and did nothing here ----------
+    ["rgba(39,211,255,.42)", "color-mix(in srgb, var(--cg-accent, #27d3ff) 42%, transparent)"],
+    ["rgba(39,211,255,.14)", "color-mix(in srgb, var(--cg-accent, #27d3ff) 14%, transparent)"],
+    ["rgba(39,211,255,.09)", "color-mix(in srgb, var(--cg-accent, #27d3ff) 9%, transparent)"],
+    ["#7fe4ff", "var(--cg-accent, #7fe4ff)"],
+    ["#27d3ff", "var(--cg-accent, #27d3ff)"],
+  ];
+  function themeZone(html) {
+    /* Everything inside <defs> is left exactly as written. That is where the two arc
+       gradients live, and they are the instrument's identity, shared with the single
+       dial: routing them through the accent turned a purple accent into a purple
+       COLD ARC, which is a different card, not a tinted one. */
+    const defs = [];
+    let out = html.replace(/<defs>[\s\S]*?<\/defs>/g, (m) => {
+      defs.push(m);
+      return "\u0001DEFS" + (defs.length - 1) + "\u0001";
+    });
+    for (const [from, to] of ZONE_INK) out = out.split(from).join(to);
+    return out.replace(/\u0001DEFS(\d+)\u0001/g, (m, i) => defs[Number(i)]);
+  }
+
   const HERO_MAX_W = 166;              // clear span between the two steppers, less air
 
   const CX = 300, CY = 284;            // _cx / _cy
@@ -6657,7 +6733,9 @@ ${POPUP_CSS}
   // two arc gradients, which are the instrument's identity and are shared with the
   // single dial.
   const GROUP_CSS = `
-.cg-card{ display:block; position:relative; padding:14px 16px 16px; font-family:${FONT_STACK}; }
+.cg-card{ display:block; position:relative; padding:14px 16px 16px; font-family:${FONT_STACK};
+  /* read back by _inkGround; nothing inherits it, every surface sets its own */
+  color:var(--primary-text-color, #f2f5f8); }
 /* Content wrapper. The frosted slab is an absolutely positioned SIBLING, and a
    positioned element paints above static blocks, so without a positioned wrapper
    of its own the slab would sit on top of every zone tile and the title. */
@@ -6859,6 +6937,34 @@ ha-card[data-appearance^="glass"] .cg-inner{
 /* The sheet's stylesheet speaks --ct-accent and --ct-font; this card publishes the
    same two things under its own names. Alias rather than fork the stylesheet. */
 .cg-card{ --ct-accent: var(--cg-accent, ${DEFAULT_ACCENT}); --ct-font: ${FONT_STACK}; }
+/* Zone card surfaces. Declared here so the glass variants below can retint them the
+   same way they retint the text properties, which is what makes glass_color and
+   glass_opacity mean something on this layout. */
+.cg-inner{
+  --ct-zone-surface-hi: rgba(255,255,255,.11);
+  --ct-zone-surface: rgba(255,255,255,.07);
+  --ct-zone-surface-lo: rgba(255,255,255,.03);
+  --ct-zone-edge: rgba(255,255,255,.11);
+  --ct-zone-edge-hi: rgba(255,255,255,.16);
+  --ct-zone-inset: rgba(255,255,255,.16);
+  --ct-zone-inset-lo: rgba(255,255,255,.05);
+  --ct-zone-tick: color-mix(in srgb, var(--secondary-text-color, rgb(154,165,177)) 45%, transparent);
+  --ct-zone-track: color-mix(in srgb, var(--secondary-text-color, rgb(154,165,177)) 14%, transparent);
+  --ct-zone-ring: color-mix(in srgb, var(--secondary-text-color, rgb(225,231,237)) 20%, transparent);
+  --ct-zone-bar-off: color-mix(in srgb, var(--secondary-text-color, rgb(225,231,237)) 28%, transparent);
+}
+/* A light ground needs DARK surfaces over it, not lighter ones: white on white is
+   the same nothing the dial's face used to be. */
+ha-card[data-appearance="glass-light"] .cg-inner,
+.cg-card[data-ink="light"] .cg-inner{
+  --ct-zone-surface-hi: rgba(20,28,48,.07);
+  --ct-zone-surface: rgba(20,28,48,.05);
+  --ct-zone-surface-lo: rgba(20,28,48,.02);
+  --ct-zone-edge: rgba(20,28,48,.14);
+  --ct-zone-edge-hi: rgba(20,28,48,.20);
+  --ct-zone-inset: rgba(255,255,255,.55);
+  --ct-zone-inset-lo: rgba(255,255,255,.30);
+}
 ${ZONE.KEYFRAMES}
 @media (prefers-reduced-motion: reduce){
   .cg-zonecard [style*='animation']{ animation:none !important; }
@@ -7319,6 +7425,18 @@ ${ZONE.KEYFRAMES}
     // The sheet's toggles are separate switch entities on the same device, the way
     // the single dial finds them. Cached per entity id: this runs inside the
     // signature, which runs on every hass write in the house.
+    /* Same test the dial uses: read the resolved text colour back and decide which
+       way round the ground is, because Home Assistant publishes no light/dark flag
+       and prefers-color-scheme does not follow a hand-picked HA theme. */
+    _inkGround(el) {
+      try {
+        const m = /([0-9.]+)[^0-9.]+([0-9.]+)[^0-9.]+([0-9.]+)/.exec(getComputedStyle(el).color);
+        if (!m) return "dark";
+        const l = (0.2126 * +m[1] + 0.7152 * +m[2] + 0.0722 * +m[3]) / 255;
+        return l < 0.5 ? "light" : "dark";
+      } catch (e) { return "dark"; }
+    }
+
     _zoneSiblings(id) {
       this._sibCache = this._sibCache || {};
       if (this._sibCache[id]) return this._sibCache[id];
@@ -7432,6 +7550,8 @@ ${ZONE.KEYFRAMES}
         ? forced.replace(/^ style="/, "").replace(/"$/, "")
         : "grid-template-columns:repeat(auto-fit,minmax(126px,1fr))";
 
+      const card = this.shadowRoot && this.shadowRoot.querySelector(".cg-card");
+      if (card) card.setAttribute("data-ink", this._inkGround(card));
       const orient = ["horizontal", "vertical"].indexOf(this._config.orientation) >= 0
         ? this._config.orientation : "auto";
       let html = '<div class="cg-zonecard" data-orient="' + orient
@@ -7469,6 +7589,9 @@ ${ZONE.KEYFRAMES}
         html += ZONE.footer(acts);
       }
       html += "</div>";
+      // The sheet is the card's own markup and already themed, so only the module's
+      // half is rewritten.
+      html = themeZone(html);
       if (ui.sheetIndex != null && model.zones[ui.sheetIndex]) {
         html += this._zoneSheetHtml(model.zones[ui.sheetIndex], ui.sheetIndex);
       }
