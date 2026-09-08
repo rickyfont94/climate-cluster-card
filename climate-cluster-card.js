@@ -937,6 +937,15 @@
     return { face: face, FAN_STYLES: FAN_STYLES, MODES: MODES, KEYFRAMES: KEYFRAMES, DEFS: DEFS, SILK_DEFS: SILK_DEFS, band: band, ticks: ticks, scaleNumerals: scaleNumerals, needle: needle, roomPin: roomPin, roomLabel: roomLabel, deltaSegment: deltaSegment, modeWord: modeWord, bigNumeral: bigNumeral, statusLine: statusLine, presetGlyph: presetGlyph, steppers: steppers, rail: rail, fanPlain: fanPlain, fanDash: fanDash, fanBreeze: fanBreeze, fanSilk: fanSilk, angleOf: angleOf, arcPath: arcPath, P: P };
   })();
 
+  /* Everything the original face paints that the handoff face repaints itself.
+     One list, used by both _hideLegacyFace and _showLegacyFace, so the two cannot
+     drift apart and strand a node switched off with nothing drawing over it. */
+  const LEGACY_FACE_NODES = ["coldHalo", "warmHalo", "coldFill", "warmFill", "track",
+    "fanTrack", "fanFill", "ticks", "curMarker", "tempNeedle", "tempNeedleLo",
+    "fanHandle", "modeGlyph", "labelTop", "nowCap", "bigNum", "caret",
+    "clover", "fanPct", "fanName", "swingChip", "swingHChip", "swingCap",
+    "swingHCap", "hints"];
+
   const CX = 300, CY = 284;            // _cx / _cy
   const R_TEMP = 200;                  // inner thick arc = TEMPERATURE
   const R_FAN = 226;                   // outer thin arc  = FAN SPEED
@@ -4011,7 +4020,7 @@
       // The face reads this. During a drag _paintTempArc runs without a full
       // render, so it also repaints the four groups a drag actually moves.
       this._faceSet = t;
-      if (this._refs.face) {
+      if (this._refs.face && this._faceOn !== false) {
         const fs = this._faceState(t);
         this._paintFaceMoving(FACE.angleOf(fs.set, fs.min, fs.max),
           FACE.angleOf(fs.room, fs.min, fs.max), fs);
@@ -4088,12 +4097,8 @@
     // and far less risky than unpicking a dozen call sites, and it makes the swap
     // revertible by deleting one list.
     _hideLegacyFace() {
-      const dead = ["coldHalo", "warmHalo", "coldFill", "warmFill", "track",
-        "fanTrack", "fanFill", "ticks", "curMarker", "tempNeedle", "tempNeedleLo",
-        "fanHandle", "modeGlyph", "labelTop", "nowCap", "bigNum", "caret",
-        "clover", "fanPct", "fanName", "swingChip", "swingHChip", "swingCap",
-        "swingHCap", "hints"];
-      dead.forEach((k) => {
+      this._faceHidden = true;
+      LEGACY_FACE_NODES.forEach((k) => {
         const n = this._refs[k];
         if (n && n.style) n.style.display = "none";
       });
@@ -4102,6 +4107,21 @@
       // group stays as the hit target over the new ones.
       (this._refs.steps || []).forEach((x) => {
         [...x.g.childNodes].forEach((n) => { if (n.style) n.style.display = "none"; });
+      });
+    }
+
+    /* The exact inverse, for the one state that has to go back to the original
+       face. It only CLEARS the inline display, it does not force anything on, so
+       the per-feature visibility decisions further down _render still win. That is
+       why it has to run before them and not after. */
+    _showLegacyFace() {
+      this._faceHidden = false;
+      LEGACY_FACE_NODES.forEach((k) => {
+        const n = this._refs[k];
+        if (n && n.style) n.style.display = "";
+      });
+      (this._refs.steps || []).forEach((x) => {
+        [...x.g.childNodes].forEach((n) => { if (n.style) n.style.display = ""; });
       });
     }
 
@@ -4204,7 +4224,7 @@
     }
 
     _paintFace() {
-      if (!this._refs.face) return;
+      if (!this._refs.face || this._faceOn === false) return;
       const inkCard = this.shadowRoot && this.shadowRoot.querySelector(".ct-card");
       const st = this._faceState();
       if (inkCard) {
@@ -4541,6 +4561,14 @@
       const mode = s.state;
       const off = mode === "off";
       const isHc = this._isHeatCool(); // dual-setpoint dial (issue #14)
+      /* heat_cool keeps the ORIGINAL face. The handoff geometry draws one setpoint,
+         one pin and one hero number; pointed at a low/high pair it painted the
+         range minimum as the setpoint and dropped the pair entirely, which is a
+         worse card than the one being replaced. Until the module has a dual
+         setpoint of its own, this mode renders exactly as it shipped. */
+      this._faceOn = !isHc;
+      if (isHc && this._faceHidden) this._showLegacyFace();
+      if (this._refs.face) this._refs.face.style.display = isHc ? "none" : "";
       const accent = this._modeColor(mode);
       const showCurrent = this._config.show_current !== false;
       card.setAttribute("data-mode", mode);
