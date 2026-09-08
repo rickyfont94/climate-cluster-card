@@ -432,6 +432,482 @@
   // viewBox 0 0 600 392, center pushed LOW so the band sweeps the TOP, opening
   // downward; the freed bottom shelf carries the big number + clover + swing.
   const VBW = 600, VBH = 392;          // _VBW / _VBH for the letterbox pointer math (aspect 600/392)
+  // ==========================================================================
+  // DIAL FACE GEOMETRY
+  // ==========================================================================
+  // Pasted verbatim from the design handoff's dial-face.js and wrapped in an IIFE.
+  // It is the source of truth for every shape on the face: where the card and this
+  // module disagree, the module is right. It keeps its own CX / arcPath / clamp,
+  // which is why it is scoped rather than merged, since the card already has its
+  // own polar() with the same convention but a different signature.
+  // Do not re-derive the geometry here. Change it in the handoff and re-paste.
+  const FACE = (function () {
+  /* Dial face geometry for climate-cluster-card.
+     Pure functions, no dependencies, no build step. Every function returns an SVG
+     string ready to drop into the card's template. Import or paste wholesale.
+
+     Coordinate system: viewBox 600 x 392, centre (300, 284). Zero degrees is twelve
+     o'clock and angles increase clockwise. The arc starts at 250 and spans 220. */
+
+  var CX = 300, CY = 284, RT = 200, RF = 226, A0 = 250, SPAN = 220;
+
+  function P(r, a, cx, cy) {
+    var t = (a - 90) * Math.PI / 180;
+    return [(cx === undefined ? CX : cx) + r * Math.cos(t),
+            (cy === undefined ? CY : cy) + r * Math.sin(t)];
+  }
+  function f(n) { return Math.round(n * 10) / 10; }
+  function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
+
+  function arcPath(r, a0, a1, cx, cy) {
+    if (a1 <= a0 + 0.01) a1 = a0 + 0.01;
+    var p = P(r, a0, cx, cy), q = P(r, a1, cx, cy);
+    return 'M' + f(p[0]) + ' ' + f(p[1]) + 'A' + r + ' ' + r + ' 0 ' +
+           ((a1 - a0) > 180 ? 1 : 0) + ' 1 ' + f(q[0]) + ' ' + f(q[1]);
+  }
+
+  /* value -> angle. min/max are the entity's min_temp / max_temp. */
+  function angleOf(v, min, max) { return A0 + SPAN * (clamp(v, min, max) - min) / (max - min); }
+
+  /* ---------------------------------------------------------------- modes ---- */
+
+  var MODES = {
+    cool:     { ink: '#5CD6FF', light: '#bfeeff', word: 'COOL',     status: 'COOLING' },
+    heat:     { ink: '#F2933A', light: '#FFD3A1', word: 'HEAT',     status: 'HEATING' },
+    dry:      { ink: '#FFD166', light: '#FFE8AE', word: 'DRY',      status: 'DRYING' },
+    fan_only: { ink: '#9FB3C8', light: '#D5E1EC', word: 'FAN ONLY', status: 'CIRCULATING' },
+    off:      { ink: '#6A7480', light: '#9AA5B1', word: 'OFF',      status: 'IDLE' },
+    auto:     { ink: '#7CE0B0', light: '#C8F3E2', word: 'AUTO',     status: 'BALANCING' }
+  };
+
+  /* mode ink is used for EXACTLY five things: the mode word, the status dot and word,
+     the lit rail cell, the fan ring stroke, and the COMFORT glyph. Nothing else. It
+     never touches the two arc gradients, the needle, the room pin, the delta segment
+     or the steppers. */
+
+  function rgba(hex, a) {
+    var h = hex.replace('#', '');
+    if (h.length === 3) h = h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+    var n = parseInt(h, 16);
+    return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
+  }
+
+  /* --------------------------------------------------------- the temp band ---- */
+  /* Identity. Shared with the group card. Never varies by mode. */
+
+  var DEFS =
+    '<linearGradient id="dCold" x1="0" y1="1" x2="1" y2="0">' +
+      '<stop offset="0" stop-color="#2f7fb8"></stop>' +
+      '<stop offset=".55" stop-color="#5CD6FF"></stop>' +
+      '<stop offset="1" stop-color="#bfeeff"></stop></linearGradient>' +
+    '<linearGradient id="dWarm" x1="0" y1="0" x2="1" y2="1">' +
+      '<stop offset="0" stop-color="#FFC98A"></stop>' +
+      '<stop offset=".6" stop-color="#F2933A"></stop>' +
+      '<stop offset="1" stop-color="#E8862A"></stop></linearGradient>' +
+    '<filter id="dGlow" x="-40%" y="-40%" width="180%" height="180%">' +
+      '<feGaussianBlur stdDeviation="7"></feGaussianBlur></filter>' +
+    '<filter id="dPinSh" x="-160%" y="-160%" width="420%" height="420%">' +
+      '<feDropShadow dx="0" dy="0.7" stdDeviation="0.7" flood-color="#04080f" ' +
+      'flood-opacity=".9"></feDropShadow></filter>';
+
+  function band(setAngle) {
+    return '' +
+      '<path d="' + arcPath(RT, A0, A0 + SPAN) + '" fill="none" ' +
+        'stroke="rgba(154,175,210,.11)" stroke-width="21" stroke-linecap="round"></path>' +
+      /* glow on the COLD portion only, drawn under the gradient */
+      '<path d="' + arcPath(RT, A0, setAngle) + '" fill="none" stroke="#5CD6FF" ' +
+        'stroke-width="21" stroke-linecap="round" opacity=".30" filter="url(#dGlow)"></path>' +
+      '<path d="' + arcPath(RT, A0, setAngle) + '" fill="none" stroke="url(#dCold)" ' +
+        'stroke-width="21" stroke-linecap="round"></path>' +
+      '<path d="' + arcPath(RT, setAngle, A0 + SPAN) + '" fill="none" stroke="url(#dWarm)" ' +
+        'stroke-width="21" stroke-linecap="round"></path>';
+  }
+
+  /* ticks sit just inside the band and stop well clear of the numerals */
+  function ticks(min, max) {
+    var minor = '', major = '';
+    for (var v = min; v <= max + 1e-6; v++) {
+      var a = angleOf(v, min, max), isMaj = v % 5 === 0;
+      var p = P(isMaj ? 181 : 188, a), q = P(195, a);
+      var seg = 'M' + f(p[0]) + ' ' + f(p[1]) + 'L' + f(q[0]) + ' ' + f(q[1]);
+      if (isMaj) major += seg; else minor += seg;
+    }
+    return '<path d="' + minor + '" fill="none" stroke="rgba(200,215,235,.26)" ' +
+             'stroke-width="1.4" stroke-linecap="round"></path>' +
+           '<path d="' + major + '" fill="none" stroke="rgba(200,215,235,.60)" ' +
+             'stroke-width="2.2" stroke-linecap="round"></path>';
+  }
+
+  /* five numerals, one radius. No 61 / 86 end caps. */
+  function scaleNumerals(min, max) {
+    var out = '', step = 5;
+    var first = Math.ceil((min + 3) / step) * step, last = Math.floor((max - 1) / step) * step;
+    for (var v = first; v <= last; v += step) {
+      var p = P(162, angleOf(v, min, max));
+      out += '<text x="' + f(p[0]) + '" y="' + f(p[1]) + '" text-anchor="middle" ' +
+        'dominant-baseline="central" font-size="12.5" font-weight="600" ' +
+        'letter-spacing=".6" fill="rgba(200,215,235,.52)">' + v + '</text>';
+    }
+    return out;
+  }
+
+  /* ------------------------------------------------------------- the needle ---- */
+  /* Identity. Never changes colour with mode. No scale transform. */
+
+  function needle(setAngle) {
+    var s = P(RT, setAngle);
+    return '<g transform="translate(' + f(s[0]) + ',' + f(s[1]) + ') rotate(' + f(setAngle) + ')" ' +
+        'style="pointer-events:none">' +
+      '<path d="M 0 20 Q 7.4 13 9.6 3.4 Q 10.9 -6 5.6 -12.6 Q 2.9 -15.3 0 -13.3 ' +
+        'Q -2.9 -15.3 -5.6 -12.6 Q -10.9 -6 -9.6 3.4 Q -7.4 13 0 20 Z" ' +
+        'fill="#5CD6FF" stroke="#bfeeff" stroke-width="1.2" stroke-opacity=".6" ' +
+        'stroke-linejoin="round"></path>' +
+      '<path d="M 0 12 Q 4 7 5 0 Q 5.4 -6 2.6 -9.6 Q 1.2 -11 0 -10 Q -1.2 -11 -2.6 -9.6 ' +
+        'Q -5.4 -6 -5 0 Q -4 7 0 12 Z" fill="rgba(255,255,255,.35)"></path></g>';
+  }
+
+  /* ---------------------------------------------------- room pin and label ---- */
+
+  function roomPin(roomAngle) {
+    var s = P(RT, roomAngle);
+    var outline = 'M 0 10.6 L 4.7 -1.1 L 4.7 -6.6 L -4.7 -6.6 L -4.7 -1.1 Z';
+    return '<g transform="translate(' + f(s[0]) + ',' + f(s[1]) + ') rotate(' + f(roomAngle) + ')" ' +
+        'filter="url(#dPinSh)" shape-rendering="geometricPrecision">' +
+      '<path d="M 0 10.6 L -4.7 -1.1 L -4.7 -6.6 L 0 -6.6 Z" fill="#ffffff"></path>' +
+      '<path d="M 0 10.6 L 4.7 -1.1 L 4.7 -6.6 L 0 -6.6 Z" fill="#9db0c8"></path>' +
+      '<path d="M 0 9.6 L 0 -6.6" stroke="#ffffff" stroke-width="1.1" opacity=".95"></path>' +
+      '<path d="' + outline + '" fill="none" stroke="rgba(4,8,14,.92)" stroke-width="0.9" ' +
+        'stroke-linejoin="miter" vector-effect="non-scaling-stroke"></path></g>';
+  }
+
+  /* seated on the pin's own radial at r=173 so it stays clear at any room temperature.
+     The caption backs off 3.6 on x because the value is centred as "78 degrees", so the
+     digits sit left of the string centre by half the degree glyph. */
+  function roomLabel(room, roomAngle) {
+    var v = P(173, roomAngle);
+    return '<text x="' + f(v[0]) + '" y="' + f(v[1]) + '" text-anchor="middle" ' +
+        'dominant-baseline="central" font-size="21" fill="#eceff7">' + room + '\u00b0</text>' +
+      '<text x="' + f(v[0] - 3.6) + '" y="' + f(v[1] + 15) + '" text-anchor="middle" ' +
+        'dominant-baseline="central" font-size="9.5" font-weight="600" letter-spacing="1.6" ' +
+        'fill="rgba(200,215,235,.55)">ROOM</text>';
+  }
+
+  /* ---------------------------------------------------------- delta segment ---- */
+  /* r=216 sits in the 26 unit gap between the band at 200 and the fan ring at 226,
+     where the fan handle floats at 229. Stays thin; the handle wins the overlap. */
+
+  function deltaSegment(setAngle, roomAngle, delta) {
+    if (Math.abs(delta) < 0.5) return '';
+    var lo = Math.min(setAngle, roomAngle), hi = Math.max(setAngle, roomAngle);
+    var d = P(216, setAngle);
+    return '<path d="' + arcPath(216, lo, hi) + '" fill="none" stroke="#ffffff" ' +
+        'stroke-width="4.5" stroke-linecap="round" opacity=".5"></path>' +
+      '<circle cx="' + f(d[0]) + '" cy="' + f(d[1]) + '" r="3.4" fill="#ffffff" opacity=".72"></circle>' +
+      '<text x="470" y="112" text-anchor="start" font-size="13" font-weight="600" ' +
+        'letter-spacing="1.4" fill="#eceff7">' + (delta >= 0 ? '+' : '') + Math.round(delta) + '</text>';
+  }
+
+  /* ---------------------------------------------------------------- centre ---- */
+
+  function modeWord(mode) {
+    return '<text x="300" y="176" text-anchor="middle" font-size="25" font-weight="600" ' +
+      'letter-spacing="7" fill="' + MODES[mode].ink + '">' + MODES[mode].word + '</text>';
+  }
+
+  function bigNumeral(set) {
+    return '<text x="300" y="272" text-anchor="middle" font-size="104" ' +
+      'fill="#f7f9fc">' + set + '</text>';
+  }
+
+  /* the cluster centres itself as a unit so it stays on the vertical axis whatever the
+     status word and the preset are */
+  function statusLine(mode, action, preset) {
+    var ink = MODES[mode].ink;
+    var word = action || MODES[mode].status;
+    var tw = word.length * 11.6;
+    var pad = preset ? (preset === 'SLEEP' ? 38 : 26) : 0;
+    var x0 = 300 - (tw + 21 + pad) / 2;
+    return '<g style="pointer-events:none">' +
+      '<circle cx="' + f(x0 + 5) + '" cy="303" r="4.5" fill="' + ink + '" ' +
+        'style="animation:pulse 1.9s ease-in-out infinite"></circle>' +
+      '<text x="' + f(x0 + 21) + '" y="309" font-size="16" font-weight="600" ' +
+        'letter-spacing="3.4" fill="' + ink + '">' + word + '</text>' +
+      presetGlyph(preset, ink, x0 + 21 + tw + 12, 303) + '</g>';
+  }
+
+  /* --------------------------------------------------------- preset glyphs ---- */
+  /* Each preset keeps its own colour so it reads the same in any mode. Only COMFORT
+     borrows the mode ink, because it means the normal state of that mode. */
+
+  function presetGlyph(name, modeInk, x, y) {
+    if (!name || name === 'NONE') return '';
+    var at = '<g transform="translate(' + f(x) + ',' + f(y) + ')">';
+    var seq = function (d) { return 'style="animation:wink 1.9s ease-in-out ' + d + 's infinite"'; };
+
+    if (name === 'ECO') {
+      return at +
+        '<path d="M -5 6 Q 8 1 5 -8 Q -8 -3 -5 6 Z" fill="#5FD69A" opacity=".95"></path>' +
+        '<path d="M -4 5 L 4 -6" stroke="#0b1017" stroke-width="1.1" opacity=".5"></path></g>';
+    }
+    if (name === 'SLEEP') {
+      var z = [[-15, 6, 9, 0], [-7, 1, 12.5, 0.34], [3, -6, 16.5, 0.68]], out = at;
+      for (var i = 0; i < 3; i++) {
+        out += '<text x="' + z[i][0] + '" y="' + z[i][1] + '" font-size="' + z[i][2] + '" ' +
+          'font-weight="700" fill="#B388FF" ' + seq(z[i][3]) + '>z</text>';
+      }
+      return out + '</g>';
+    }
+    if (name === 'BOOST') {
+      var dy = [9, 3, -3], del = [0, 0.26, 0.52], o = at;
+      for (var k = 0; k < 3; k++) {
+        o += '<path d="M -6 ' + dy[k] + ' L 0 ' + (dy[k] - 6) + ' L 6 ' + dy[k] + '" ' +
+          'fill="none" stroke="#FF8A3D" stroke-width="2.2" stroke-linecap="round" ' +
+          'stroke-linejoin="round" ' + seq(del[k]) + '></path>';
+      }
+      return o + '</g>';
+    }
+    if (name === 'COMFORT') {
+      return at +
+        '<circle cx="0" cy="-1" r="6" fill="none" stroke="' + modeInk + '" stroke-width="1.8"></circle>' +
+        '<circle cx="0" cy="-1" r="2.2" fill="' + modeInk + '"></circle></g>';
+    }
+    /* preset names are arbitrary strings outside the standard set */
+    return at + '<text x="0" y="4" text-anchor="middle" font-size="12" font-weight="700" ' +
+      'fill="' + modeInk + '">' + String(name).charAt(0) + '</text></g>';
+  }
+
+  /* -------------------------------------------------------------- steppers ---- */
+  /* Cyan. Nothing on this card is green. */
+
+  function steppers() {
+    var c = 'fill="rgba(154,175,210,.10)" stroke="rgba(92,214,255,.5)" stroke-width="1.6"';
+    var g = 'stroke="#eceff7" stroke-width="2.6" stroke-linecap="round"';
+    return '<g data-act="down" style="cursor:pointer">' +
+        '<circle cx="186" cy="250" r="27" ' + c + '></circle>' +
+        '<path d="M 172 250 H 200" ' + g + '></path></g>' +
+      '<g data-act="up" style="cursor:pointer">' +
+        '<circle cx="414" cy="250" r="27" ' + c + '></circle>' +
+        '<path d="M 400 250 H 428 M 414 236 V 264" ' + g + '></path></g>';
+  }
+
+  /* ------------------------------------------------------------ the rail ---- */
+  /* cells is [{ value, caption, lit, widest }]. `widest` is the widest string the cell
+     can EVER show, not the current one, or the row reflows on every state change. */
+
+  function rail(cells, mode, y) {
+    y = y || 321;
+    var ink = MODES[mode].ink, light = MODES[mode].light;
+    var w = 46;
+    cells.forEach(function (c) {
+      var widest = c.widest || c.value;
+      w = Math.max(w, widest.length * 9.4 + 11, c.caption.length * 6.1 + 11);
+    });
+    w = Math.round(w);
+    var gap = 6, x0 = 300 - (cells.length * w + (cells.length - 1) * gap) / 2, out = '';
+    cells.forEach(function (c, i) {
+      var x = Math.round(x0 + i * (w + gap)), tx = x + w / 2;
+      var fill = c.lit ? rgba(ink, .14) : 'rgba(154,175,210,.09)';
+      var stroke = c.lit ? ink : 'rgba(154,175,210,.20)';
+      var tint = c.lit ? light : '#eceff7';
+      out += '<g data-cell="' + i + '" style="cursor:pointer">' +
+        '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="27" rx="8" ' +
+          'fill="' + fill + '" stroke="' + stroke + '"></rect>' +
+        '<text x="' + f(tx) + '" y="' + (y + 14) + '" text-anchor="middle" font-size="14" ' +
+          'font-weight="600" letter-spacing="1.1" fill="' + tint + '">' + c.value + '</text>' +
+        '<text x="' + f(tx) + '" y="' + (y + 23.5) + '" text-anchor="middle" font-size="8" ' +
+          'font-weight="600" letter-spacing="1.5" fill="rgba(200,215,235,.55)">' +
+          c.caption + '</text></g>';
+    });
+    return out;
+  }
+
+  /* --------------------------------------------------------- fan ring ---- */
+  /* fanPct is 1..100, or null for AUTO. AUTO is the absence of a value.
+     Every style lives in a 12 unit envelope, r220 to r232. It never crosses the temp
+     band, never leaves the viewBox, and never runs past the arc ends. */
+
+  function fanPeriod(fanPct) {
+    return fanPct == null ? 3.4 : Math.max(0.85, 3.4 - (fanPct / 100) * 2.5);
+  }
+  function fanAngle(fanPct) {
+    return fanPct == null ? A0 + SPAN : A0 + SPAN * (fanPct / 100);
+  }
+
+  function fanTrack() {
+    return '<path d="' + arcPath(RF, A0, A0 + SPAN) + '" fill="none" ' +
+      'stroke="rgba(154,175,210,.10)" stroke-width="7" stroke-linecap="round"></path>';
+  }
+
+  /* the handle is drawn ONLY when a speed is set. AUTO has no handle. */
+  function fanHandle(fanPct) {
+    if (fanPct == null) return '';
+    var a = fanAngle(fanPct), h = P(RF + 3, a);
+    return '<g transform="translate(' + f(h[0]) + ',' + f(h[1]) + ') rotate(' + f(a) + ')">' +
+      '<path d="M 0 11.5 L 10.2 -4.25 L 5.95 -7.9 L 0 3.6 L -5.95 -7.9 L -10.2 -4.25 Z" ' +
+        'fill="rgba(79,195,247,.34)" stroke="#4fc3f7" stroke-width="1.8" ' +
+        'stroke-linejoin="round"></path>' +
+      '<path d="M 0 7.5 L 4.6 -2.9 L -4.6 -2.9 Z" fill="rgba(207,244,255,.40)"></path></g>';
+  }
+
+  /* style 1: dash, what ships today */
+  function fanDash(fanPct, mode) {
+    var ink = MODES[mode].ink, end = fanAngle(fanPct), out = fanTrack();
+    if (fanPct == null) {
+      out += '<path d="' + arcPath(RF, A0, A0 + SPAN) + '" fill="none" stroke="' + rgba(ink, .26) +
+        '" stroke-width="5" stroke-linecap="round" stroke-dasharray="2.5 13" ' +
+        'style="animation:creep 2.4s linear infinite"></path>';
+    } else {
+      var dur = Math.min(3.2, Math.max(0.55, 70 / fanPct));
+      out += '<path d="' + arcPath(RF, A0, end) + '" fill="none" stroke="' + rgba(ink, .55) +
+          '" stroke-width="7" stroke-linecap="round"></path>' +
+        '<path d="' + arcPath(RF, A0, end) + '" fill="none" stroke="' + MODES[mode].light +
+          '" stroke-width="7" stroke-linecap="butt" stroke-dasharray="3 11" opacity=".55" ' +
+          'style="animation:creep ' + dur.toFixed(2) + 's linear infinite"></path>';
+    }
+    return out + fanHandle(fanPct);
+  }
+
+  /* a sine wrapped around the ring, sampled every 4 degrees */
+  function wavyArc(r, a0, a1, amp, waveDeg, phase) {
+    if (a1 <= a0 + 0.5) return '';
+    var d = '';
+    for (var a = a0; a <= a1 + 1e-6; a += 4) {
+      var rr = r + amp * Math.sin((a - a0) / waveDeg * Math.PI * 2 + (phase || 0));
+      var p = P(rr, a);
+      d += (d ? 'L' : 'M') + f(p[0]) + ' ' + f(p[1]);
+    }
+    return d;
+  }
+
+  /* style 2: breeze. Four wave ribbons. Every dash cycle divides 120 evenly (40, 60,
+     30, 24) so @keyframes drift loops seamlessly. */
+  var BREEZE = [
+    { r: RF - 6, amp: 2.4, wave: 26, dash: '24 16', w: 1.8, lit: .34, dim: .15, k: 1.22 },
+    { r: RF,     amp: 3.4, wave: 34, dash: '34 26', w: 2.8, lit: .58, dim: .24, k: 1.00 },
+    { r: RF,     amp: 1.8, wave: 19, dash: '18 12', w: 1.4, lit: .40, dim: .17, k: 0.78 },
+    { r: RF + 6, amp: 2.8, wave: 22, dash: '14 10', w: 1.5, lit: .26, dim: .13, k: 1.45 }
+  ];
+
+  function fanBreeze(fanPct, mode) {
+    var set = fanPct != null, end = fanAngle(fanPct), base = fanPeriod(fanPct);
+    var stroke = set ? MODES[mode].light : rgba(MODES[mode].ink, .9);
+    var out = fanTrack();
+    BREEZE.forEach(function (v) {
+      out += '<path d="' + wavyArc(v.r, A0, end, v.amp, v.wave) + '" fill="none" ' +
+        'stroke="' + stroke + '" stroke-width="' + v.w + '" stroke-linecap="round" ' +
+        'stroke-dasharray="' + v.dash + '" opacity="' + (set ? v.lit : v.dim) + '" ' +
+        'style="animation:drift ' + (base * v.k).toFixed(2) + 's linear infinite"></path>';
+    });
+    return out + fanHandle(fanPct);
+  }
+
+  /* style 3: silk. Short tapered puffs that TRAVEL. One band is not one ribbon across
+     the whole arc: it is a run of segments on a repeating pitch. */
+  var SILK = [
+    { r: RF,     amp: 3.2, wave: 130, thick: 8, seg: 22, pitch: 34, lit: .85, dim: .34, blur: true,  k: 1.00 },
+    { r: RF + 2, amp: 2.4, wave: 96,  thick: 5, seg: 15, pitch: 26, lit: .55, dim: .22, blur: true,  k: 1.46 },
+    { r: RF - 4, amp: 4,   wave: 160, thick: 3, seg: 28, pitch: 44, lit: .45, dim: .18, blur: false, k: 0.74 }
+  ];
+  var SILK_VAR = [1, 0.66, 1.28, 0.84, 1.12, 0.74];
+
+  /* Fixed sample count so every animation frame has an IDENTICAL point count. Path
+     animation only interpolates smoothly when the shapes match. Samples outside the
+     visible window collapse onto the boundary, which cuts a puff flat at the arc end
+     instead of shrinking it; a puff entirely outside becomes a zero area path. */
+  function ribbonSeg(r, t0, t1, v0, v1, amp, waveDeg, thick, phase) {
+    var N = 16, span = t1 - t0, out = [], back = [], i, u, a, w, c, ca;
+    for (i = 0; i <= N; i++) {
+      u = i / N; a = t0 + span * u;
+      w = thick * Math.sin(Math.PI * u);
+      c = r + amp * Math.sin(span * u / waveDeg * Math.PI * 2 + phase);
+      ca = a < v0 ? v0 : a > v1 ? v1 : a;
+      out.push(P(c + w / 2, ca));
+      back.push(P(c - w / 2, ca));
+    }
+    var d = 'M' + f(out[0][0]) + ' ' + f(out[0][1]);
+    for (i = 1; i <= N; i++) d += 'L' + f(out[i][0]) + ' ' + f(out[i][1]);
+    for (i = N; i >= 0; i--) d += 'L' + f(back[i][0]) + ' ' + f(back[i][1]);
+    return d + 'Z';
+  }
+
+  /* over one cycle a segment advances exactly one pitch, so when it lands on the next
+     slot the loop is seamless, and the wave travels through it as it goes */
+  function segFrames(band, slot, seg, v0, v1) {
+    var frames = [], steps = 6, i, t0;
+    for (i = 0; i < steps; i++) {
+      t0 = slot + (i / steps) * band.pitch;
+      frames.push(ribbonSeg(band.r, t0, t0 + seg, v0, v1, band.amp, band.wave,
+                            band.thick, -i * 2 * Math.PI / steps));
+    }
+    frames.push(ribbonSeg(band.r, slot + band.pitch, slot + band.pitch + seg,
+                          v0, v1, band.amp, band.wave, band.thick, 0));
+    return frames;
+  }
+
+  function fanSilk(fanPct, mode) {
+    var set = fanPct != null, end = fanAngle(fanPct), base = fanPeriod(fanPct);
+    var out = '<path d="' + arcPath(RF, A0, A0 + SPAN) + '" fill="none" ' +
+      'stroke="rgba(154,175,210,.07)" stroke-width="6" stroke-linecap="round"></path>';
+    SILK.forEach(function (v, bi) {
+      var n = 0, dur = (base * v.k * 1.6).toFixed(2);
+      /* start a pitch early and finish a pitch late so puffs enter and leave */
+      for (var slot = A0 - v.pitch; slot < end + v.pitch; slot += v.pitch, n++) {
+        var seg = v.seg * SILK_VAR[(n + bi) % SILK_VAR.length];
+        var frames = segFrames(v, slot, seg, A0, end);
+        out += '<path d="' + frames[0] + '" fill="url(#bSilk)" ' +
+          'opacity="' + (set ? v.lit : v.dim) + '"' +
+          (v.blur ? ' filter="url(#bSoft)"' : '') + '>' +
+          '<animate attributeName="d" values="' + frames.join(';') + '" dur="' + dur + 's" ' +
+          'calcMode="linear" repeatCount="indefinite"></animate></path>';
+      }
+    });
+    return out + fanHandle(fanPct);
+  }
+
+  var SILK_DEFS =
+    '<linearGradient id="bSilk" x1="0" y1="1" x2="1" y2="0">' +
+      '<stop offset="0" stop-color="#5CD6FF" stop-opacity="0"></stop>' +
+      '<stop offset=".32" stop-color="#dff4ff" stop-opacity=".9"></stop>' +
+      '<stop offset=".62" stop-color="#8FC7FF" stop-opacity=".6"></stop>' +
+      '<stop offset="1" stop-color="#5CD6FF" stop-opacity="0"></stop></linearGradient>' +
+    '<filter id="bSoft" x="-40%" y="-40%" width="180%" height="180%">' +
+      '<feGaussianBlur stdDeviation="1.7"></feGaussianBlur></filter>';
+
+  var FAN_STYLES = { dash: fanDash, breeze: fanBreeze, silk: fanSilk };
+
+  var KEYFRAMES =
+    '@keyframes pulse { 0%, 100% { opacity: .3 } 50% { opacity: 1 } }' +
+    '@keyframes creep { to { stroke-dashoffset: -28 } }' +
+    '@keyframes drift { to { stroke-dashoffset: -120 } }' +
+    '@keyframes wink { 0%, 100% { opacity: .10 } 18%, 44% { opacity: 1 } }';
+
+  /* ------------------------------------------------------------ whole face ---- */
+  /* s = { mode, action, set, room, min, max, fanPct, preset, fanStyle, cells } */
+
+  function face(s) {
+    var min = s.min == null ? 61 : s.min, max = s.max == null ? 86 : s.max;
+    var setA = angleOf(s.set, min, max), roomA = angleOf(s.room, min, max);
+    var style = FAN_STYLES[s.fanStyle || 'dash'];
+    return '' +
+      '<defs>' + DEFS + SILK_DEFS + '</defs>' +
+      style(s.fanPct, s.mode) +
+      band(setA) +
+      deltaSegment(setA, roomA, s.room - s.set) +
+      ticks(min, max) +
+      scaleNumerals(min, max) +
+      roomPin(roomA) +
+      roomLabel(s.room, roomA) +
+      needle(setA) +
+      modeWord(s.mode) +
+      bigNumeral(s.set) +
+      statusLine(s.mode, s.action, s.preset) +
+      steppers() +
+      rail(s.cells || [], s.mode);
+  }
+
+    return { face: face, FAN_STYLES: FAN_STYLES, MODES: MODES, KEYFRAMES: KEYFRAMES, DEFS: DEFS, SILK_DEFS: SILK_DEFS, band: band, ticks: ticks, scaleNumerals: scaleNumerals, needle: needle, roomPin: roomPin, roomLabel: roomLabel, deltaSegment: deltaSegment, modeWord: modeWord, bigNumeral: bigNumeral, statusLine: statusLine, presetGlyph: presetGlyph, steppers: steppers, rail: rail, fanDash: fanDash, fanBreeze: fanBreeze, fanSilk: fanSilk, angleOf: angleOf, arcPath: arcPath, P: P };
+  })();
+
   const CX = 300, CY = 284;            // _cx / _cy
   const R_TEMP = 200;                  // inner thick arc = TEMPERATURE
   const R_FAN = 226;                   // outer thin arc  = FAN SPEED
@@ -736,6 +1212,11 @@
       // "r,g,b" triple for rgba(var(--ct-glass-rgb), ...); glass_opacity must be a
       // number in 0..1 (anything else, including "" or out-of-range, falls back to the
       // per-variant default). Both stay null when unset (theme mode ignores them).
+      // Fan ring style. dash is the shipped look and the DEFAULT, so an update
+      // changes nothing for anyone who does not opt in. Unknown values fall back.
+      const _fs = this._config.fan_style;
+      this._fanStyle = (_fs === "breeze" || _fs === "silk") ? _fs : "dash";
+
       const _gc = colorToRgb(this._config.glass_color);
       this._glassColorRgb = _gc ? _gc.join(",") : null;
       const _go = this._config.glass_opacity;
@@ -1277,6 +1758,9 @@
         '<filter id="aNeedleGlow" x="-150%" y="-150%" width="400%" height="400%">' +
         '<feGaussianBlur stdDeviation="2.2" result="b"/>' +
         '<feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>' +
+        // The face module ships its own gradients and filters. Without these the
+        // band's url(#dCold) resolves to nothing and the arc renders flat.
+        FACE.DEFS + FACE.SILK_DEFS +
         '<filter id="aChevGlow" x="-150%" y="-150%" width="400%" height="400%">' +
         '<feGaussianBlur stdDeviation="2.4" result="b"/>' +
         '<feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>';
@@ -1360,6 +1844,18 @@
       tempNeedleLo.style.display = "none";
       this._refs.tempNeedleLo = tempNeedleLo;
       svg.appendChild(tempNeedleLo);
+
+      // ---- DIAL FACE (drawn from FACE, the handoff geometry) ----
+      // One group per piece so a drag can regenerate only what moved. Rebuilding the
+      // whole face on every pointermove would restring thirty paths per frame.
+      this._refs.face = el("g", { class: "ct-face" });
+      ["Fan", "Band", "Delta", "Scale", "Room", "Needle", "Center", "Step", "Rail"]
+        .forEach((k) => {
+          const g = el("g", { class: "ct-face-" + k.toLowerCase() });
+          this._refs["face" + k] = g;
+          this._refs.face.appendChild(g);
+        });
+      svg.appendChild(this._refs.face);
 
       // ---- FAN HANDLE (glass chevron; tip at +Y so rotate(ang) faces inward) ----
       // overflow:hidden on .ct-svg is the hard backstop so the chevron never bleeds.
@@ -3475,6 +3971,14 @@
       const seat = polar(CX, CY, R_TEMP, ang);
       this._refs.tempNeedle.setAttribute("transform",
         `translate(${seat[0].toFixed(1)},${seat[1].toFixed(1)}) rotate(${ang.toFixed(1)})`);
+      // The face reads this. During a drag _paintTempArc runs without a full
+      // render, so it also repaints the four groups a drag actually moves.
+      this._faceSet = t;
+      if (this._refs.face) {
+        const fs = this._faceState(t);
+        this._paintFaceMoving(FACE.angleOf(fs.set, fs.min, fs.max),
+          FACE.angleOf(fs.room, fs.min, fs.max), fs);
+      }
       const disp = this._fmtDisplay(t); // visible, locale-formatted (issue #19)
       this._refs.bigNum.textContent = disp;
       // shrink for "XX.5" / 3-digit so the decimal fits the center.
@@ -3535,6 +4039,141 @@
         this._refs.drag.setAttribute("aria-valuenow", this._fmt(hi));
         this._refs.drag.setAttribute("aria-valuetext", loTxt + " " + this._t("to") + " " + hiTxt + "° " + this._unitWord());
       }
+    }
+
+    // ---- FACE ------------------------------------------------------------
+    // Everything visible on the dial comes from FACE. The card supplies state and
+    // wiring only. Each group is regenerated on its own, so a temperature drag
+    // restrings four small groups rather than the whole face.
+
+    // The legacy hand built face is switched off in one place. Kept in the tree
+    // because the old paint sites still write to those refs; hiding them is cheaper
+    // and far less risky than unpicking a dozen call sites, and it makes the swap
+    // revertible by deleting one list.
+    _hideLegacyFace() {
+      const dead = ["coldHalo", "warmHalo", "coldFill", "warmFill", "track",
+        "fanTrack", "fanFill", "ticks", "curMarker", "tempNeedle", "tempNeedleLo",
+        "fanHandle", "modeGlyph", "labelTop", "nowCap", "bigNum", "caret",
+        "clover", "fanPct", "fanName", "swingChip", "swingHChip", "swingCap",
+        "swingHCap", "hints"];
+      dead.forEach((k) => {
+        const n = this._refs[k];
+        if (n && n.style) n.style.display = "none";
+      });
+      // The legacy steppers are kept because they carry the press-and-repeat
+      // handlers; only their painted circle and glyph are switched off, and the
+      // group stays as the hit target over the new ones.
+      (this._refs.steps || []).forEach((x) => {
+        [...x.g.childNodes].forEach((n) => { if (n.style) n.style.display = "none"; });
+      });
+    }
+
+    _faceMode() {
+      const st = this._st(this._config && this._config.entity);
+      const raw = st ? String(st.state) : "off";
+      return FACE.MODES[raw] ? raw : (raw === "heat_cool" ? "auto" : "off");
+    }
+
+    // fanPct is 1..100 or null, and null means AUTO. AUTO draws no handle: a chevron
+    // parked at the arc end while the cell reads AUTO was the bug this replaces.
+    _facePct() {
+      const st = this._st(this._config && this._config.entity);
+      const a2 = (st && st.attributes) || {};
+      const rng = this._fanNumRange();
+      if (rng) {
+        const fs = this._fanNumState();
+        const v = fs ? num(fs.state) : null;
+        if (v == null) return null;
+        return clamp(Math.round(((v - rng.min) / ((rng.max - rng.min) || 1)) * 100), 1, 100);
+      }
+      const fm = a2.fan_mode;
+      if (!fm || String(fm).toLowerCase() === "auto") return null;
+      const list = Array.isArray(a2.fan_modes)
+        ? a2.fan_modes.filter((x) => String(x).toLowerCase() !== "auto") : [];
+      if (!list.length) return null;
+      const i = list.findIndex((x) => String(x).toLowerCase() === String(fm).toLowerCase());
+      if (i < 0) return null;
+      return clamp(Math.round(((i + 1) / list.length) * 100), 1, 100);
+    }
+
+    _faceCells() {
+      const out = [];
+      const pct = this._facePct();
+      if (this._featureResolved("fan") !== false) {
+        out.push({ value: pct == null ? "AUTO" : pct + "%", caption: "FAN",
+          lit: pct != null, widest: "100%" });
+      }
+      if (this._featureResolved("swing") !== false) {
+        const on = this._featureOn("swing");
+        out.push({ value: on ? "ON" : "OFF", caption: "SWING", lit: on, widest: "OFF" });
+      }
+      if (this._featureResolved("led") !== false) {
+        const on = this._featureOn("led");
+        out.push({ value: on ? "ON" : "OFF", caption: "LED", lit: on, widest: "OFF" });
+      }
+      (this._extraToggles || []).slice(0, 3).forEach((it) => {
+        const st = this._st(it.entity);
+        if (!st) return;
+        const on = st.state === "on";
+        out.push({ value: on ? "ON" : "OFF", widest: "OFF", lit: on,
+          caption: String(it.name || it.entity.split(".")[1]).toUpperCase().slice(0, 8) });
+      });
+      return out;
+    }
+
+    _faceState(setOverride) {
+      const st = this._st(this._config && this._config.entity);
+      const a2 = (st && st.attributes) || {};
+      const r = this._range();
+      const set = setOverride != null ? setOverride : this._faceSet;
+      const room = this._toDisplay(num(a2.current_temperature));
+      const act = String(a2.hvac_action || "").toUpperCase();
+      const fallback = set == null ? r.lo : set;
+      return {
+        mode: this._faceMode(),
+        action: act || undefined,
+        set: fallback,
+        room: room == null ? fallback : room,
+        min: r.lo, max: r.hi,
+        fanPct: this._facePct(),
+        preset: String(a2.preset_mode || "").toUpperCase(),
+        fanStyle: this._fanStyle || "dash",
+        cells: this._faceCells(),
+      };
+    }
+
+    // Full repaint, from _render. Not from a drag.
+    _paintFace() {
+      if (!this._refs.face) return;
+      const st = this._faceState();
+      const key = st.min + ":" + st.max;
+      const setA = FACE.angleOf(st.set, st.min, st.max);
+      const roomA = FACE.angleOf(st.room, st.min, st.max);
+      // The scale and the steppers depend only on the range, so they are not
+      // restrung on every state change.
+      if (this._faceScaleKey !== key) {
+        this._faceScaleKey = key;
+        this._refs.faceScale.innerHTML = FACE.ticks(st.min, st.max) + FACE.scaleNumerals(st.min, st.max);
+        this._refs.faceStep.innerHTML = FACE.steppers();
+      }
+      const fanKey = [st.fanStyle, st.fanPct, st.mode].join("|");
+      if (this._faceFanKey !== fanKey) {
+        this._faceFanKey = fanKey;
+        this._refs.faceFan.innerHTML = (FACE.FAN_STYLES[st.fanStyle] || FACE.fanDash)(st.fanPct, st.mode);
+      }
+      this._paintFaceMoving(setA, roomA, st);
+      this._refs.faceRail.innerHTML = FACE.rail(st.cells, st.mode);
+      this._hideLegacyFace();
+    }
+
+    // The parts a drag moves. Deliberately small.
+    _paintFaceMoving(setA, roomA, st) {
+      this._refs.faceBand.innerHTML = FACE.band(setA);
+      this._refs.faceDelta.innerHTML = FACE.deltaSegment(setA, roomA, st.room - st.set);
+      this._refs.faceRoom.innerHTML = FACE.roomPin(roomA) + FACE.roomLabel(st.room, roomA);
+      this._refs.faceNeedle.innerHTML = FACE.needle(setA);
+      this._refs.faceCenter.innerHTML = FACE.modeWord(st.mode) + FACE.bigNumeral(st.set)
+        + FACE.statusLine(st.mode, st.action, st.preset);
     }
 
     // Paint the fan ring for a percent (number.* entity).
@@ -4029,6 +4668,9 @@
         if (this._refs.hintAuto) this._refs.hintAuto.style.display = haveFan ? "" : "none";
       }
 
+      // Last: the face reads values the paint sites above have just written.
+      this._paintFace();
+
       if (this._popOpen) this._paintPop();
     }
 
@@ -4246,6 +4888,14 @@ ha-card[data-appearance^="glass"] .ct-card{
 }
 
 @keyframes ctfanspin{ to{ transform:rotate(360deg); } }
+
+/* Face keyframes, injected verbatim from the handoff module. pulse drives the
+   status dot, creep and drift the dash and breeze rings, wink the preset glyphs. */
+${FACE.KEYFRAMES}
+@media (prefers-reduced-motion: reduce){
+  .ct-face [style*='animation']{ animation:none !important; }
+  .ct-face animate{ display:none; }
+}
 
 /* Mode popup: position:fixed glass overlay (no transformed/filtered ancestor). */
 .ct-pop{
