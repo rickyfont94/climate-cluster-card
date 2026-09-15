@@ -459,3 +459,38 @@ test("css: a sheet taller than the viewport scrolls itself and stays reachable",
   assert.match(sheet, /overflow-y:auto/);
   assert.match(sheet, /overscroll-behavior:contain/, "or the gesture scrolls the dashboard behind it");
 });
+
+// ---------------------------------------------------------- the off room's number --
+// An off bedroom still remembers the setpoint it was left at, and the house target is
+// the coldest setpoint in the house. Those two together meant one Sync tap sent the
+// bedroom's overnight number to every unit that was actually running. The filter two
+// lines up already says the rule out loud: "An offline room cannot set the house's
+// coldest end any more than an off one can." The code read `real` and not `pool`.
+test("regress: an OFF room does not set the house target, and Sync does not write its number", () => {
+  const st = copy();
+  st["climate.sala"].attributes.temperature = 75;
+  st["climate.ricky"].attributes.temperature = 78;
+  st["climate.elly"].state = "off";
+  st["climate.elly"].attributes.temperature = 65;
+  const el = makeGroup(null, makeHass(st, { entities }));
+
+  clickG(el, "sync");
+  const sync = el._hass.calls.filter((c) => c.service === "set_temperature");
+  assert.ok(sync.length, "sync writes a setpoint");
+  for (const c of sync) {
+    assert.notEqual(c.data.temperature, 65, "the off room's 65 must never reach a running unit");
+    assert.equal(c.data.temperature, 75, "the coldest RUNNING room is the house target");
+  }
+  const sent = sync.flatMap((c) => [].concat(c.data.entity_id));
+  assert.ok(!sent.includes("climate.elly"), "and the off room is not written to at all");
+});
+
+test("regress: with every room off, the house target still falls back to a real number", () => {
+  const st = copy();
+  for (const id of ids) st[id].state = "off";
+  st["climate.elly"].attributes.temperature = 65;
+  const el = makeGroup(null, makeHass(st, { entities }));
+  // No live rooms at all is a real state and has to render a coherent number rather
+  // than a NaN, so the fallback to every non-dead room is deliberate.
+  assert.match(el.shadowRoot.querySelector(".cg-inner").textContent, /65/);
+});

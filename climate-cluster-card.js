@@ -1311,7 +1311,7 @@
     /* whole degrees everywhere. A tenth is below what these units report reliably and it
        makes the pin read as a more precise instrument than it is. */
     var roomAvg = Math.round(sum / pool.length);
-    var coldestSet = Math.min.apply(null, real.map(function (x) { return x.set; }));
+    var coldestSet = Math.min.apply(null, pool.map(function (x) { return x.set; }));
     /* the hero is the house TARGET, not an average: an average is the one number in the
        house nobody set and no room is at. It defaults to the coldest zone setpoint, it
        is draggable, and it is what Sync all writes. */
