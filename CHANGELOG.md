@@ -16,7 +16,7 @@ every key that shipped before this release still reads the same way.
   they line up with each other instead of each being placed by hand. `heat_cool`
   keeps the old face, because the new one draws a single setpoint and that mode has
   two.
-- **`fan_style`**: `silk` (the default from this release), `breeze`, or `original`.
+- **`fan_style`**: `breeze` (the default from this release), `silk`, or `original`.
   `original` is the plain gradient arc every installed card draws today, so the look
   you have now is still one setting away.
 - **`fan_clover`**: brings back the small spinning fan glyph from the original face,

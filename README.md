@@ -85,7 +85,7 @@ That is the whole minimum config. Requires Home Assistant 2024.1.0 or newer. HAC
 | `min_temp` / `max_temp` | number | entity range | Dial bounds, for example `61` and `86` in Fahrenheit. |
 | `temp_step` | number | entity step | Setpoint increment. |
 | `show_scale` / `show_current` / `show_hints` | bool | `true` | Numbered ticks, the NOW reading, the gesture hints. |
-| `fan_style` | `silk` \| `breeze` \| `original` | `silk` | How the fan ring is drawn. `original` is the plain gradient arc every card drew before 2.3.0; the other two animate. |
+| `fan_style` | `breeze` \| `silk` \| `original` | `breeze` | How the fan ring is drawn. `original` is the plain gradient arc every card drew before 2.3.0; the other two animate. |
 | `fan_clover` | bool | `false` | Brings back the small spinning fan glyph from the original face, beside the status line. |
 | `fan_animation` | bool | `true` | Whether that glyph spins. Only does anything with `fan_clover` on. |
 | `fan_animation_speed` | `dynamic` \| `constant` \| `off` | `dynamic` | Spin behavior of that glyph. Only does anything with `fan_clover` on. |
@@ -125,10 +125,11 @@ max_height: 34vh
 <img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/rings-anim.webp" alt="The three fan ring styles side by side" width="820">
 
 The outer ring is the fan, and you drag it the same way you drag the temperature. One
-dial, one second, three treatments: `silk` sends travelling puffs around the arc and
-speeds them up the higher the fan is set, `breeze` drifts ribbons that settle, and
-`original` is the plain gradient arc every version before 2.3.0 drew. Original is in
-the row so you can see it hold still next to the other two.
+dial, one second, three treatments: `breeze` drifts ribbons that settle and is the
+default, `silk` sends travelling puffs around the arc, and `original` is the plain
+gradient arc every version before 2.3.0 drew. Both animated rings speed up the higher
+the fan is set. Original is in the row so you can see it hold still next to the other
+two.
 
 ### Modes and presets at a glance
 
