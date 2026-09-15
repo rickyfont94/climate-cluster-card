@@ -53,3 +53,6 @@ desktop.ini
 # renamed, because the HACS copy registers the real names first and would win.
 cccdev-*.js
 devname.txt
+
+# Throwaway probes and the pre-fix card copy used by the browser harness.
+scratch/
