@@ -848,3 +848,87 @@ test("_siblings is computed once per registry, not once per call", () => {
   card.setConfig({ entity: "climate.ac", fan_style: "silk" });
   assert.notEqual(card._siblings(), a);
 });
+
+/* The other half of that same promise, and the half that was missing.
+
+   Keeping the bands alive across a speed change is right, but the READING is what
+   sets how fast they turn: silkLayer and breezeLayer bake the period into each band's
+   inline animation-duration from fanPeriod(fanPct) at build time. Because the cache
+   key deliberately excludes the numeric reading, nothing rewrote those durations, so
+   a card that mounted at 60 percent kept turning at the 60 percent rate no matter
+   what the unit did afterwards. Measured in headless Chrome before the fix: pushing
+   a Midea from 60 to 100 left all four computed durations byte-identical while the
+   clip window and the handle both moved. The ring said "faster" and did not move any
+   faster, which is the entire reason the animation exists.
+
+   The numbers below are the table, not a re-derivation: fanPeriod(p) = max(0.85,
+   3.4 - p/100 x 2.5), breeze multiplies it by k x 11.84 with k = 1.22, 1, 0.78, 1.45,
+   and silk by rev = 16.94, 32.34, 9.69. A change to either table has to come here. */
+const durations = (card) => bands(card).map((b) => b.style.animationDuration);
+
+test("breeze: the flow speeds up when the reading does, without a rebuild", () => {
+  const card = liveCard({ fan_style: "breeze" });
+  const nodes = bands(card);
+  // fan_mode "low" of [low, medium, high] is stop 1 of 3 -> 33 percent
+  assert.equal(card._facePct(), 33);
+  assert.deepEqual(durations(card), ["37.20s", "30.49s", "23.78s", "44.21s"]);
+
+  pushFan(card, "high");                                   // -> 100 percent
+
+  assert.equal(card._facePct(), 100);
+  assert.deepEqual(durations(card), ["13.00s", "10.66s", "8.31s", "15.45s"],
+    "every band turns at the new speed");
+  assert.deepEqual(bands(card), nodes,
+    "and they are the SAME nodes, so no timeline was destroyed to do it");
+});
+
+test("silk: same, on its own three bands", () => {
+  const card = liveCard({ fan_style: "silk" });
+  assert.deepEqual(durations(card), ["43.62s", "83.28s", "24.95s"]);
+  pushFan(card, "high");
+  assert.deepEqual(durations(card), ["15.25s", "29.11s", "8.72s"]);
+});
+
+test("the flow speeds up under the finger too, not only on release", () => {
+  const card = liveCard({ fan_style: "breeze" });
+  const before = durations(card);
+  card._paintFanNamed(["low", "medium", "high"], "high");   // one pointermove
+  const during = durations(card);
+  assert.notDeepEqual(during, before, "the drag changes the rate as it goes");
+  assert.ok(parseFloat(during[0]) < parseFloat(before[0]), "and faster means shorter");
+});
+
+test("auto has no reading, so it falls back to the slow base period", () => {
+  const card = liveCard({ fan_style: "breeze" });
+  pushFan(card, "auto");
+  assert.equal(card._facePct(), null);
+  // fanPeriod(null) = 3.4
+  assert.deepEqual(durations(card), ["49.11s", "40.26s", "31.40s", "58.37s"]);
+});
+
+test("a reading that did not change rewrites nothing", () => {
+  const card = liveCard({ fan_style: "breeze" });
+  const before = durations(card);
+  // an unrelated state push: same fan_mode, new room reading
+  const next = JSON.parse(JSON.stringify(states));
+  next["climate.ac"].attributes.current_temperature = 81;
+  card.hass = makeHass(next, { entities });
+  assert.deepEqual(durations(card), before);
+});
+
+/* getAnimations is how the phase is carried across a speed change, and it does not
+   exist in this DOM, on older WebKit, or in a webview. The duration still has to
+   land: losing the phase is a single jump, losing the speed is the bug above. */
+test("no getAnimations means a plain duration write, never a throw", () => {
+  const card = liveCard({ fan_style: "breeze" });
+  assert.equal(typeof bands(card)[0].getAnimations, "undefined",
+    "this DOM really is the no-WAAPI case, so the guard is under test");
+  assert.doesNotThrow(() => pushFan(card, "high"));
+  assert.deepEqual(durations(card), ["13.00s", "10.66s", "8.31s", "15.45s"]);
+});
+
+test("original has no bands to re-time, and asking for its periods is empty", () => {
+  const card = liveCard({ fan_style: "original" });
+  assert.equal(card._refs.fanLayer.querySelectorAll(".ct-fanband").length, 0);
+  assert.doesNotThrow(() => pushFan(card, "high"));
+});

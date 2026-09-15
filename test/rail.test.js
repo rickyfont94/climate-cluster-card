@@ -46,9 +46,9 @@ test("card: show_fan false hides the ring AND its rail cell, not just the button
     "no FAN cell either");
 });
 
-test("card: silk is the default ring, and the shipped arc is still reachable", () => {
-  assert.equal(railCard()._fanStyle, "silk", "unset means silk from 2.3.0");
-  assert.equal(railCard({ fan_style: "nonsense" })._fanStyle, "silk",
+test("card: breeze is the default ring, and the shipped arc is still reachable", () => {
+  assert.equal(railCard()._fanStyle, "breeze", "unset means breeze from 2.3.0");
+  assert.equal(railCard({ fan_style: "nonsense" })._fanStyle, "breeze",
     "an unknown value falls back to the default");
   assert.equal(railCard({ fan_style: "silk" })._fanStyle, "silk");
   assert.equal(railCard({ fan_style: "breeze" })._fanStyle, "breeze");

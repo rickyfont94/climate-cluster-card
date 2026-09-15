@@ -163,10 +163,10 @@ test("editor: fan_style offers the shipped ring plus the two animations", () => 
   // mode list renders radios. A dropdown hides two of the three choices behind a
   // click, and the owner's complaint was specifically about dropdowns.
   assert.equal(sel.mode, "list");
-  // silk leads because it is the default from 2.3.0, so the list reads as a default
+  // breeze leads because it is the default from 2.3.0, so the list reads as a default
   // and its alternatives. NOT "dash": the handoff has a dashed style, but the
   // released card draws a smooth gradient ring, so dash is a config alias only.
-  assert.deepEqual(sel.options.map((o) => o.value), ["silk", "breeze", "original"]);
+  assert.deepEqual(sel.options.map((o) => o.value), ["breeze", "silk", "original"]);
   assert.ok(sel.options.some((o) => /original/i.test(o.label)),
     "the ring every installed card draws today is still offered by name");
 });

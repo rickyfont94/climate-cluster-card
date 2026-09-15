@@ -436,7 +436,10 @@
   const POPUP_CSS = `
 .ct-pop{
   position:fixed; inset:0; z-index:50;
-  display:flex; align-items:center; justify-content:center;
+  /* safe center keeps a sheet taller than the viewport pinned to the TOP edge
+     instead of centring it and pushing its close control off screen above the fold.
+     Browsers without it fall back to plain centring, which is what this always was. */
+  display:flex; align-items:safe center; justify-content:center; padding:12px;
   background:rgba(3,6,10,.55);
   -webkit-backdrop-filter:blur(3px); backdrop-filter:blur(3px);
   opacity:0; visibility:hidden; pointer-events:none;
@@ -449,6 +452,13 @@
   -webkit-backdrop-filter:blur(18px) saturate(120%); backdrop-filter:blur(18px) saturate(120%);
   box-shadow:0 24px 60px rgba(0,0,0,.6), inset 0 1px 1px rgba(255,255,255,.05);
   display:grid; grid-template-columns:repeat(3,1fr); gap:8px;
+  /* A room advertising seven modes and thirty presets makes a sheet taller than a
+     phone. Nothing between it and the document scrolled, so the toggles were cut off
+     at the bottom and the close control sat above the top edge: the panel could be
+     opened and then neither used nor dismissed except by tapping the backdrop, which
+     is exactly the part that had also gone off screen. It scrolls its own content now
+     and the gesture stays inside it. */
+  max-height:calc(100dvh - 24px); overflow-y:auto; overscroll-behavior:contain;
   transform:scale(.92); transition:transform .18s ease;
   font-family:var(--ct-font);
 }
@@ -1118,6 +1128,20 @@
     return '';
   }
 
+  /* The revolution period of every band a style emits, in the order it emits them.
+
+     silkLayer and breezeLayer bake these into an inline animation-duration at build
+     time, and the card deliberately does NOT rebuild the overlay when only the speed
+     changes, because a rebuild kills every running timeline. So the speed has to be
+     writable onto bands that already exist, and that needs the same numbers the
+     builder used, derived here the same way rather than copied. */
+  function fanPeriods(style, fanPct) {
+    var base = fanPeriod(fanPct);
+    if (style === 'silk') return SILK.map(function (v) { return base * v.rev; });
+    if (style === 'breeze') return BREEZE.map(function (v) { return base * v.k * 11.84; });
+    return [];
+  }
+
   var SILK_DEFS =
     '<linearGradient id="bSilk" x1="0" y1="1" x2="1" y2="0">' +
       '<stop offset="0" stop-color="#5CD6FF" stop-opacity="0"></stop>' +
@@ -1157,7 +1181,7 @@
       rail(s.cells || [], s.mode);
   }
 
-    return { face: face, FAN_STYLES: FAN_STYLES, MODES: MODES, KEYFRAMES: KEYFRAMES, DEFS: DEFS, SILK_DEFS: SILK_DEFS, band: band, ticks: ticks, scaleNumerals: scaleNumerals, needle: needle, roomPin: roomPin, roomLabel: roomLabel, deltaSegment: deltaSegment, modeWord: modeWord, bigNumeral: bigNumeral, statusLine: statusLine, presetGlyph: presetGlyph, steppers: steppers, rail: rail, fanPlain: fanPlain, fanBreeze: fanBreeze, fanSilk: fanSilk, fanWindowPoly: fanWindowPoly, fanLayer: fanLayer, fanHandle: fanHandle, fanAngle: fanAngle, angleOf: angleOf, arcPath: arcPath, P: P };
+    return { face: face, FAN_STYLES: FAN_STYLES, MODES: MODES, KEYFRAMES: KEYFRAMES, DEFS: DEFS, SILK_DEFS: SILK_DEFS, band: band, ticks: ticks, scaleNumerals: scaleNumerals, needle: needle, roomPin: roomPin, roomLabel: roomLabel, deltaSegment: deltaSegment, modeWord: modeWord, bigNumeral: bigNumeral, statusLine: statusLine, presetGlyph: presetGlyph, steppers: steppers, rail: rail, fanPlain: fanPlain, fanBreeze: fanBreeze, fanSilk: fanSilk, fanWindowPoly: fanWindowPoly, fanLayer: fanLayer, fanPeriods: fanPeriods, fanPeriod: fanPeriod, fanHandle: fanHandle, fanAngle: fanAngle, angleOf: angleOf, arcPath: arcPath, P: P };
   })();
 
   /* Everything the original face paints that the handoff face repaints itself.
@@ -1572,11 +1596,17 @@
       'fill="' + modeInk + '">' + String(name).charAt(0) + '</text></svg>';
   }
 
+  /* CARD ADDITION: the top of the middle bucket is 67, not 66.
+
+     A three-speed fan reports its stops as (i+1)/n, so medium is exactly 67 percent,
+     which fell into the top bucket and lit all three rungs. Medium and high drew the
+     same picture, on the one fan layout where three rungs and three speeds ought to
+     line up perfectly. */
   function fanBars(pct) {
     /* CARD ADDITION: HA reports a fan MODE, and "auto" is the absence of a value, not
        a speed. Printing it as a number invents a reading the unit never gave. */
     var auto = pct == null;
-    var filled = auto ? 0 : pct <= 33 ? 1 : pct <= 66 ? 2 : 3, h = [4, 6.5, 9], out = '', i;
+    var filled = auto ? 0 : pct <= 33 ? 1 : pct <= 67 ? 2 : 3, h = [4, 6.5, 9], out = '', i;
     for (i = 0; i < 3; i++) {
       out += '<span style="width:2.5px; height:' + h[i] + 'px; background:' +
         (i < filled ? '#c3cbd4' : 'rgba(195,203,212,.26)') + ';"></span>';
@@ -1666,11 +1696,20 @@
           z.name + '</span></div>' +
       /* the numeral is the ROOM, the fact you walked over to check, and tapping it
          opens this zone's sheet */
-      '<div data-act="sheet" style="display:flex; align-items:baseline; justify-content:center; ' +
+      /* CARD ADDITION: a real button. This is the only way into the room sheet, and
+         the sheet is the only place the group card offers that room's modes, presets
+         and hardware, so as a bare div the entire per-room panel was unreachable
+         without a pointer. The steppers either side of it are already buttons, which
+         is what made this one stand out. Every visual property is restated so it
+         looks exactly as it did. */
+      '<button type="button" data-act="sheet" aria-label="' + (z.titleAttr || '') +
+        '" style="appearance:none; background:none; border:0; padding:0; margin:0; ' +
+        'font:inherit; color:inherit; width:100%; ' +
+        'display:flex; align-items:baseline; justify-content:center; ' +
         'gap:2px; cursor:pointer">' +
         '<span style="font:400 34px/.82 Rajdhani,sans-serif; color:#f6f8fa;">' +
           (nore ? DASH : z.room) + '</span>' +
-        '<span style="font:400 14px/1 Rajdhani,sans-serif; color:#8b95a2;">\u00b0</span></div>' +
+        '<span style="font:400 14px/1 Rajdhani,sans-serif; color:#8b95a2;">\u00b0</span></button>' +
       '<div style="display:grid; grid-template-columns:34px minmax(0,1fr) 34px; gap:5px; ' +
         'align-items:center;">' +
         '<button type="button" aria-label="lower" data-act="dec" style="' + btn + '">\u2212</button>' +
@@ -2099,6 +2138,35 @@
   }
 
   // Display-side defaults for the editor color swatches / default-on toggles.
+  /* The next swing_mode to write, chosen ONLY from the list the entity advertises.
+
+     Both cards toggle swing and both used to decide the value themselves. The dial
+     was taught to resolve it out of swing_modes; the group card was not, and still
+     sent a literal lowercase "off", plus a literal "on" when it could not find an
+     off-like member. Neither string is a member of a MelCloud or Mitsubishi list,
+     whose swing_modes are vane POSITIONS ("Auto", "1".."5", "Swing") with no off at
+     all, so Home Assistant rejected the call and the room's swing button did nothing
+     for the life of the card. A list that merely spells it "Off" was rejected the
+     same way, for the same reason.
+
+     So the rule lives in one place now: match off case-INSENSITIVELY, send the
+     entity's OWN casing, and where there is no off member at all advance to the next
+     position instead of inventing one. A value this returns is always a member of
+     `modes`, or null when there is nothing legal to send.
+
+     `current` is the position to advance FROM, which callers pass as the one they
+     last asked for rather than the one the unit still reports, so two taps in a row
+     really do move two positions. */
+  function swingTarget(modes, current, isOn) {
+    const list = Array.isArray(modes) ? modes.filter((m) => m != null && m !== "") : [];
+    if (!list.length) return null;
+    const isOff = (x) => String(x).toLowerCase() === "off";
+    const off = list.find(isOff);
+    if (off != null) return isOn ? off : (list.find((x) => !isOff(x)) || list[0]);
+    const i = list.findIndex((x) => String(x) === String(current));
+    return list[(i + 1) % list.length];
+  }
+
   const DEFAULT_ACCENT_RGB = colorToRgb(DEFAULT_ACCENT);   // [79,195,247]
   const MODE_COLORS_RGB = {};                              // per-mode defaults as [r,g,b]
   for (const k in MODE_COLORS) MODE_COLORS_RGB[k] = colorToRgb(MODE_COLORS[k]);
@@ -2245,12 +2313,14 @@
       // "r,g,b" triple for rgba(var(--ct-glass-rgb), ...); glass_opacity must be a
       // number in 0..1 (anything else, including "" or out-of-range, falls back to the
       // per-variant default). Both stay null when unset (theme mode ignores them).
-      // Fan ring style. dash is the shipped look and the DEFAULT, so an update
-      // changes nothing for anyone who does not opt in. Unknown values fall back.
+      // Fan ring style. Unknown values fall back to the default rather than
+      // leaving the ring undrawn.
       const _fs = this._config.fan_style;
-      /* silk by default. The plain gradient arc is still there under `original`,
-         because it is what every card installed before this release drew. */
-      this._fanStyle = (_fs === "breeze" || _fs === "original") ? _fs : "silk";
+      /* breeze by default. It reads as airflow at a glance, it colours itself by
+         mode, and it is the cheapest of the two animated rings. The plain gradient
+         arc is still there under `original`, because it is what every card
+         installed before this release drew. */
+      this._fanStyle = (_fs === "silk" || _fs === "original") ? _fs : "breeze";
 
       const _gc = colorToRgb(this._config.glass_color);
       this._glassColorRgb = _gc ? _gc.join(",") : null;
@@ -2792,10 +2862,7 @@
         this._centerTouchStart = null;
         this._touchCenterHeld = false;
       };
-      svg.addEventListener("touchstart", this._onSvgTouchStart, { capture: true, passive: false });
-      svg.addEventListener("touchmove", this._onSvgTouchMove, { capture: true, passive: false });
-      svg.addEventListener("touchend", this._onSvgTouchEnd, { capture: true, passive: false });
-      svg.addEventListener("touchcancel", this._onSvgTouchEnd, { capture: true, passive: false });
+      this._bindSvgTouch();
 
       // ---- defs: gradients + tight glow filters ----
       const defs = el("defs");
@@ -3309,11 +3376,30 @@
     }
 
     // Re-observe after a reconnect (the shadow DOM persists, so .ct-card is reused).
+    /* The capturing touch guards, bound where they can be REBOUND.
+
+       disconnectedCallback removes all four from the svg, and they used to be added
+       only inside _build, which runs once. So a card that was detached and re-attached
+       (a dashboard tab switch, a Sections re-layout, a drag in the editor) came back
+       with the guards gone: a touch ring drag still wrote its setpoint, but it no
+       longer stopped the page scrolling underneath the finger. Adding the same
+       function reference twice is a DOM no-op, so this needs no guard flag. */
+    _bindSvgTouch() {
+      const svg = this._svg;
+      if (!svg || !this._onSvgTouchStart) return;
+      const o = { capture: true, passive: false };
+      svg.addEventListener("touchstart", this._onSvgTouchStart, o);
+      svg.addEventListener("touchmove", this._onSvgTouchMove, o);
+      svg.addEventListener("touchend", this._onSvgTouchEnd, o);
+      svg.addEventListener("touchcancel", this._onSvgTouchEnd, o);
+    }
+
     connectedCallback() {
       if (this._built && this._ro) {
         const c = this.shadowRoot && this.shadowRoot.querySelector(".ct-card");
         if (c) this._ro.observe(c); // observing an already-observed element is a safe no-op
       }
+      if (this._built) this._bindSvgTouch();
     }
 
     // Rebuild the numbered scale. Ticks at `step` (coarsened if dense); labels every
@@ -3597,6 +3683,13 @@
       const s = this._st(this._config.entity);
       if (!s || s.state === "off" || s.state === "unavailable" || s.state === "unknown") return;
       if (this._popOpen) return;
+      /* The card's own rule, already applied at _centerPointerDown and
+         _stepPointerDown: only the primary button drives a control. The rings were the
+         one entry point that never checked, so a right-button or middle-button
+         press-move-release armed the gesture, crossed the drag threshold and committed
+         a setpoint. Touch and pen are unaffected, because button is 0 for a primary
+         contact. Both rings enter here, so this covers the fan ring too. */
+      if (e.button && e.button !== 0) return;
       /* A drag already owns the rings. A second finger landing on the other band
          used to re-arm the gesture from scratch: _active flipped, the first
          finger's pending value was thrown away, and the release wrote whatever the
@@ -3692,15 +3785,28 @@
        last over sitting on the face for the length of the hold and then snap back
        to the real value five seconds later, with no service call to explain it. */
     _ringAbandon() {
+      /* ...but only the family the abandoned gesture owns. Clearing all of them meant
+         a cancelled FAN gesture threw away a temperature the card had already SENT and
+         was holding on screen: the face dropped back to the stale live setpoint with no
+         service call to explain it, and the reverse killed a just-committed fan speed.
+         The two rings hold separate optimistic state for exactly this reason, so read
+         which one owned the gesture before the teardown nulls it. A gesture abandoned
+         before it was classified still clears everything, since there is nothing to
+         attribute it to. */
+      const active = this._active;
       this._ringTeardown();
-      this._optimisticTarget = null;
-      this._optimisticUntil = 0;
-      this._optimisticLow = null;
-      this._optimisticHigh = null;
-      this._optimisticHcUntil = 0;
-      this._optimisticFanPct = null;
-      this._optimisticFanName = null;
-      this._optimisticFanUntil = 0;
+      if (active !== "fan") {
+        this._optimisticTarget = null;
+        this._optimisticUntil = 0;
+        this._optimisticLow = null;
+        this._optimisticHigh = null;
+        this._optimisticHcUntil = 0;
+      }
+      if (active !== "temp") {
+        this._optimisticFanPct = null;
+        this._optimisticFanName = null;
+        this._optimisticFanUntil = 0;
+      }
       this._render();
     }
 
@@ -4036,11 +4142,32 @@
       if (r.hintAuto) r.hintAuto.textContent = this._t("hint_auto");
     }
 
+    /* A value in HA's own units, on one of the device's own stops.
+
+       The ring snaps to the DISPLAY step, and when the display unit is not the unit
+       Home Assistant reports in, converting that value lands it between the device's
+       stops: 72F snapped in Fahrenheit becomes 22.22C on an entity whose
+       target_temp_step is 0.5. The device rounds it somewhere of its own choosing, the
+       state that comes back never equals what was sent, and the optimistic reconcile
+       can never match it. Snap after converting, against the entity's OWN step and its
+       OWN bounds, both of which are already in HA units. */
+    _haSnap(v) {
+      if (v == null) return v;
+      const a = (this._st(this._config && this._config.entity) || {}).attributes || {};
+      const st = num(a.target_temp_step);
+      let out = v;
+      if (st && st > 0) out = Math.round(out / st) * st;
+      const lo = num(a.min_temp), hi = num(a.max_temp);
+      if (lo != null) out = Math.max(lo, out);
+      if (hi != null) out = Math.min(hi, out);
+      return Math.round(out * 100) / 100;   // the step math leaves a float tail
+    }
+
     // ---- TEMPERATURE service calls (signature preserved; value unit-converted) ----
     _callTemp(t) {
       if (t == null || !this._hass) return;
       this._svc("climate", "set_temperature",
-        { entity_id: this._config.entity, temperature: this._toHa(t) },
+        { entity_id: this._config.entity, temperature: this._haSnap(this._toHa(t)) },
         () => this._revertTemp());
     }
     _commitTemp(t) {
@@ -4068,8 +4195,8 @@
       this._announce(this._fmtDisplay(lo) + " " + this._t("to") + " " + this._fmtDisplay(hi) + "° " + this._unitWord());
       this._svc("climate", "set_temperature",
         { entity_id: this._config.entity,
-          target_temp_low: this._toHa(lo),
-          target_temp_high: this._toHa(hi) },
+          target_temp_low: this._haSnap(this._toHa(lo)),
+          target_temp_high: this._haSnap(this._toHa(hi)) },
         () => this._revertHeatCool());
     }
 
@@ -4509,17 +4636,9 @@
       // optimistic-aware (reads the effective position) so rapid taps keep advancing.
       const st = this._st(m.ref);
       const modes = (st && st.attributes && st.attributes.swing_modes) || [];
-      const onMode = modes.find((x) => String(x).toLowerCase() !== "off") || modes[0] || "vertical";
       const eff = this._swingEffMode();
       const effOn = !!(eff && String(eff).toLowerCase() !== "off");
-      const offMode = modes.find((x) => String(x).toLowerCase() === "off");
-      let target = null;
-      if (offMode) {
-        target = effOn ? offMode : onMode;
-      } else if (modes.length) {
-        const i = modes.findIndex((x) => String(x) === String(eff));
-        target = modes[(i + 1) % modes.length];
-      }
+      const target = swingTarget(modes, eff, effOn);
       if (target != null) { this._setOptSwingPos(target); this._svcSetSwingMode(target); }
     }
     // Whether a feature has a backing source the card can auto-detect.
@@ -4941,6 +5060,7 @@
       const modes = this._config.modes
         || s.attributes.hvac_modes
         || ["off", "cool", "heat", "heat_cool", "dry", "fan_only", "auto"];
+      this._modeSig = modes.join(" ");
       // Visible close affordance (issue #21). Escape and a backdrop click already
       // closed the dialog, but neither is discoverable on a wall tablet.
       const closeBtn = document.createElement("button");
@@ -5034,13 +5154,26 @@
       if (this._hass) {
         const ent = this._config.entity;
         const s = this._st(ent);
+        /* Never write a mode the entity does not advertise, the same rule _setPreset
+           already applies to preset_mode. A list it does not publish is nothing to
+           check against, so those entities are left alone rather than locked out. */
+        const adv = s && s.attributes && s.attributes.hvac_modes;
+        if (Array.isArray(adv) && adv.length && !adv.some((x) => String(x) === String(mode))) {
+          this._closePop();
+          return;
+        }
         const isOff = s && s.state === "off";
         // Mode has no optimistic paint (the dial reads live s.state), so on
         // failure there is nothing to snap back; just repaint live state.
         if (mode === "off") {
           this._svc("climate", "turn_off", { entity_id: ent }, () => this._render());
         } else {
-          if (isOff) this._svc("climate", "turn_on", { entity_id: ent }, () => this._render());
+          // Only where the entity says it takes one. set_hvac_mode already starts a
+          // unit that is off, so on everything else the extra call was noise HA logged
+          // and nothing more. CLIMATE_TURN_ON is the same bit the group card tests.
+          const feat = s && s.attributes ? num(s.attributes.supported_features) : null;
+          const takesOn = feat == null || (feat & CLIMATE_TURN_ON) !== 0;
+          if (isOff && takesOn) this._svc("climate", "turn_on", { entity_id: ent }, () => this._render());
           this._svc("climate", "set_hvac_mode", { entity_id: ent, hvac_mode: mode }, () => this._render());
         }
       }
@@ -5051,6 +5184,35 @@
       if (!this._popBuilt) return;
       const s = this._st(this._config.entity);
       const cur = s ? s.state : null;
+      /* Rebuild the mode row when the entity's own list changes.
+
+         The row was built once, from whatever the entity advertised at the moment the
+         sheet was first opened, and then only ever restyled. Two ways that goes wrong,
+         both measured: a unit that DROPS a mode keeps a clickable button that writes a
+         value it no longer supports, and a sheet opened while the unit is offline
+         freezes the built-in seven-mode fallback, which then offers heat_cool to a unit
+         that never advertised it. The preset row directly below already rebuilds on its
+         own signature; this is the same treatment, and the two now behave alike. */
+      {
+        const want = (this._config && Array.isArray(this._config.modes) && this._config.modes.length
+          ? this._config.modes
+          : (s && s.attributes && s.attributes.hvac_modes))
+          || ["off", "cool", "heat", "heat_cool", "dry", "fan_only", "auto"];
+        const sig = want.join(" ");
+        if (sig !== this._modeSig) {
+          this._modeSig = sig;
+          const sheet = this._refs.sheet;
+          const anchor = this._refs.presetRow || null;
+          sheet.querySelectorAll("button[data-mode]").forEach((b) => b.remove());
+          want.forEach((m) => {
+            const b = document.createElement("button");
+            b.dataset.mode = m;
+            b.textContent = this._modeName(m);
+            b.style.setProperty("--ct-lit", this._modeColor(m));
+            if (anchor) sheet.insertBefore(b, anchor); else sheet.appendChild(b);
+          });
+        }
+      }
       // Mode buttons only (scoped so the toggle chips never get the mode "active").
       this._refs.sheet.querySelectorAll("button[data-mode]").forEach((b) => {
         const active = b.dataset.mode === cur;
@@ -5507,27 +5669,51 @@
       // NOT _featureResolved("fan"): that helper only knows swing, led and sound and
       // silently falls through to the sound switch for anything else, so the fan cell
       // was gated on a beep entity existing. show_fan is the key that governs it.
+      /* Every string in this row goes through the table.
+
+         The captions and values were written as English literals while LOCALE carried
+         all of them, so the rail was the one part of the card that stayed in English
+         when everything around it switched. `hint_fan` is used for the FAN caption
+         rather than `fan`, because `fan` is the prose form the announcements need
+         ("Ventilador") and this is a caption under a 27 unit pill ("VENT."). rail()
+         sizes each cell from the widest string it is handed, so `widest` is set from
+         the longer of the two localized states and a cell cannot change width as it
+         toggles. */
+      const ON = this._t("on").toUpperCase(), OFF = this._t("off").toUpperCase();
+      const WIDEST = ON.length >= OFF.length ? ON : OFF;
       if (this._haveFan()) {
-        out.push({ key: "fan", value: pct == null ? "AUTO" : pct + "%", caption: "FAN",
-          lit: pct != null, widest: "100%" });
+        out.push({ key: "fan", value: pct == null ? this._t("auto") : pct + "%",
+          caption: this._t("hint_fan"), lit: pct != null, widest: "100%" });
       }
       if (this._featureResolved("swing") !== false) {
         const on = this._featureOn("swing");
-        out.push({ key: "swing", value: on ? "ON" : "OFF", caption: "SWING", lit: on, widest: "OFF" });
+        out.push({ key: "swing", value: on ? ON : OFF, caption: this._t("swing"), lit: on, widest: WIDEST });
       }
       if (this._featureResolved("led") !== false && this._ledRef()) {
         const on = this._featureOn("led");
-        out.push({ key: "led", value: on ? "ON" : "OFF", caption: "LED", lit: on, widest: "OFF" });
+        out.push({ key: "led", value: on ? ON : OFF, caption: this._t("led"), lit: on, widest: WIDEST });
       }
       if (this._featureResolved("sound") !== false && this._soundRef && this._soundRef()) {
         const on = this._featureOn("sound");
-        out.push({ key: "sound", value: on ? "ON" : "OFF", caption: "SOUND", lit: on, widest: "OFF" });
+        out.push({ key: "sound", value: on ? ON : OFF, caption: this._t("sound"), lit: on, widest: WIDEST });
       }
       (this._extraToggles || []).slice(0, 3).forEach((it, i) => {
         const st = this._st(it.entity);
         if (!st) return;
-        const on = st.state === "on";
-        out.push({ key: "extra:" + i, value: on ? "ON" : "OFF", widest: "OFF", lit: on,
+        /* A select has no on state, so `state === "on"` was false at every position
+           and the cell read OFF for a wind mode sitting on Turbo. The popup chip for
+           the same entity has always shown the live option; show it here too, and size
+           the cell from the longest option so cycling cannot resize it. */
+        if (this._xIsSelect(it)) {
+          const opts = (st.attributes && st.attributes.options) || [];
+          const cur = this._xCurOpt(it);
+          out.push({ key: "extra:" + i, value: cur == null ? OFF : String(cur).toUpperCase(),
+            widest: opts.reduce((a, b) => (String(b).length > a.length ? String(b) : a), OFF),
+            lit: false, caption: this._xCaption(it) });
+          return;
+        }
+        const on = this._xOn(it);
+        out.push({ key: "extra:" + i, value: on ? ON : OFF, widest: WIDEST, lit: on,
           caption: this._xCaption(it) });
       });
       return out;
@@ -5546,6 +5732,14 @@
         action: act || undefined,
         set: fallback,
         room: room == null ? fallback : room,
+        /* The two numbers the face PRINTS, formatted the way every other number on
+           the card is. The numeric fields above stay raw because the band angle, the
+           room pin and the delta are geometry and want the real value; these are text.
+           Converting Celsius to Fahrenheit leaves a float, so the hero read 71.6 and
+           the ROOM label 78.8 while the rail, the scale and the aria values all showed
+           the rounded, locale-formatted number. */
+        setText: this._fmtDisplay(fallback),
+        roomText: this._fmtDisplay(room == null ? fallback : room),
         min: r.lo, max: r.hi,
         fanPct: this._facePct(),
         // _presetActive holds the optimistic value, so tapping a preset shows its
@@ -5562,7 +5756,7 @@
            style that uses <animate>, so it was exactly the one the escape hatch missed.
            Decide it here, where the style is chosen, rather than in CSS that cannot
            reach SMIL: a reader who asked the OS for less motion gets the static ring. */
-        fanStyle: this._reducedMotion() ? "original" : (this._fanStyle || "silk"),
+        fanStyle: this._reducedMotion() ? "original" : (this._fanStyle || "breeze"),
         cells: this._faceCells(),
       };
     }
@@ -5672,6 +5866,50 @@
       flow.style.setProperty("clip-path", poly);
       flow.style.setProperty("-webkit-clip-path", poly);
       mark.innerHTML = FACE.fanHandle(noHandle ? null : pct);
+      this._setFanFlowSpeed(pct, flow);
+    }
+
+    /* How fast the flow runs, written onto bands that are already turning.
+
+       The speed is the one thing about an animated ring that the reading really does
+       change, and it is the one thing the clip window cannot carry: the period is
+       baked into each band's inline animation-duration when the overlay is built, and
+       the overlay is deliberately not rebuilt on a new speed, because a rebuild kills
+       every running timeline. Without this the ring drew the right ARC at the new
+       speed while still turning at whatever speed the card happened to mount at, so a
+       unit taken from 20 to 100 looked identical in motion and the one thing the
+       animation is for did not happen.
+
+       Phase is preserved on purpose. Changing a duration alone leaves the animation
+       running but recomputes its progress as elapsed over the NEW period, which slews
+       every band to a different angle in a single frame; on the 32 second band that is
+       most of a turn. Web Animations lets the current time be rewritten to the same
+       FRACTION of the new period, so each ribbon keeps exactly the position it was in
+       and only its rate changes. Where getAnimations is missing the duration still
+       lands, and the ring is merely allowed the jump. */
+    _setFanFlowSpeed(pct, flowEl) {
+      const flow = flowEl || (this._refs.fanLayer
+        && this._refs.fanLayer.querySelector(".ct-fanflow"));
+      if (!flow || !this._fanFlowStyle) return;
+      const bands = flow.querySelectorAll(".ct-fanband");
+      const periods = FACE.fanPeriods(this._fanFlowStyle, pct);
+      if (!bands.length || periods.length !== bands.length) return;
+      for (let i = 0; i < bands.length; i++) {
+        const want = periods[i].toFixed(2) + "s";
+        if (bands[i].style.animationDuration === want) continue;
+        let anims = [];
+        try { anims = bands[i].getAnimations(); } catch (e) { anims = []; }
+        const phase = anims.map((a) => {
+          let d = null, t = null;
+          try { d = a.effect.getTiming().duration; t = a.currentTime; } catch (e) {}
+          return (typeof d === "number" && d > 0 && typeof t === "number") ? (t % d) / d : null;
+        });
+        bands[i].style.animationDuration = want;
+        for (let k = 0; k < anims.length; k++) {
+          if (phase[k] == null) continue;
+          try { anims[k].currentTime = phase[k] * periods[i] * 1000; } catch (e) {}
+        }
+      }
     }
 
     _setFanLayer(html) {
@@ -5745,6 +5983,10 @@
               FACE_RING(st.fanPct), st.mode, st.fanPct == null)
           : "";
         this._setFanLayer(wantFan ? FACE.fanLayer(st.fanStyle, st.fanPct, st.mode) : "");
+        // _setFanValue runs on every pointermove and from the full paint, and it has
+        // to know which band table the overlay was built from. Recording it here, at
+        // the one place the overlay is written, is what keeps the two in step.
+        this._fanFlowStyle = (anim && wantFan) ? st.fanStyle : null;
       }
       if (this._refs.fanLayer) this._refs.fanLayer.classList.toggle("on", !!(anim && wantFan));
       if (anim && wantFan) this._setFanValue(FACE_RING(st.fanPct), st.fanPct == null);
@@ -5864,11 +6106,16 @@
       const key = (this._faceCellKeys || [])[+cell.getAttribute("data-cell")];
       if (!key) return;
       if (key === "fan") { this._fanCloverTap(); return; }
+      /* Repaint after the write. The optimistic model flips immediately and the popup
+         chip for the same feature follows it, but the rail cell that was actually
+         tapped kept showing the pre-tap value for the whole five second hold, so the
+         one control the finger touched was the one that looked like it had ignored it.
+         _swingPointerUp already renders for exactly this reason. */
       if (key === "swing" || key === "led" || key === "sound") {
-        if (this._featureAvail(key)) this._featureToggle(key);
+        if (this._featureAvail(key)) { this._featureToggle(key); this._render(); }
         return;
       }
-      if (key.indexOf("extra:") === 0) this._xTap(+key.slice(6));
+      if (key.indexOf("extra:") === 0) { this._xTap(+key.slice(6)); this._render(); }
     }
 
     // The room reading owns its patch of the scale. Any numeral it lands on is
@@ -5902,7 +6149,7 @@
       this._refs.faceDelta.innerHTML = wantCur
         ? FACE.deltaSegment(setA, roomA, st.room - st.set) : "";
       this._refs.faceRoom.innerHTML = wantCur
-        ? FACE.roomPin(roomA) + FACE.roomLabel(st.room, roomA) : "";
+        ? FACE.roomPin(roomA) + FACE.roomLabel(st.roomText != null ? st.roomText : st.room, roomA) : "";
       if (wantCur) this._centreRoomCaption();
       this._refs.faceNeedle.innerHTML = FACE.needle(setA);
       /* The status dot breathes on a 1.9s CSS animation and the boost and sleep glyphs
@@ -5916,7 +6163,8 @@
          Skip the write when the string is byte-identical. The DOM already holds exactly
          this, so nothing can go stale, and the measure-and-nudge passes that belong to
          it have nothing new to measure. */
-      const centre = FACE.modeWord(st.mode) + FACE.bigNumeral(st.set)
+      const centre = FACE.modeWord(st.mode)
+        + FACE.bigNumeral(st.setText != null ? st.setText : st.set)
         + FACE.statusLine(st.mode, st.action, st.preset);
       if (centre !== this._faceCentreHtml) {
         this._faceCentreHtml = centre;
@@ -6862,8 +7110,8 @@ ${POPUP_CSS}
           // rides the option label rather than a helper sentence underneath it.
           // the default first, so the list reads as a default plus its alternatives
           { name: "fan_style", selector: { select: { mode: "list", options: [
-            { value: "silk", label: this._t("editor.opt.fan_style_silk") },
             { value: "breeze", label: this._t("editor.opt.fan_style_breeze") },
+            { value: "silk", label: this._t("editor.opt.fan_style_silk") },
             { value: "original", label: this._t("editor.opt.fan_style_original") },
           ] } } },
           { name: "fan_clover", selector: { boolean: {} } },
@@ -7120,6 +7368,13 @@ ${POPUP_CSS}
       for (const k of TRISTATE_KEYS) {
         if (data[k] === undefined || data[k] === null) data[k] = "auto";
       }
+      /* Two more controls that have a default and were not seeded, so they opened on
+         ha-form's blank row: the fan ring radios showed nothing selected on a fresh
+         card, and the temperature unit dropdown was empty although the card resolves
+         it to "auto" when unset. Both are pruned back out below, so seeding them does
+         not start writing a key the YAML did not have. */
+      if (data.fan_style !== "silk" && data.fan_style !== "original") data.fan_style = "breeze";
+      if (data.temperature_unit !== "F" && data.temperature_unit !== "C") data.temperature_unit = "auto";
       // Appearance: unset means "theme", so the select reads Theme instead of blank;
       // a legacy "glass" value maps to the dark variant so the select shows it.
       if (data.appearance === undefined || data.appearance === null) data.appearance = "theme";
@@ -7225,6 +7480,10 @@ ${POPUP_CSS}
       for (const k of TRISTATE_KEYS) {
         if (cfg[k] === "auto") delete cfg[k];
       }
+      // The two seeds above, back out again: unset is the default for both, and
+      // temperature_unit: "auto" was a key that said nothing even when authored by hand.
+      if (cfg.fan_style === "breeze") delete cfg.fan_style;
+      if (cfg.temperature_unit === "auto") delete cfg.temperature_unit;
       // Appearance: "theme" is the default -> only persist an explicit "glass".
       if (cfg.appearance === "theme") delete cfg.appearance;
       // Modes: a selection equal to the entity's full hvac_modes is the default ->
@@ -7264,12 +7523,27 @@ ${POPUP_CSS}
         }
         if (rows.length) cfg.extra_toggles = rows; else delete cfg.extra_toggles;
       }
-      // Glass tint/opacity: drop when still at the per-variant default so an unchanged
-      // glass keeps a lean YAML (theme mode, where appearance is already deleted above,
-      // compares against the dark base and prunes the seeded values out).
-      const gbase = GLASS_BASE[cfg.appearance === "glass-light" ? "glass-light" : "glass-dark"];
-      if (rgbEq(cfg.glass_color, gbase.rgb)) delete cfg.glass_color;
-      if (typeof cfg.glass_opacity === "number" && Math.abs(cfg.glass_opacity - gbase.alpha) < 1e-6) delete cfg.glass_opacity;
+      /* Glass tint/opacity: drop when still at a per-variant default, so an unchanged
+         glass keeps a lean YAML.
+
+         It has to be EITHER variant's default, not just the one the config now names.
+         The form is seeded from the appearance it was BUILT with and pruned against the
+         appearance it was SAVED with, and picking a different variant moves those two
+         apart inside a single emit: the seeded dark tint came back while the prune was
+         looking for the light one, so choosing "Frosted glass, light" wrote the DARK
+         base into the YAML and really did paint a dark indigo slab, and the mirror case
+         painted a near-white one. Neither base is a plausible deliberate choice for the
+         other variant, so treating both as "untouched" is safe and needs no extra state.
+
+         A user who genuinely wants the dark tint on the light variant sets it after the
+         variant, which is a second emit and survives. */
+      const untouchedRgb = (v) => rgbEq(v, GLASS_BASE["glass-dark"].rgb)
+        || rgbEq(v, GLASS_BASE["glass-light"].rgb);
+      const untouchedAlpha = (v) => typeof v === "number"
+        && (Math.abs(v - GLASS_BASE["glass-dark"].alpha) < 1e-6
+          || Math.abs(v - GLASS_BASE["glass-light"].alpha) < 1e-6);
+      if (untouchedRgb(cfg.glass_color)) delete cfg.glass_color;
+      if (untouchedAlpha(cfg.glass_opacity)) delete cfg.glass_opacity;
 
       for (const k of Object.keys(cfg)) {
         const v = cfg[k];
@@ -7309,7 +7583,13 @@ ${POPUP_CSS}
 /* Content wrapper. The frosted slab is an absolutely positioned SIBLING, and a
    positioned element paints above static blocks, so without a positioned wrapper
    of its own the slab would sit on top of every zone tile and the title. */
-.cg-inner{ position:relative; z-index:1; }
+/* The classic layout below asks about the width of the CARD. The zone layout was
+   already taught this lesson and carries its own container; classic was left on a
+   viewport media query, so a 300px card inside a 1440px window never stacked and
+   the hero simply took its 250px maximum while the room strip was left the 4px that
+   remained, with every room button standing outside the card. Same containment, one
+   level up, so both layouts ask the same question. */
+.cg-inner{ position:relative; z-index:1; container-type:inline-size; }
 /* No position, no z-index, no filter, on purpose: anything here would trap the fixed
    room sheet inside a stacking context and paint it behind the dashboard. */
 .cg-sheet-host{ display:contents; }
@@ -7327,9 +7607,16 @@ ${POPUP_CSS}
 
 /* The hero is a fixed-ish track, not a fraction. Left as a fraction it ballooned
    on a full-width panel while the zones crowded into a corner. */
-.cg-body{ display:grid; grid-template-columns:minmax(170px,250px) minmax(0,1fr);
+/* minmax(0,250px), not minmax(170px,250px): a floor on the hero is a floor the room
+   strip pays for, and below the breakpoint it was paying all of it. */
+.cg-body{ display:grid; grid-template-columns:minmax(0,250px) minmax(0,1fr);
   gap:14px; margin-top:10px; align-items:start; }
-@media (max-width:520px){ .cg-body{ grid-template-columns:1fr; } }
+@container (max-width:520px){ .cg-body{ grid-template-columns:1fr; } }
+/* No container query support: keep the old viewport rule as the floor rather than
+   leaving those browsers with no breakpoint at all. */
+@supports not (container-type: inline-size){
+  @media (max-width:520px){ .cg-body{ grid-template-columns:1fr; } }
+}
 /* Hero and the group buttons stack in the left column so the buttons fill the
    space beside the zone grid instead of stretching the card taller. */
 .cg-left{ display:flex; flex-direction:column; gap:10px; min-width:0; }
@@ -7592,6 +7879,10 @@ ${FACE.KEYFRAMES}
     disconnectedCallback() {
       if (this._houseDrag || this._onHouseUp) this._houseTeardown();
       if (this._zui) this._zui.houseTarget = null;
+      // The Escape listener lives on the document, and the confirm disarm on a timer,
+      // so both outlive the element unless they are dropped here.
+      if (this._onSheetKey) document.removeEventListener("keydown", this._onSheetKey, true);
+      if (this._confirmTimer) { clearTimeout(this._confirmTimer); this._confirmTimer = 0; }
     }
 
     setConfig(config) {
@@ -7664,9 +7955,18 @@ ${FACE.KEYFRAMES}
         // in the signature or the card shows a stale chip until something else
         // happens to change. The transient sheet and confirm state go in too: they
         // are the only thing that moves on a tap that writes nothing.
+        /* The tiles also read the NAME, the room's own bounds, and the length of
+           each capability list (a fan stop count changes what a percentage means).
+           None of those were here, so a rename, a changed min/max and a fan_modes
+           list that grew a stop were all computed correctly and then never painted,
+           until some unrelated temperature push happened along and revealed all three
+           at once. */
         parts.push([z.entity, s.state, a.temperature, a.current_temperature,
           a.target_temp_low, a.target_temp_high, a.hvac_action, a.preset_mode,
-          a.fan_mode, a.swing_mode].join("|"));
+          a.fan_mode, a.swing_mode, z.name || a.friendly_name,
+          a.min_temp, a.max_temp,
+          (a.fan_modes || []).join(","), (a.hvac_modes || []).join(","),
+          (a.preset_modes || []).join(",")].join("|"));
         const sib = this._zoneSiblings(z.entity);
         for (const k in sib) {
           const t = sib[k] && this._hass.states[sib[k]];
@@ -7674,7 +7974,7 @@ ${FACE.KEYFRAMES}
         }
       }
       const ui = this._zui || {};
-      parts.push("ui:" + (ui.sheetIndex == null ? "-" : ui.sheetIndex) + ":" + (ui.confirmOff ? 1 : 0));
+      parts.push("ui:" + (ui.sheetId == null ? "-" : ui.sheetId) + ":" + (ui.confirmOff ? 1 : 0));
       // a held value is state the card shows, so it belongs in what decides a repaint
       const zo = this._zoneOpt || {};
       for (const id in zo) parts.push("o:" + id + ":" + JSON.stringify(zo[id]));
@@ -7684,11 +7984,58 @@ ${FACE.KEYFRAMES}
     _st(id) {
       return this._hass && this._hass.states ? this._hass.states[id] : null;
     }
+    // The unit Home Assistant reports these attributes in. ClimateEntity converts
+    // every device's native reading into the system unit before it reaches a card,
+    // so this is one answer for the whole house, not one per room.
+    _haUnit() {
+      const sys = this._hass && this._hass.config && this._hass.config.unit_system;
+      return sys && String(sys.temperature).indexOf("C") >= 0 ? "C" : "F";
+    }
+    // The unit this card DRAWS in: the override when set, else whatever HA reports.
     _unit() {
       const u = this._config.temperature_unit;
       if (u === "F" || u === "C") return u;
-      const sys = this._hass && this._hass.config && this._hass.config.unit_system;
-      return sys && String(sys.temperature).indexOf("C") >= 0 ? "C" : "F";
+      return this._haUnit();
+    }
+
+    /* temperature_unit was offered in this card's editor and did nothing.
+
+       It reached exactly one line, the fallback bounds inside _range, so choosing
+       Fahrenheit on a Celsius house relabelled nothing, converted nothing, and wrote
+       nothing differently: the gauge kept its 16 to 30 scale, the tiles kept printing
+       Celsius readings, and a drag sent the number under the finger straight through
+       as though it were already native. The dial has had this pair since it shipped
+       (_toDisplay / _toHa); this is the same contract on the other card.
+
+       Everything the model carries is in DISPLAY units from here on, and every value
+       that leaves in a service call is converted back and then snapped to the room's
+       own step. When no override is set the two units are the same and both of these
+       are the identity, so a house that never touched the option is untouched. */
+    _toDisplay(v) {
+      if (v == null) return null;
+      const du = this._unit(), hu = this._haUnit();
+      if (du === hu) return v;
+      const st = this._zoneStep();
+      // whole degrees, the same rule the rest of this card states for itself
+      return Math.round((du === "F" ? cToF(v) : fToC(v)) / st) * st;
+    }
+    _toHa(v) {
+      if (v == null) return null;
+      const du = this._unit(), hu = this._haUnit();
+      if (du === hu) return v;
+      return hu === "F" ? cToF(v) : fToC(v);
+    }
+    // A value in HA units, on one of THIS room's own stops and inside its own rails.
+    _haFit(id, v) {
+      if (v == null) return null;
+      const a = ((this._st(id) || {}).attributes) || {};
+      const st = num(a.target_temp_step);
+      let out = v;
+      if (st && st > 0) out = Math.round(out / st) * st;
+      const lo = num(a.min_temp), hi = num(a.max_temp);
+      if (lo != null) out = Math.max(lo, out);
+      if (hi != null) out = Math.min(hi, out);
+      return Math.round(out * 100) / 100;   // the step math leaves a float tail
     }
     _range() {
       const u = this._unit();
@@ -7698,7 +8045,8 @@ ${FACE.KEYFRAMES}
         let mn = null, mx = null;
         for (const z of this._zones) {
           const a = (this._st(z.entity) || {}).attributes || {};
-          const zl = num(a.min_temp), zh = num(a.max_temp);
+          // the rooms report in HA units; the scale is drawn in the display unit
+          const zl = this._toDisplay(num(a.min_temp)), zh = this._toDisplay(num(a.max_temp));
           if (zl != null) mn = mn == null ? zl : Math.min(mn, zl);
           if (zh != null) mx = mx == null ? zh : Math.max(mx, zh);
         }
@@ -7748,8 +8096,8 @@ ${FACE.KEYFRAMES}
         state: s ? s.state : "unavailable",
         dead,
         on: !dead && s.state !== "off",
-        set: this._setpoint(s),
-        now: num(a.current_temperature),
+        set: this._toDisplay(this._setpoint(s)),
+        now: this._toDisplay(num(a.current_temperature)),
         rh: num(a.current_humidity),
         action: a.hvac_action || null,
         color: MODE_COLORS[s ? s.state : "off"] || MODE_COLORS.off,
@@ -7879,21 +8227,58 @@ ${FACE.KEYFRAMES}
       } catch (err) { console.error("climate-cluster-group-card:", err); }
     }
 
+    /* The rooms a house-wide action can actually reach.
+
+       `this._zones` is what the CONFIG names, which is not the same thing. An entity
+       that has been renamed or removed is still in the config and was still being
+       addressed, and a room that is unavailable cannot act on anything. Neither
+       produces a visible error, so the card looked like it worked while part of the
+       house was never told. */
+    _reachableIds() {
+      return this._zones
+        .map((z) => this._st(z.entity))
+        .filter((s) => s && s.state !== "unavailable" && s.state !== "unknown")
+        .map((s) => s.entity_id);
+    }
+
+    /* One setpoint for the house, but every room has its own rails.
+
+       This used to send a single number to every eligible room at once. On a house
+       whose rooms do not share bounds there is no such number: a 16..30 room and a
+       61..86 room have no legal value in common, so EVERY house-level write was out of
+       range for at least one of them, and the gauge could not produce one that was not.
+       Clamping to each room's own min_temp and max_temp, and snapping to its own step,
+       gives each room the closest value it can actually hold. Rooms that land on the
+       same number are still written together, so the ordinary house where every room
+       shares a range costs exactly the one call it always did. */
+    _setpointBatches(t) {
+      const ha = this._toHa(t);          // the gauge reads in display units
+      const by = new Map();
+      for (const z of this._zones) {
+        const s = this._st(z.entity);
+        if (!s || s.state === "off" || s.state === "unavailable" || s.state === "unknown") continue;
+        const a = s.attributes || {};
+        // Only entities with a single setpoint: a heat_cool zone wants low/high, and
+        // guessing which one to move would be worse than skipping it.
+        if (num(a.temperature) == null) continue;
+        const v = this._haFit(s.entity_id, ha);
+        if (v == null) continue;
+        if (!by.has(v)) by.set(v, []);
+        by.get(v).push(s.entity_id);
+      }
+      return Array.from(by.entries()).map(function (e) {
+        return { entity_id: e[1], temperature: e[0] };
+      });
+    }
+
     _groupAction(act, arg) {
-      const ids = this._zones.map((z) => z.entity);
-      if (act === "off") { this._call("climate", "turn_off", { entity_id: ids }); return; }
-      if (act === "preset") { this._call("climate", "set_preset_mode", { entity_id: ids, preset_mode: arg }); return; }
+      const ids = this._reachableIds();
+      if (act === "off") { if (ids.length) this._call("climate", "turn_off", { entity_id: ids }); return; }
+      if (act === "preset") { if (ids.length) this._call("climate", "set_preset_mode", { entity_id: ids, preset_mode: arg }); return; }
       if (act === "setpoint") {
         const t = num(arg);
         if (t == null) return;
-        // Only entities with a single setpoint: a heat_cool zone wants low/high,
-        // and guessing which one to move would be worse than skipping it.
-        const single = this._zones
-          .map((z) => this._st(z.entity))
-          .filter((s) => s && s.state !== "off" && s.state !== "unavailable"
-            && num((s.attributes || {}).temperature) != null)
-          .map((s) => s.entity_id);
-        if (single.length) this._call("climate", "set_temperature", { entity_id: single, temperature: t });
+        for (const b of this._setpointBatches(t)) this._call("climate", "set_temperature", b);
       }
     }
 
@@ -8005,6 +8390,8 @@ ${FACE.KEYFRAMES}
         now: { en: "NOW", es: "AHORA" },
         off_word: { en: "Off", es: "Apagado" },
         all_off: { en: "All off", es: "Apagar todo" },
+        all_on: { en: "All on", es: "Encender todo" },
+        confirm_off: { en: "Tap to confirm", es: "Toca para confirmar" },
         sync: { en: "Sync all", es: "Igualar todo" },
         unavailable: { en: "Unavailable", es: "No disponible" },
         cooling: { en: "COOLING", es: "ENFRIANDO" },
@@ -8147,8 +8534,10 @@ ${FACE.KEYFRAMES}
           // measured on the RAW string: escaping turns one ampersand into five
           // characters, and the tile sizes its caption by length
           nameLen: String(short[zi] || rawName).length,
-          room: dead ? null : num(a.current_temperature),
-          set: dead ? null : opt("set", this._setpoint(st)),
+          room: dead ? null : this._toDisplay(num(a.current_temperature)),
+          // the optimistic hold stores a DISPLAY value too, so the "reality caught
+          // up" comparison inside _zoneOptGet keeps comparing like with like
+          set: dead ? null : opt("set", this._toDisplay(this._setpoint(st))),
           mode: dead ? "unavailable" : opt("mode", st.state),
           // the entity's own answer to "what are you doing right now"
           action: dead ? null : (a.hvac_action || null),
@@ -8197,7 +8586,12 @@ ${FACE.KEYFRAMES}
       const forced = this._gridStyle("zone_rows", model.zones.length);
       const cols = forced
         ? forced.replace(/^ style="/, "").replace(/"$/, "")
-        : "grid-template-columns:repeat(auto-fit,minmax(126px,1fr))";
+        /* min(126px, 100%) rather than a flat 126px: an explicitly forced horizontal
+           orientation gives the tiles whatever track is left after the hero, and on a
+           narrow card that track is smaller than one tile's minimum, so auto-fit laid
+           out a 126px column inside a 94px track and the raise button ended up outside
+           the card. The minimum yields to the container instead of overflowing it. */
+        : "grid-template-columns:repeat(auto-fit,minmax(min(126px,100%),1fr))";
 
       const card = this.shadowRoot && this.shadowRoot.querySelector(".cg-card");
       if (card) card.setAttribute("data-ink", this._inkGround(card));
@@ -8241,8 +8635,15 @@ ${FACE.KEYFRAMES}
         const themed = themeZone(html);
         if (themed !== this._bodyHtml) { this._bodyHtml = themed; this._inner.innerHTML = themed; }
       }
-      const sheetHtml = (ui.sheetIndex != null && model.zones[ui.sheetIndex])
-        ? this._zoneSheetHtml(model.zones[ui.sheetIndex], ui.sheetIndex) : "";
+      /* The open sheet belongs to a ROOM, not to a slot. It was remembered as an index
+         into the zone array, so re-ordering config.entities, or removing a room above
+         the open one, silently re-pointed the panel at whoever inherited the slot: the
+         title changed under the reader and the next tap inside it wrote to a different
+         room. Resolve by entity id, and a room that leaves the config closes its own
+         sheet rather than handing it on. */
+      const si = this._sheetIndex(model);
+      if (si < 0 && ui.sheetId != null) { ui.sheetId = null; ui.sheetIndex = null; }
+      const sheetHtml = si >= 0 ? this._zoneSheetHtml(model.zones[si], si) : "";
       if (sheetHtml !== this._sheetHtml) {
         this._sheetHtml = sheetHtml;
         this._sheetHost.innerHTML = sheetHtml;
@@ -8376,8 +8777,18 @@ ${FACE.KEYFRAMES}
     _zoneActions(model, d, ui) {
       const shared = this._sharedPresets();
       const known = {};
+      /* The labels come from the table, not from the module.
+
+         groupActions is inside the pasted zone module, which is geometry and carries
+         its labels as English prose. The classic layout builds its own footer and
+         translates; this one did not, so the DEFAULT layout printed "All off" and
+         "Sync all" to a Spanish reader while everything around them had switched.
+         Relabel here, where the card already re-keys these three faces anyway, and the
+         module stays verbatim. */
+      const LABEL = { alloff: "all_off", allon: "all_on", confirm: "confirm_off", sync: "sync" };
       ZONE.groupActions(model, d, ui)
         .filter((a) => String(a.id).indexOf("preset:") !== 0)
+        .map((a) => (LABEL[a.id] ? Object.assign({}, a, { label: this._t(LABEL[a.id]) }) : a))
         // one button, three faces: All off, Tap to confirm, All on. `off` names the
         // control, not whichever face it is wearing at this moment.
         .forEach((a) => {
@@ -8409,6 +8820,54 @@ ${FACE.KEYFRAMES}
       return out;
     }
 
+    // Where the open sheet's room sits in the CURRENT model, or -1 if it is gone.
+    _sheetIndex(model) {
+      const ui = this._zui || {};
+      if (ui.sheetId != null) return model.zones.findIndex((z) => z.id === ui.sheetId);
+      return (ui.sheetIndex != null && model.zones[ui.sheetIndex]) ? ui.sheetIndex : -1;
+    }
+
+    /* Open and close move focus, because the sheet is the only place this card offers
+       per-room modes, presets and hardware, and a reader who reached it from the
+       keyboard was being left standing on the document body. */
+    _focusSheet() {
+      const host = this._sheetHost;
+      if (!host) return;
+      /* Escape closes it, the way every other dialog on the dashboard does, and the
+         way this card's own single-dial popup already did. The listener is on the
+         document because the sheet is a fixed overlay and the key can arrive with
+         focus anywhere; it is removed again the moment the sheet closes. */
+      if (!this._onSheetKey) {
+        this._onSheetKey = (e) => {
+          if (e.key !== "Escape" && e.key !== "Esc") return;
+          if (this._zui && this._zui.sheetId == null && this._zui.sheetIndex == null) return;
+          e.stopPropagation();
+          this._closeSheet();
+        };
+      }
+      document.addEventListener("keydown", this._onSheetKey, true);
+      requestAnimationFrame(() => {
+        const first = host.querySelector('button, [tabindex]:not([tabindex="-1"])');
+        if (first) { try { first.focus(); } catch (e) {} }
+      });
+    }
+    _closeSheet() {
+      const opener = this._sheetOpener;
+      this._zui.sheetIndex = null;
+      this._zui.sheetId = null;
+      this._sheetOpener = null;
+      if (this._onSheetKey) document.removeEventListener("keydown", this._onSheetKey, true);
+      this._zoneRepaint();
+      /* Focus goes back where it came from. The repaint replaces the tile markup, so
+         the node that opened the sheet is gone by now: find its replacement by the
+         room it belongs to rather than holding a reference to a detached element. */
+      const id = opener && opener.closest ? (opener.closest("[data-zone]") || {}).dataset : null;
+      const sel = id && id.zone != null
+        ? '[data-zone="' + id.zone + '"] [data-act="sheet"]' : null;
+      const back = sel && this.shadowRoot ? this.shadowRoot.querySelector(sel) : null;
+      if (back) { try { back.focus(); } catch (e) {} }
+    }
+
     _zoneRepaint() { this._sig = null; this._render(); }
 
     /* Dragging the hero sets the house temperature.
@@ -8436,7 +8895,13 @@ ${FACE.KEYFRAMES}
       const y = (e.clientY - oy) / k + vb.y - 208;
       let a = Math.atan2(x, -y) * 180 / Math.PI;   // 0 at twelve o'clock, clockwise
       if (a < 0) a += 360;
-      if (a < 110) a += 360;            // the arc runs 250 through 360 to 470
+      /* The arc runs 250 through 360 to 470, and the 110..250 wedge underneath it is
+         not drawn. It is still hit-testable band, though, so a finger that slides off
+         the hot cap lands there, and wrapping at 110 sent every one of those angles to
+         the COLD end: a drag to the hottest point of the gauge wrote the house its
+         coldest temperature. Wrap at the MIDDLE of the gap instead, so each half of the
+         dead wedge resolves to the arc end it is actually nearer to. */
+      if (a < 180) a += 360;
       const d = ZONE.derive(this._zoneModel());
       const frac = clamp((a - 250) / 220, 0, 1);
       return Math.round(d.min + frac * (d.max - d.min));
@@ -8525,7 +8990,7 @@ ${FACE.KEYFRAMES}
       const zoneEl = el.closest("[data-zone]");
       const inSheet = !!(el.closest('[data-act="panel"]') || el.closest('[data-act="backdrop"]'));
       const idx = zoneEl ? parseInt(zoneEl.dataset.zone, 10)
-        : (inSheet && ui.sheetIndex != null ? ui.sheetIndex : -1);
+        : (inSheet ? this._sheetIndex(model) : -1);
       const z = idx >= 0 ? model.zones[idx] : null;
       const act = el.closest("[data-act]");
       const g = el.closest("[data-gact]");
@@ -8567,9 +9032,17 @@ ${FACE.KEYFRAMES}
         } else if (kind === "swing") {
           const a = ((this._st(z.id) || {}).attributes) || {};
           const list = Array.isArray(a.swing_modes) ? a.swing_modes : [];
-          const want = z.swing ? "off" : (list.find((x) => String(x).toLowerCase() !== "off") || "on");
-          if (list.length) {
-            this._zoneOptSet(z.id, "swing", !z.swing);
+          // Advance from the position we last ASKED for, so a second tap on a
+          // vane-position unit really is a second position and not the same one
+          // again while the unit is still reporting the old one.
+          const cur = this._zoneOptGet(z.id, "swingPos", a.swing_mode);
+          const want = swingTarget(list, cur, z.swing);
+          if (want != null) {
+            // The optimistic boolean has to describe what was actually SENT. On a
+            // vane list every legal value is an on value, so flipping the old flag
+            // would have shown the button off for a second and then snapped back.
+            this._zoneOptSet(z.id, "swing", String(want).toLowerCase() !== "off");
+            this._zoneOptSet(z.id, "swingPos", want);
             this._zoneRepaint();
             this._call("climate", "set_swing_mode", { entity_id: z.id, swing_mode: want });
           }
@@ -8582,7 +9055,26 @@ ${FACE.KEYFRAMES}
          reached that swallow first and every group action did nothing. */
       if (g) {
         const id = g.dataset.gact;
-        if (id === "alloff") { this._zui.confirmOff = true; this._zoneRepaint(); return true; }
+        if (id !== "alloff" && id !== "confirm" && this._zui.confirmOff) {
+          this._zui.confirmOff = false;
+          if (this._confirmTimer) { clearTimeout(this._confirmTimer); this._confirmTimer = 0; }
+        }
+        if (id === "alloff") {
+          /* Armed, but not forever. It used to stay armed for the life of the card:
+             nothing cleared it except turning the house off, so a reader who thought
+             better of it had no way back and the next tap on that spot was destructive.
+             It now disarms on the same five second hold the rest of the card uses, and
+             the timer repaints so the button visibly goes back to All off. Tapping any
+             other house button disarms it too, just below. */
+          this._zui.confirmOff = true;
+          if (this._confirmTimer) clearTimeout(this._confirmTimer);
+          this._confirmTimer = setTimeout(() => {
+            this._confirmTimer = 0;
+            if (this._zui && this._zui.confirmOff) { this._zui.confirmOff = false; this._zoneRepaint(); }
+          }, OPT_HOLD_MS);
+          this._zoneRepaint();
+          return true;
+        }
         if (id === "confirm") {
           this._zui.confirmOff = false;
           this._groupAction("off");
@@ -8659,13 +9151,48 @@ ${FACE.KEYFRAMES}
       }
       if (act) {
         const a = act.dataset.act;
-        if (a === "sheet" && idx >= 0) { this._zui.sheetIndex = idx; this._zoneRepaint(); return true; }
-        if (a === "close" || a === "backdrop") { this._zui.sheetIndex = null; this._zoneRepaint(); return true; }
+        if (a === "sheet" && idx >= 0) {
+          this._sheetOpener = act;                 // to hand focus back to on close
+          this._zui.sheetIndex = idx;
+          this._zui.sheetId = model.zones[idx] ? model.zones[idx].id : null;
+          this._zoneRepaint();
+          this._focusSheet();
+          return true;
+        }
+        if (a === "close" || a === "backdrop") { this._closeSheet(); return true; }
         if (a === "panel" || a === "footer" || a === "house") return true; // swallow, never close
         if ((a === "inc" || a === "dec") && z && z.set != null) {
-          const step = this._zoneStep();
-          const v = z.set + (a === "inc" ? step : -step);
-          this._zoneOptSet(z.id, "set", v);
+          const step = this._zoneStep() * (a === "inc" ? 1 : -1);
+          const at = ((this._st(z.id) || {}).attributes) || {};
+          // z.set and step are DISPLAY units; the payload has to be HA units, on one
+          // of this room's own stops and inside this room's own rails.
+          const fit = (v) => this._haFit(z.id, this._toHa(v));
+          /* A room reporting no single setpoint is a heat_cool room, and z.set is the
+             MIDPOINT this card invents for the gauge, not a number the room ever
+             reported. Sending it back as `temperature` collapses a 68 to 74 band onto
+             one number, on an entity that does not advertise a single setpoint at all.
+             The house-wide write already skips these rooms; the tile did not. Move the
+             band instead, both ends together, which is the one reading of "warmer" that
+             does not throw away what the room is set to. */
+          const bLo = num(at.target_temp_low), bHi = num(at.target_temp_high);
+          if (num(at.temperature) == null && bLo != null && bHi != null) {
+            const nLo = fit(this._toDisplay(bLo) + step), nHi = fit(this._toDisplay(bHi) + step);
+            if (nLo === bLo && nHi === bHi) return true;   // already against the rail
+            this._zoneOptSet(z.id, "set",
+              this._toDisplay(Math.round(((nLo + nHi) / 2) * 100) / 100));
+            this._zoneRepaint();
+            this._call("climate", "set_temperature",
+              { entity_id: z.id, target_temp_low: nLo, target_temp_high: nHi });
+            return true;
+          }
+          /* Clamp to THIS room's rails, not to _range(): that is the widest range any
+             room in the house advertises, so it would happily walk a 64..76 room up to
+             90. A tap at the boundary is then a no-op rather than a doomed write plus a
+             tile optimistically showing a temperature the room can never reach. */
+          const v = fit(z.set + step);
+          const shown = this._toDisplay(v);
+          if (v == null || shown === z.set) return true;   // already against the rail
+          this._zoneOptSet(z.id, "set", shown);
           this._zoneRepaint();
           this._call("climate", "set_temperature", { entity_id: z.id, temperature: v });
           return true;
