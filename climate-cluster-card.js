@@ -9100,7 +9100,14 @@ ${FACE.KEYFRAMES}
              choosing for itself rather than the card guessing; then the entity's own
              first non-off mode, for a unit too old to have turn_on. */
           const prev = this._zonePrev || {};
+          /* The same rooms All off speaks to, and for the same reason. This walked
+             every configured zone and skipped only one with no state at all, so a
+             room the card paints as dead was still written to while All off filtered
+             it out. The pair has to agree, or turning the house on and turning it
+             off mean two different houses. */
+          const reach = new Set(this._reachableIds());
           model.zones.forEach((z) => {
+            if (!reach.has(z.id)) return;
             const st = this._st(z.id);
             if (!st) return;
             const a = st.attributes || {};

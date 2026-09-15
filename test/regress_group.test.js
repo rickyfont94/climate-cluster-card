@@ -111,6 +111,30 @@ test("reach: unavailable and unknown rooms are dropped from every house action",
     data: { entity_id: ["climate.sala"], preset_mode: "eco" } }]);
 });
 
+// All off filtered those rooms and All on did not. It walked every configured zone and
+// skipped only one with no state at all, so "turn the house on" and "turn the house
+// off" addressed two different houses.
+
+test("allon: All on speaks to exactly the rooms All off does", () => {
+  const st = copy();
+  // The button is only drawn on a house with nothing running, and a dead room is not
+  // running either, so this is the ordinary shape: an off house with one room dead.
+  st["climate.sala"].state = "off";
+  st["climate.elly"].state = "off";
+  st["climate.ricky"].state = "unavailable";
+  const el = makeGroup({}, makeHass(st, { entities }));
+  assert.deepEqual(el._reachableIds(), ["climate.sala", "climate.elly"]);
+
+  clickG(el, "allon");
+  assert.equal(el._hass.calls.length > 0, true, "the button is not dead");
+
+  const touched = new Set();
+  for (const c of el._hass.calls) for (const e of [].concat(c.data.entity_id)) touched.add(e);
+  assert.equal(touched.has("climate.ricky"), false,
+    "a room the card paints as dead is never written to");
+  assert.deepEqual(Array.from(touched).sort(), ["climate.elly", "climate.sala"]);
+});
+
 // -------------------------------------------------- 16. per-room house setpoint --
 // One number was sent to every eligible room at once. A 64..76 room and a 61..86 room
 // have no legal value in common, so a house-level write was out of range for at least
