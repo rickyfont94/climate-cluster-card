@@ -9055,9 +9055,16 @@ ${FACE.KEYFRAMES}
          reached that swallow first and every group action did nothing. */
       if (g) {
         const id = g.dataset.gact;
+        /* Disarming is a VISIBLE change, so it has to repaint here rather than lean on
+           the branch below it. Sync and confirm repaint on their own; All on and the
+           presets write and return, so the flag went false while the warn-coloured
+           "Tap to confirm" stayed on screen. The next tap on it read data-gact=confirm
+           off stale markup and turned the whole house off with no arming step, which
+           is the exact gesture the arm exists to prevent. */
         if (id !== "alloff" && id !== "confirm" && this._zui.confirmOff) {
           this._zui.confirmOff = false;
           if (this._confirmTimer) { clearTimeout(this._confirmTimer); this._confirmTimer = 0; }
+          this._zoneRepaint();
         }
         if (id === "alloff") {
           /* Armed, but not forever. It used to stay armed for the life of the card:

@@ -348,6 +348,40 @@ test("arm: tapping any other house button disarms the All off confirm", () => {
     "the house was never turned off");
 });
 
+test("arm: a preset tap disarms the confirm AND repaints it away", () => {
+  const el = makeGroup();
+  clickG(el, "alloff");
+  assert.ok(el.shadowRoot.querySelector('[data-gact="confirm"]'), "armed");
+
+  // A preset writes and returns. It is the branch that does NOT repaint on its own,
+  // so the disarm above it has to, or the flag goes false under an armed face.
+  clickG(el, "preset:comfort");
+  assert.equal(el._zui.confirmOff, false, "the card considers itself disarmed");
+  assert.equal(el.shadowRoot.querySelector('[data-gact="confirm"]') === null, true,
+    "and the armed face is gone with it, not left behind on stale markup");
+  assert.ok(el.shadowRoot.querySelector('[data-gact="alloff"]'), "visibly back to All off");
+
+  // The disarm must not swallow the action the reader actually asked for.
+  assert.deepEqual(el._hass.calls.map((c) => c.service), ["set_preset_mode"]);
+  assert.equal(el._hass.calls[0].data.preset_mode, "comfort");
+});
+
+test("arm: one tap after that cannot turn the house off", () => {
+  const el = makeGroup();
+  clickG(el, "alloff");
+  clickG(el, "preset:comfort");
+  el._hass.calls.length = 0;
+
+  /* The whole point of the arm. With the stale face on screen its button still read
+     data-gact="confirm", so a single tap on the spot the reader had just used for a
+     preset turned off every room with no confirm step. There must be nothing there
+     to tap; the next off has to arm again from scratch. */
+  assert.equal(el.shadowRoot.querySelector('[data-gact="confirm"]') === null, true);
+  clickG(el, "alloff");
+  assert.deepEqual(el._hass.calls, [], "arming is still not an action");
+  assert.ok(el.shadowRoot.querySelector('[data-gact="confirm"]'), "re-armed from scratch");
+});
+
 test("arm: the confirm times out on its own and the button repaints", () => {
   mock.timers.enable({ apis: ["setTimeout"] });
   try {
