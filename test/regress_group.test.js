@@ -302,7 +302,7 @@ test("sheet: it follows its ROOM across a re-order of config.entities", () => {
 test("sheet: a room that leaves the config closes its own sheet, it is not handed on", () => {
   const el = openSheet(makeGroup(), 1);
   el.setConfig({ entities: ["climate.sala", "climate.elly"] });
-  assert.equal(el.shadowRoot.querySelector('[data-act="panel"]'), null, "the sheet is gone");
+  assert.equal(el.shadowRoot.querySelector('[data-act="panel"]') === null, true, "the sheet is gone");
   assert.equal(el._zui.sheetId, null, "and nothing is left pointing at a room that is not here");
 });
 
@@ -327,7 +327,7 @@ test("sheet: the opener is a real button that names its room", () => {
 test("sheet: Escape closes it, the way every other dialog on the dashboard does", () => {
   const el = openSheet(makeGroup(), 0);
   document.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-  assert.equal(el.shadowRoot.querySelector('[data-act="panel"]'), null);
+  assert.equal(el.shadowRoot.querySelector('[data-act="panel"]') === null, true);
   assert.deepEqual(el._hass.calls, [], "closing is not an action");
 });
 
@@ -342,7 +342,7 @@ test("arm: tapping any other house button disarms the All off confirm", () => {
   assert.ok(el.shadowRoot.querySelector('[data-gact="confirm"]'), "armed");
 
   clickG(el, "sync");
-  assert.equal(el.shadowRoot.querySelector('[data-gact="confirm"]'), null, "disarmed");
+  assert.equal(el.shadowRoot.querySelector('[data-gact="confirm"]') === null, true, "disarmed");
   assert.ok(el.shadowRoot.querySelector('[data-gact="alloff"]'), "and visibly back to All off");
   assert.equal(el._hass.calls.filter((c) => c.service === "turn_off").length, 0,
     "the house was never turned off");
@@ -390,7 +390,7 @@ test("arm: the confirm times out on its own and the button repaints", () => {
     assert.ok(el.shadowRoot.querySelector('[data-gact="confirm"]'));
 
     mock.timers.tick(5001);   // OPT_HOLD_MS, the same hold the rest of the card uses
-    assert.equal(el.shadowRoot.querySelector('[data-gact="confirm"]'), null);
+    assert.equal(el.shadowRoot.querySelector('[data-gact="confirm"]') === null, true);
     assert.ok(el.shadowRoot.querySelector('[data-gact="alloff"]'),
       "the timer has to repaint, or the armed face stays on screen after it expired");
     assert.deepEqual(el._hass.calls, [], "a timeout is not a confirmation");
