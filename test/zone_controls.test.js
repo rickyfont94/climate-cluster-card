@@ -77,7 +77,7 @@ test("controls: the sheet is the SAME object the dial opens, not a second one", 
     "the toggles carry the dial's icons, not bare words");
   // and it must sit OUTSIDE the container-query element, or position:fixed is
   // trapped inside the card and a tap outside cannot reach it
-  assert.equal(root.querySelector(".cg-zonecard .ct-pop"), null);
+  assert.equal(root.querySelector(".cg-zonecard .ct-pop") === null, true);
 });
 
 test("controls: swing falls back to the climate entity when there is no sibling switch", () => {
@@ -108,11 +108,11 @@ test("controls: the steppers move THAT room's setpoint by its own step", () => {
 test("controls: the close button and the backdrop both shut the sheet", () => {
   const a = openSheet(makeGroup(), 0);
   click(a, '[data-act="close"]');
-  assert.equal(a.shadowRoot.querySelector('[data-act="panel"]'), null);
+  assert.equal(a.shadowRoot.querySelector('[data-act="panel"]') === null, true);
 
   const b = openSheet(makeGroup(), 0);
   click(b, '[data-act="backdrop"]');
-  assert.equal(b.shadowRoot.querySelector('[data-act="panel"]'), null);
+  assert.equal(b.shadowRoot.querySelector('[data-act="panel"]') === null, true);
 });
 
 test("controls: a tap on the panel itself does not shut the sheet under your finger", () => {
@@ -257,7 +257,7 @@ test("feel: reality wins as soon as it arrives", () => {
 test("sheet: it sits outside the stacking context, or it paints behind the dashboard", () => {
   const el = openSheet(makeGroup(), 0);
   const inner = el.shadowRoot.querySelector(".cg-inner");
-  assert.equal(inner.querySelector(".ct-pop"), null,
+  assert.equal(inner.querySelector(".ct-pop") === null, true,
     ".cg-inner carries z-index:1, so a fixed overlay inside it can never rise above anything outside this card");
   assert.ok(el.shadowRoot.querySelector(".cg-sheet-host .ct-pop"), "it lives in its own host");
 });

@@ -309,7 +309,7 @@ test("group: the frosted slab never swallows the content", () => {
   const inner = card.querySelector(".cg-inner");
   assert.ok(frost && inner, "both children exist");
   assert.ok(inner.querySelector(".cg-title"), "the content lives inside the wrapper");
-  assert.equal(frost.querySelector(".cg-title"), null, "and not inside the slab");
+  assert.equal(frost.querySelector(".cg-title") === null, true, "and not inside the slab");
   assert.ok(Array.prototype.indexOf.call(card.children, frost)
     < Array.prototype.indexOf.call(card.children, inner), "slab is painted first");
 });

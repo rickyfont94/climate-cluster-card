@@ -28,13 +28,13 @@ test("zone: the zone layout is the default, and it draws a tile per room", () =>
   const el = makeGroup();
   assert.equal(el.shadowRoot.querySelectorAll("[data-zone]").length, 3);
   assert.ok(el.shadowRoot.querySelector(".cg-zonecard"), "the zone card is what rendered");
-  assert.equal(el.shadowRoot.querySelector(".cg-zone"), null, "not the classic grid");
+  assert.equal(el.shadowRoot.querySelector(".cg-zone") === null, true, "not the classic grid");
 });
 
 test("zone: layout classic still draws the shipped grid", () => {
   const el = makeGroup({ layout: "classic" });
   assert.ok(el.shadowRoot.querySelector(".cg-zone"), "classic tiles are back");
-  assert.equal(el.shadowRoot.querySelector(".cg-zonecard"), null);
+  assert.equal(el.shadowRoot.querySelector(".cg-zonecard") === null, true);
 });
 
 // ------------------------------------------------- states the module threw on ----
@@ -101,7 +101,7 @@ test("zone: the counter still says how many of how many", () => {
 
 test("zone: group_actions false removes the button bar", () => {
   assert.ok(makeGroup().shadowRoot.querySelector("[data-gact]"), "the bar is there by default");
-  assert.equal(makeGroup({ group_actions: false }).shadowRoot.querySelector("[data-gact]"), null);
+  assert.equal(makeGroup({ group_actions: false }).shadowRoot.querySelector("[data-gact]") === null, true);
 });
 
 test("zone: zone_rows still lays the rooms out in the number of rows asked for", () => {
