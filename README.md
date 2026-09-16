@@ -11,10 +11,7 @@ An instrument-cluster climate dial for Home Assistant that follows your theme.
 
 <img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/showcase/01-dial-overview.gif" alt="The dial: a 73F target, the room at 74F, the Breeze fan ring at 60 percent, and the quick controls" width="980">
 
-<picture>
-  <source srcset="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/demo.webp" type="image/webp">
-  <img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/demo.png" alt="Climate Cluster Card demo" width="470">
-</picture>
+<img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/demo.webp" alt="Climate Cluster Card demo" width="470">
 
 </div>
 
