@@ -5,6 +5,234 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] - 2026-09-08
+
+Both cards get a new face. Nothing you already have configured changes meaning, and
+every key that shipped before this release still reads the same way.
+
+### Added
+- **A new dial face.** The temperature ring, the fan ring, the numbered scale, the
+  status line and the row of buttons under it are all redrawn from one geometry, so
+  they line up with each other instead of each being placed by hand. `heat_cool`
+  keeps the old face, because the new one draws a single setpoint and that mode has
+  two.
+- **`fan_style`**: `breeze` (the default from this release), `silk`, or `original`.
+  `original` is the plain gradient arc every installed card draws today, so the look
+  you have now is still one setting away.
+- **`fan_clover`**: brings back the small spinning fan glyph from the original face,
+  beside the status line. Off by default. `fan_animation` and `fan_animation_speed`
+  still drive that glyph and now only do anything when it is on.
+- **`rail`**: names the buttons under the dial and their order, from `fan`, `swing`,
+  `led`, `sound` and `extra:0` .. `extra:2`. It is a separate key from `show_fan` /
+  `show_swing` / `show_led` / `show_sound` on purpose, because those four gate the
+  popup chips as well, so folding them into an ordering key would have silently
+  rewritten popup config for anyone already using them.
+- **The group card is a zone card.** One house gauge carrying the coldest and warmest
+  room on its ring, with a live tile per room under it. It is the default layout from
+  this release; the gauge-per-room grid is still there as `layout: classic`.
+- **The group card has a visual editor.** Home Assistant showed "Visual editor not
+  supported" for it until now, so the only way to configure it was YAML.
+- **A per-room sheet.** Tapping a room's number opens its modes, presets, fan, swing
+  and its own plus and minus. It is the same object the single dial opens, not a
+  second plainer copy of it.
+- **`orientation`** on the group card: `auto`, `horizontal` or `vertical`. Automatic
+  puts the gauge beside the rooms when the card is wide enough and stacks them when
+  it is not, measured on the card rather than on the browser window.
+- **`actions`** on the group card names the bottom bar's buttons and their order, the
+  same idea and the same spelling as `rail` on the dial. Presets are offered from
+  what the selected rooms actually advertise.
+- **The house gauge is draggable** and moves every room that can take a setpoint.
+
+### Fixed
+- The face shipped its colours as dark literals baked into the markup, so on a light
+  theme it drew light-grey text on a light background. Both cards now resolve their
+  ink from your theme, and measure the resolved ground rather than asking the browser
+  for a light or dark preference that Home Assistant does not publish.
+- `show_scale`, `show_current` and `mode_colors` were silently ignored by the new
+  face. All three are read again.
+- The fan ring did not move under the finger, and the marker snapped back to its old
+  position mid-drag while the finger was still down.
+- The fan ring vanished in any mode the card had decided was "auto", including after
+  switching out of auto into cool. It is drawn in every mode where the speed can be
+  set, and the marker is hidden (rather than the whole ring) when it cannot.
+- A fan command the unit will not accept is no longer sent and then shown as if it
+  had landed. Measured against the hardware: in hvac `auto` these units refuse both
+  `set_fan_mode` and `number.set_value` while still accepting `set_temperature`.
+- The mode popup and the room sheet painted behind the rest of the dashboard.
+- The room sheet's controls did nothing at all. The sheet is a sibling of the tile
+  grid rather than a descendant of one tile, so every lookup that walked up to the
+  tile found no room and bailed out silently.
+- Controlling a single room had a long delay and dropped taps, because every state
+  push rebuilt the whole card and destroyed the open sheet under your finger.
+- **All on** did nothing on a card opened while the house was already off. It now
+  asks each unit to turn itself on, falls back to that unit's own first non-off mode,
+  and puts a room it watched turn off back the way it was.
+- **Sync all** matched the temperature but not the mode, so five rooms at 72 with one
+  drying and one circulating counted as synced. It moves the mode to whichever mode
+  most of the running rooms are in, and leaves a room somebody turned off alone.
+- Every room read IDLE in fan, dry, auto, and in cool once it reached its setpoint.
+  The card asked "is the room warmer than the setpoint", which is only ever true of
+  cooling. It reads `hvac_action` when the unit reports one.
+- The group card's step was half a degree; one press now moves a whole degree unless
+  `temp_step` says otherwise.
+- The group card crashed rather than rendered on a `heat_cool` room, an unavailable
+  room, a room with no reading, and a house with every room offline. A room name
+  carrying markup landed as markup.
+- `comfort` and `eco` appeared to do nothing. Measured: these units refuse a preset
+  in `fan_only` and accept it in `cool`, and `comfort` reads back as `none` because
+  on this hardware comfort IS the absence of a preset.
+- A stray letter appeared beside the status word when a preset the card did not know
+  was set, because an unknown preset fell back to its own first letter.
+- DRY and AUTO were drawn in the same colour. DRY takes the card's teal.
+- The ROOM caption sat at an angle beside the reading instead of under it, and the
+  group card's two ring labels sat at whatever height their rooms happened to fall
+  at rather than sharing a baseline.
+- The spinning glyph collided with the longer status words.
+- The room dot did not breathe, while the dial's status dot did. Both now run from
+  one keyframe so they cannot drift to two rates that look almost the same.
+- A unit reporting `current_humidity` drew "RH 54%" straight across its own setpoint.
+  The humidity readout is the fourth line of the ORIGINAL centre stack, at a height
+  the new numeral occupies. It moves to the clear band under the numeral, and goes
+  back where it was on `heat_cool`, which keeps the original face.
+- `action_rows` worked on `layout: classic` only, so on the layout this release makes
+  the default it was accepted by the editor and then ignored.
+- Three ways a ring drag wrote a value nobody chose. The move and release listeners
+  live on the window, so they hear every pointer on the page, and nothing checked
+  which one: a second finger lifting anywhere ended the drag and committed while the
+  first was still down, and a stray pointer moving dragged the ring on its way past.
+  Nothing checked the event TYPE either, so a `pointercancel` (a scroll winning the
+  touch, the app going to the background, a pen leaving range) committed whatever the
+  finger happened to be over, when the finger was never lifted at all. And a unit
+  that went unavailable in the middle of a drag was still written to on release. All
+  three now abandon the gesture and put the face back on what the unit reports.
+- Tapping the big number did nothing unless you hit its exact middle. The centre disc
+  is 124 across in face units and the new numeral renders 117 by 125, so its box is
+  bigger than the disc and every corner of the digits falls outside it; the <text>
+  node then takes the tap and drops it. Measured in a browser: five of six points on
+  "74" were dead, by mouse and by touch. The numeral now answers as the centre itself,
+  through the same handler as the disc, so hold and double-tap behave identically
+  wherever on the number you press. Twelve of twelve points now open the sheet.
+- On a unit with named fan speeds the marker sat one stop ahead of the finger. The
+  card held two ideas of where a stop sits on the ring: the settled reading, and the
+  percentage the rail prints under FAN, put stop i at (i + 1) / n, while the PICK put
+  it at i / (n - 1). They agree only on the top stop, so on a three speed unit a
+  finger on "low" drew the ring a third of the way round and the marker stepped
+  forward the moment it lifted. Both now come from one pair of functions, and the
+  round trip is asserted for every stop count.
+- An extra toggle with no configured `name` captioned itself with the entity id, and
+  a Midea switch's object id is the device serial: five of these cards on one dashboard
+  read 30786325, 15063309, 15063309, 15063309 and 15063309, four of them identical and
+  all of them meaningless, with the friendly name sitting right there unread. The
+  caption comes from the friendly name now, with the unit's own name taken off the
+  front and `Mode` off the back, so "Aire-Sala Boost Mode" reads BOOST.
+- Every state change in the house cost each card 110 ms of main thread. Sibling
+  discovery, which finds a unit's fan, swing, LED and sound entities by walking the
+  entity registry, was asked about 65 times per render and walked the whole registry
+  fifteen times per call, once per suffix. On a house with 2,489 registry entries that
+  is 2.4 million iterations per render, and the frontend hands every card a new hass
+  object about twice a second, so two cards on one view stalled the tab for 230 ms four
+  times a second. Every animation on the page froze for it, whatever drove it, which
+  read as jumping, and the tab produced 48 frames in 4 seconds. The lab never saw it
+  because the lab has five states. The answer is now cached on the registry object and
+  recomputed only when the registry changes, and the walk is a single pass. Measured
+  with a registry that size and pushes at that rate: 2.2.1 cost 9 percent of a core,
+  this release before the fix 48, after it 4.
+- The animated fan rings cost a third of a core. Measured on five idle cards in Chrome:
+  silk held the renderer at 30 percent and the raster process at 90, breeze at 16 and 92,
+  while the same face with `original` sat at 3 and 12, which is what 2.2.1 costs. Any
+  per-frame change to SVG geometry repaints the whole layer every frame, and both styles
+  were exactly that, one by morphing path data and one by sliding a dash pattern. Each
+  band is now a static lattice drawn once around the full circle in an overlay that the
+  compositor rotates, clipped to the reading. Same puffs, same ribbons, same speeds, and
+  it now costs what the still ring costs: 2.5 and 14 for silk, 4.8 and 15 for breeze.
+- The silk loop never closed, so every band changed size in one frame once per cycle.
+  Each puff walks one pitch and the animation then snaps it back a pitch upstream, which
+  is invisible only if the puff from the slot behind has arrived at exactly the shape
+  being vacated. The position handoff was always exact; the length was not, because it
+  came from a variation table, was bound to the element and held for the whole cycle,
+  and neighbouring entries differ by up to 94 percent. Measured at up to 47.9 user units
+  of coordinate jump on a 600 unit viewBox, on every path in the band at once, every 1.95
+  to 3.85 seconds. The length now interpolates to its successor's, so it belongs to the
+  position on the ring rather than to the element and a puff breathes as it travels.
+- The status dot and the preset glyphs never finished a breath. Both animate on a 1.9
+  second cycle inside one string that was rewritten on every repaint, and the card
+  repaints on every state change anywhere in Home Assistant, so on a busy instance they
+  restarted well inside their own period. The write is skipped when nothing in it changed.
+- Three of the ring's puffs could never draw anything. The generator ran a pitch past the
+  end of the ring as well as a pitch before it; the leading extra is what lets puffs
+  enter, but the trailing one was clamped to a sliver in all seven of its frames and was
+  interpolated forever regardless.
+- `prefers-reduced-motion` did not reach the fan ring. The stylesheet disabled the CSS
+  driven animations, which stopped breeze, and used `display:none` on the SVG animation
+  elements for the rest, which does nothing at all because display does not apply to
+  them. Silk was the only style built on those elements, so it was exactly the one that
+  escaped. A reader who asks for less motion now gets the static ring.
+- The animated fan rings were not flowing, they were restarting. The ring was keyed on
+  the fan READING, so every speed the unit reported rebuilt it, and rebuilding destroys
+  every running animation. Measured on a live house: one unit reports a new fan speed
+  every 6.9 seconds against a 2.6 second silk cycle, and a probe found 0 of 21 timelines
+  surviving a single tick from 70 to 71, so every puff snapped back into phase twice a
+  minute. Silk and breeze now draw their flow once across the whole ring and move a clip
+  window instead, so the reading changes an attribute and the animation is never
+  interrupted. The same applies under a finger: dragging the ring used to restring it on
+  every pointermove. `original` is untouched, having no animation to protect.
+- Silk was also keyed on the hvac mode, which it does not draw: its puffs take a fixed
+  gradient. A unit that drops to unavailable and back therefore threw away a running
+  ring to redraw identical pixels, 34 times in a day on one of these units.
+- On AUTO the fan ring drew itself as if the fan were pinned at maximum. A null reading
+  was mapped to 100 before the styles saw it, so silk and breeze took their lit opacity
+  and their fastest period, making AUTO the loudest thing on the dial instead of the
+  calmest. The reading now reaches them intact; the arc still fills completely and still
+  carries no marker, which is all that mapping was there to do.
+- Silk applied its blur to every puff, asking for around twenty filter regions to be
+  re-rastered every frame against a shape that changes every frame. It is applied per
+  band now, which is two, and the pixels are identical because puffs within a band never
+  overlap.
+- That shortening reached the rail but not the mode popup, so the same toggle read
+  BOOST under the dial and AIRE-SALA BOOST MODE inside the sheet, where it pushed the
+  chip row past the edge. Both surfaces draw the same word now. A `name` written in
+  YAML is still drawn exactly as typed, and the full friendly name stays on the chip's
+  title and aria-label either way. Found by looking at a release screenshot.
+- A stacked pair of ring labels was pushed DOWN from an already tight baseline and
+  landed on the band. The pair moves up instead.
+- Real room names broke three layouts, found by shooting the release screenshots with
+  a real house in them instead of the short names every earlier capture used.
+  (a) The two ring labels ran through each other: near a narrow spread both ends sit
+  close to twelve o'clock, and a label that would leave the card flipped and grew back
+  ACROSS the dial, so "FAMILY ROOM 71" and "LIVING ROOM 78" overlapped by 25 units.
+  They now always grow outward and slide back inside the box, which leaves them 96
+  units apart on one baseline. (b) A two word room name wrapped to two lines in a
+  tile while a one word name did not, so the numeral underneath sat at a different
+  height on every other tile; the caption now gives up size and tracking before it
+  gives up letters. (c) A caption that does have to truncate now carries the full
+  name as a tooltip, attribute-escaped separately from the text so a name with a
+  quote in it cannot break out of it.
+- The group card's house gauge had the same three, where a release writes every room
+  rather than one setpoint, plus a fourth: a second finger landing on the gauge
+  rebound its move and release handlers and stranded the old pair on the window,
+  where nothing could ever remove them. The group card also had no teardown at all,
+  so a card removed from the dashboard mid-drag left those handlers behind; Lovelace
+  detaches and re-attaches cards freely, entering edit mode does it.
+
+### Changed
+- Three legend sheets in the README: every hvac mode side by side in its own colour,
+  the four preset symbols shown large and named, and the same four in place on the
+  dial. All are lifted out of real rendered cards rather than redrawn, so none of them
+  can drift from the card it describes. The symbol sheet is animated, because two of
+  the four glyphs move: boost's chevrons climb in turn and sleep's z's fade in
+  sequence, and a still frame catches both mid-fade.
+- Every screenshot reshot against this release on the frosted-glass appearance over
+  the plain dark ground the dashboard actually runs on, with five rooms in five
+  different states. The demo animation was rebuilt on the new dial: it sweeps in
+  one direction and holds, rather than bouncing, and it runs at 2.5 frames a second
+  instead of 7. The light-theme frame is gone from the gallery, replaced by a room's
+  sheet and by the modes and presets the dial actually draws. Stills ship as WebP
+  because a shader wallpaper behind frosted glass is fine detail that PNG cannot pack;
+  the asset directory drops from 8.0 MB to 1.3 MB.
+
+### Removed
+- The handoff face's dashed fan ring. `fan_style` was never able to select it.
+
 ## [2.2.1] - 2026-09-06
 
 ### Changed

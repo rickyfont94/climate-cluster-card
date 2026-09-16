@@ -22,6 +22,19 @@ function countFields(schema) {
   }
   return n;
 }
+function fieldNames(rows, out) {
+  out = out || [];
+  rows.forEach((r) => { if (r.name) out.push(r.name); if (r.schema) fieldNames(r.schema, out); });
+  return out;
+}
+function findField(rows, name) {
+  for (const r of rows) {
+    if (r.name === name) return r;
+    if (r.schema) { const hit = findField(r.schema, name); if (hit) return hit; }
+  }
+  return null;
+}
+
 function topLevelRows(schema) {
   return schema.length;
 }
@@ -31,8 +44,16 @@ test("editor: a first-time user sees a handful of rows, not the whole surface", 
   const ed = makeEditor(fx.config, hass);
 
   const basic = ed._schema(hass, fx.config);
-  assert.equal(topLevelRows(basic), 4,
-    "entity, name, Appearance and the advanced switch");
+  // Was 4, then 5. Six now: the buttons row got its own section, above the advanced
+  // switch, because which buttons appear under the dial is a thing people want to
+  // change and hiding it behind a curtain hides the whole decision. Each of these
+  // owns one subject, so there is one place to look. The guard moves, it does not go.
+  assert.equal(topLevelRows(basic), 6,
+    "entity, name, Fan, Buttons, Appearance and the advanced switch");
+  assert.ok(fieldNames(basic).includes("fan_style"),
+    "the fan ring choice is reachable without opening advanced");
+  assert.ok(fieldNames(basic).includes("rail"),
+    "and so is the choice of which buttons appear");
 
   ed._showAdvanced = true;
   const full = ed._schema(hass, fx.config);
@@ -131,4 +152,43 @@ test("editor: preset_names round-trips through the pn__ display fields", () => {
 
   assert.deepEqual(saved.preset_names, { eco: "iECO", boost: "Turbo" });
   assert.equal("pn__eco" in saved, false, "display keys are stripped");
+});
+
+test("editor: fan_style offers the shipped ring plus the two animations", () => {
+  const hass = makeHass(fx.states, { entities: fx.entities });
+  const ed = makeEditor(fx.config, hass);
+  const row = findField(ed._schema(hass, fx.config), "fan_style");
+  assert.ok(row, "fan_style is present without opening advanced");
+  const sel = row.selector.select;
+  // mode list renders radios. A dropdown hides two of the three choices behind a
+  // click, and the owner's complaint was specifically about dropdowns.
+  assert.equal(sel.mode, "list");
+  // breeze leads because it is the default from 2.3.0, so the list reads as a default
+  // and its alternatives. NOT "dash": the handoff has a dashed style, but the
+  // released card draws a smooth gradient ring, so dash is a config alias only.
+  assert.deepEqual(sel.options.map((o) => o.value), ["breeze", "silk", "original"]);
+  assert.ok(sel.options.some((o) => /original/i.test(o.label)),
+    "the ring every installed card draws today is still offered by name");
+});
+
+test("editor: the original spinning fan glyph is offered, off by default", () => {
+  const hass = makeHass(fx.states, { entities: fx.entities });
+  const ed = makeEditor(fx.config, hass);
+  const row = findField(ed._schema(hass, fx.config), "fan_clover");
+  assert.ok(row, "reachable without opening advanced, beside the ring choice");
+  assert.ok(row.selector.boolean, "a plain on/off, not a dropdown");
+});
+
+test("editor: the retired clover animation keys are gone from the GUI but still read", () => {
+  const hass = makeHass(fx.states, { entities: fx.entities });
+  const ed = makeEditor(fx.config, hass);
+  ed._showAdvanced = true;
+  const names = [];
+  (function walk(rows) {
+    rows.forEach((r) => { if (r.name) names.push(r.name); if (r.schema) walk(r.schema); });
+  })(ed._schema(hass, fx.config));
+  // Both drive the spinning clover, which the dial face does not draw, so the
+  // controls did nothing. Reading them must still work for existing YAML.
+  assert.ok(!names.includes("fan_animation"), "no control for a dead key");
+  assert.ok(!names.includes("fan_animation_speed"), "no control for a dead key");
 });

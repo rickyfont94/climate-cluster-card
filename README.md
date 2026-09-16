@@ -85,9 +85,12 @@ That is the whole minimum config. Requires Home Assistant 2024.1.0 or newer. HAC
 | `min_temp` / `max_temp` | number | entity range | Dial bounds, for example `61` and `86` in Fahrenheit. |
 | `temp_step` | number | entity step | Setpoint increment. |
 | `show_scale` / `show_current` / `show_hints` | bool | `true` | Numbered ticks, the NOW reading, the gesture hints. |
-| `fan_animation` | bool | `true` | The spinning clover. |
-| `fan_animation_speed` | `dynamic` \| `constant` \| `off` | `dynamic` | Spin behavior. |
-| `show_fan` | `auto` \| `true` \| `false` | `auto` | Force the fan ring on or off. |
+| `fan_style` | `breeze` \| `silk` \| `original` | `breeze` | How the fan ring is drawn. `original` is the plain gradient arc every card drew before 2.3.0; the other two animate. |
+| `fan_clover` | bool | `false` | Brings back the small spinning fan glyph from the original face, beside the status line. |
+| `fan_animation` | bool | `true` | Whether that glyph spins. Only does anything with `fan_clover` on. |
+| `fan_animation_speed` | `dynamic` \| `constant` \| `off` | `dynamic` | Spin behavior of that glyph. Only does anything with `fan_clover` on. |
+| `show_fan` | `auto` \| `true` \| `false` | `auto` | Force the fan ring on or off. Off hides the ring and its rail button together. |
+| `rail` | list | every control the unit has | Which buttons sit on the row under the dial, and in what order: `fan`, `swing`, `led`, `sound`, `extra:0` .. `extra:2`. A name this unit cannot do is skipped. |
 | `swing_entity` / `led_entity` / `sound_entity` | `switch.*` | Midea sibling | Override the auto-discovered chip entity. |
 | `swing_h_entity` | `switch.*` | auto-discovered | Horizontal swing override. |
 | `show_swing_h` | `auto` \| `true` \| `false` | `auto` | Second swing chip. Auto shows it when a horizontal axis resolves. |
@@ -117,11 +120,48 @@ max_height: 34vh
 
 </details>
 
+### The fan ring
+
+<img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/rings-anim.webp" alt="The three fan ring styles side by side" width="820">
+
+The outer ring is the fan, and you drag it the same way you drag the temperature. One
+dial, one second, three treatments: `breeze` drifts ribbons that settle and is the
+default, `silk` sends travelling puffs around the arc, and `original` is the plain
+gradient arc every version before 2.3.0 drew. Both animated rings speed up the higher
+the fan is set. Original is in the row so you can see it hold still next to the other
+two.
+
+### Modes and presets at a glance
+
+<img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/modes.webp" alt="Every hvac mode on the dial" width="820">
+
+Mode ink is spent on exactly five things: the mode word, the status dot and word, the
+lit rail cell, the fan ring stroke and the comfort glyph. It never touches the two arc
+gradients, the needle, the room pin, the delta segment or the steppers, which is why
+six modes still read as one instrument. Override any of them with `mode_colors`.
+
+<img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/presets-anim.webp" alt="The four preset symbols" width="820">
+
+Eco, comfort, boost and sleep are a live row in the pop-up, and whichever one is set
+wears its own symbol beside the status word, where you read it without opening
+anything. Two of the four move: boost's chevrons climb in turn and sleep's z's fade in
+sequence, both on the same 1.9s the status dot breathes on.
+
+<img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/presets.webp" alt="Every preset glyph shown on the dial" width="820">
+
+Each keeps its own colour so it reads the same in any mode. Comfort is the one
+exception and borrows the mode ink, because it means the normal state of that mode. A
+preset the card does not recognise draws nothing rather than falling back to its own
+first letter.
+
 ## Multi-zone card
 
-`custom:climate-cluster-group-card` shows a house gauge plus every zone as a live mini instrument. Tap a zone to promote it into the hero.
+`custom:climate-cluster-group-card` puts the whole house on one card: a house gauge
+that carries the coldest and warmest room on its ring, and a live tile per room under
+it. From 2.3.0 that is the default. The gauge-per-room grid that shipped before it is
+still there as `layout: classic`.
 
-<img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/group-card.png" alt="Multi-zone group card" width="820">
+<img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/group-card.webp" alt="Multi-zone group card" width="820">
 
 ```yaml
 type: custom:climate-cluster-group-card
@@ -130,25 +170,43 @@ entities:
   - climate.living_room
   - climate.bedroom
   - climate.office
-hero: average          # average | hottest | a named entity
-tap_zone: focus        # focus | more-info
-zone_rows: 2           # lay the zone tiles out in 2 rows; omit to reflow with the width
-action_rows: 1         # put the group buttons on one row
+orientation: auto      # auto | horizontal | vertical
+temp_step: 1           # what one press of plus or minus moves a room
 appearance: glass-dark # theme | glass-dark | glass-light
 glass_color: "#0E1A24" # tint for the frosted panel
-accent: "#4ADD5F"      # used on the running count and the preset buttons
+accent: "#4ADD5F"      # used on the running count and the buttons
 ```
 
-`zone_rows` and `action_rows` take any whole number. Columns are worked out from the
-count, so five zones with `zone_rows: 2` gives you three across and two below. Leave
-either one out and that grid stays responsive.
+Tap a room's number and that room's sheet opens: its modes, its presets and its own
+hardware toggles. It is the same object the single dial opens, so the two cards behave
+identically once you are inside one. Plus and minus sit on the tile itself, and
+dragging the house gauge moves every room at once.
 
-The group card takes the same `appearance`, `glass_color` and `accent` keys as the
-single dial, so both cards can wear one look on the same dashboard.
+**Every option is in the visual editor here too.**
 
-<img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/group-rows.png" alt="Group card with the zones on one row" width="720">
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `entities` | list | **required** | The rooms. The order you list them is the order they are drawn. |
+| `name` | string | unset | Card title. |
+| `layout` | `zones` \| `classic` | `zones` | `classic` brings back the gauge-per-room grid from before 2.3.0. |
+| `orientation` | `auto` \| `horizontal` \| `vertical` | `auto` | `auto` puts the gauge beside the rooms when the card is wide enough and stacks them when it is not. |
+| `actions` | list | off, sync, and the first two shared presets | Which buttons sit on the bottom bar and in what order: `off`, `sync`, `preset:<name>`. A preset no room advertises is skipped. |
+| `group_actions` | bool | `true` | Set false to drop the bottom bar entirely. |
+| `temp_step` | number | `1` | What one press of plus or minus moves a room. Whole degrees unless you say otherwise. |
+| `min_temp` / `max_temp` | number | narrowest room range | Bounds for the house gauge. |
+| `temperature_unit` | `F` \| `C` | your HA unit system | Force the unit. |
+| `appearance` / `accent` / `glass_color` / `glass_opacity` | | same as the dial | Both cards take the same look keys, so they can match on one dashboard. |
+| `zone_rows` / `action_rows` | number | responsive | Pin the rooms or the buttons to a fixed number of rows. Columns are worked out from the count, so five rooms with `zone_rows: 2` gives three across and two below. |
+| `hero` | `average` \| `hottest` | `average` | What the big gauge reads. **`layout: classic` only.** |
+| `tap_zone` | `focus` \| `more-info` | `focus` | What tapping a tile does. **`layout: classic` only.** |
 
-A preset button appears only when every zone advertises that preset, and Sync skips any `heat_cool` zone rather than guessing which of its two setpoints to move.
+<img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/group-rows.webp" alt="Multi-zone card in its vertical shape" width="470">
+
+**All off** becomes **All on** when the whole house is off, and puts each room back the
+way it was rather than picking a mode for it. **Sync all** matches the temperature *and*
+the mode of most of the running rooms, and leaves a room somebody deliberately turned
+off alone. A preset button appears only when every room advertises that preset, and
+Sync skips any `heat_cool` room rather than guessing which of its two setpoints to move.
 
 ## Compatibility
 
@@ -182,15 +240,19 @@ extra_toggles:
 <details><summary><b>More screenshots</b></summary>
 
 <table border="0"><tr>
-  <td><img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/preview.png" alt="Two-ring dial" width="330"><br><b>Two-ring dial</b>, inner is temp, outer is fan</td>
-  <td><img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/view-modes.png" alt="Mode popup" width="330"><br><b>Mode popup</b> with the feature chips</td>
+  <td><img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/preview.webp" alt="Two-ring dial" width="330"><br><b>Two-ring dial</b>, inner is temp, outer is fan</td>
+  <td><img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/view-modes.webp" alt="Mode popup" width="330"><br><b>Mode popup</b> with the feature chips</td>
 </tr><tr>
-  <td><img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/theme-light.png" alt="Light theme" width="330"><br><b>Light theme</b></td>
-  <td><img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/theme-dark.png" alt="Dark theme" width="330"><br><b>Dark theme</b></td>
+  <td><img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/zone-sheet.webp" alt="A room's sheet on the multi-zone card" width="330"><br><b>A room's sheet</b>, the same object the dial opens</td>
+  <td><img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/dial-auto.webp" alt="The dial in auto with a comfort preset" width="330"><br><b>Auto</b> in its own colour, preset as a glyph</td>
 </tr><tr>
-  <td><img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/glass-hibiscus.png" alt="Frosted glass, pink accent" width="330"><br><b>Frosted glass</b>, your own tint and accent</td>
-  <td><img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/glass-binnacle.png" alt="Frosted glass, green accent" width="330"><br><b>Frosted glass</b>, a second tint on the same card</td>
+  <td><img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/dial-boost.webp" alt="The dial in cool with the boost preset" width="330"><br><b>Boost</b>, and a hardware switch on the rail</td>
+  <td><img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/dial-fan.webp" alt="The dial in fan only" width="330"><br><b>Fan only</b>, with nothing to cool</td>
 </tr></table>
+
+Every shot is `appearance: glass-dark` over a wallpaper, which is what the frosted panel
+looks like in use. On the default `theme` appearance the same card is opaque and follows
+your Home Assistant colours instead.
 
 </details>
 
