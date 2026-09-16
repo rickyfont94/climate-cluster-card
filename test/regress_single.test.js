@@ -127,6 +127,49 @@ test("button: touch and pen are unaffected, because a primary contact is button 
   assert.equal(bare._ringArmed, true, "an absent button is not a non-primary button");
 });
 
+// The same rule, at the two entry points the original fix missed. A synthetic event is
+// enough here, exactly as with ringDown: these read button before they touch the DOM.
+function synth(over) {
+  const ev = Object.assign({
+    pointerId: 1, button: 0, clientX: 10, clientY: 10,
+    prevented: 0, stopped: 0,
+    preventDefault() { this.prevented++; }, stopPropagation() { this.stopped++; },
+  }, over || {});
+  ev.target = ev.target || { setPointerCapture() {}, closest() { return null; } };
+  ev.currentTarget = ev.currentTarget || ev.target;
+  return ev;
+}
+
+test("button: a right-button press on the fan icon starts no gesture", () => {
+  const c = liveCard();
+  c._fanIconPointerDown(synth({ button: 2 }));
+  assert.equal(c._fanIconStart == null, true, "the secondary button is not a control");
+  c._fanIconPointerDown(synth({ button: 1 }));
+  assert.equal(c._fanIconStart == null, true, "nor is the middle button");
+});
+
+test("button: the primary button still drives the fan icon", () => {
+  const c = liveCard();
+  c._fanIconPointerDown(synth({ button: 0 }));
+  assert.equal(c._fanIconStart == null, false, "a left press still starts the gesture");
+});
+
+test("button: a non-primary press on the swing icon is left alone, not swallowed", () => {
+  // The guard sits AHEAD of stopPropagation and preventDefault on purpose. Refusing a
+  // press and suppressing its default too would eat the context menu on a control the
+  // card has already decided to ignore.
+  const c = liveCard();
+  const right = synth({ button: 2 });
+  c._swingPointerDown(right);
+  assert.equal(right.prevented, 0, "its default is not suppressed");
+  assert.equal(right.stopped, 0, "and it is not stopped from bubbling");
+  assert.equal(!!c._swingPressActive, false, "no swing press is active");
+
+  const left = synth({ button: 0 });
+  c._swingPointerDown(left);
+  assert.equal(left.prevented > 0, true, "while a primary press is still claimed");
+});
+
 // ================================================================= fix 4 ======
 // An abandoned gesture used to clear EVERY optimistic field. So a fan drag the browser
 // cancelled threw away a temperature the card had already SENT and was holding on

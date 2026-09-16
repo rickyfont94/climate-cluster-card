@@ -375,12 +375,12 @@ test("sync: a room that cannot do the majority mode is left alone", () => {
 
 // happy-dom lays nothing out, so a synthetic pointer cannot produce a real angle.
 // The geometry has its own tests; what these drive is the lifecycle around it.
-const houseDown = (el, id, at) => {
+const houseDown = (el, id, at, over) => {
   const band = el.shadowRoot.querySelector('[data-act="house"]');
   assert.ok(band, "the module draws the band");
   el._houseTempAt = typeof at === "function" ? at : () => (at == null ? 71 : at);
-  el._housePointerDown({ pointerId: id, clientX: 10, clientY: 10, target: band,
-    preventDefault() {} });
+  el._housePointerDown(Object.assign({ pointerId: id, clientX: 10, clientY: 10, target: band,
+    preventDefault() {} }, over || {}));
   return el;
 };
 const sets = (el) => el._hass.calls.filter((c) => c.service === "set_temperature");
@@ -442,4 +442,46 @@ test("house: a card removed mid-drag comes back with a working gauge", () => {
   houseDown(el, 2, 74);
   assert.ok(el._houseDrag, "so the next drag is accepted");
   assert.equal(el._housePointerId, 2);
+});
+
+// Only the primary button drives a control. The rings, the centre disc and the steppers
+// already had this rule; the house band did not, and it is the one that does not write a
+// single room but a setpoint to EVERY room in the house.
+
+test("house button: a right-button press does not arm the house drag", () => {
+  const el = houseDown(makeGroup(), 1, 68, { button: 2 });
+  assert.equal(!!el._houseDrag, false, "the secondary button is not a control");
+  assert.equal(el._zui && el._zui.houseTarget != null, false, "and nothing is painted on the gauge");
+});
+
+test("house button: a middle-button press does not arm it either", () => {
+  const el = houseDown(makeGroup(), 1, 68, { button: 1 });
+  assert.equal(!!el._houseDrag, false, "the middle button is not a control either");
+});
+
+test("house button: a refused press cannot write the house, even driven to a release", () => {
+  const el = houseDown(makeGroup(), 1, 68, { button: 2 });
+  // The whole gesture, not just the down. A right drag used to paint and then commit.
+  el._onHouseMove && el._onHouseMove({ pointerId: 1, clientX: 900, clientY: 900 });
+  el._onHouseUp && el._onHouseUp({ type: "pointerup", pointerId: 1 });
+  assert.deepEqual(el._hass.calls, [], "no room was written to");
+  assert.equal(sets(el).length, 0, "and no setpoint reached the house");
+});
+
+test("house button: the primary button still drives the house", () => {
+  const el = houseDown(makeGroup(), 1, 68, { button: 0 });
+  assert.ok(el._houseDrag, "a left press still arms the gauge");
+  el._onHouseUp({ type: "pointerup", pointerId: 1 });
+  assert.ok(sets(el).length >= 1, "and still commits on release");
+  assert.equal(sets(el)[0].data.temperature, 68);
+});
+
+test("house button: touch, pen and an absent button are all primary contacts", () => {
+  const touch = houseDown(makeGroup(), 1, 68, { pointerType: "touch", button: 0 });
+  assert.ok(touch._houseDrag, "a finger still drags the house band");
+  const pen = houseDown(makeGroup(), 1, 68, { pointerType: "pen", button: 0 });
+  assert.ok(pen._houseDrag, "and so does a pen");
+  // Every house test above omits button entirely; an absent button is taken at its word.
+  const bare = houseDown(makeGroup(), 1, 68, { button: undefined });
+  assert.ok(bare._houseDrag, "an absent button is not a non-primary button");
 });

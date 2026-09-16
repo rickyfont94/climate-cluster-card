@@ -4284,6 +4284,8 @@
       const s = this._st(this._config.entity);
       if (!s || s.state === "off" || s.state === "unavailable" || s.state === "unknown") return;
       if (this._popOpen) return;
+      // primary button only, as at _ringPointerDown
+      if (e.button && e.button !== 0) return;
       e.preventDefault();
       e.stopPropagation();
       this._fanIconStart = { x: e.clientX, y: e.clientY };
@@ -4816,6 +4818,9 @@
     // it opens the position picker and suppresses the release tap. The picker only arms
     // when the CLIMATE swing exposes 2+ real members (switch-backed Midea never picks).
     _swingPointerDown(e) {
+      // primary button only, and ahead of the swallow: a non-primary press must leave
+      // the event alone rather than have its default suppressed on the way out
+      if (e.button && e.button !== 0) return;
       e.stopPropagation();
       e.preventDefault();
       const m = this._swingMode();
@@ -8926,6 +8931,13 @@ ${FACE.KEYFRAMES}
 
     _housePointerDown(e) {
       if (!this._config || this._config.layout === "classic") return;
+      /* The same rule the rings, the center and the steppers already follow: only the
+         primary button drives a control. This one mattered most, because the house band
+         does not write one room, it writes a setpoint to every room in the house. A
+         right-button or middle-button press-move-release armed the drag, crossed the
+         threshold and committed. Touch and pen are unaffected, because button is 0 for
+         a primary contact. */
+      if (e.button && e.button !== 0) return;
       /* A drag already owns the gauge. Re-entering here would rebind _onHouseMove
          and _onHouseUp, and the OLD closures stay registered on window forever
          because the removal only ever names the current ones. */
