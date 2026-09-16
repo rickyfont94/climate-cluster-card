@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.1] - 2026-09-16
+
+Documentation and screenshots only. The card itself is unchanged from 2.3.0, so there
+is nothing to update for unless you read the README inside HACS.
+
+### Changed
+- README screenshots are rendered from the current card geometry at the width GitHub
+  serves, replacing captures that predated the 2.3.0 face.
+- The README opens on the annotated dial.
+- Removed the `<picture>` element from the README hero. HACS renders it as raw text.
+- README file links are absolute so HACS stops rewriting them, which had broken the
+  License badge.
+
 ## [2.3.0] - 2026-09-08
 
 Both cards get a new face. Nothing you already have configured changes meaning, and
@@ -451,6 +464,10 @@ First public release of the Climate Cluster Card for Home Assistant.
 - Full GUI editor, no YAML required.
 - Auto-discovery of fan / swing / LED / sound sibling entities, tuned for Midea (`midea_ac_lan`).
 
+[2.3.1]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v2.3.1
+[2.3.0]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v2.3.0
+[2.2.1]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v2.2.1
+[2.2.0]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v2.2.0
 [2.1.1]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v2.1.1
 [2.1.0]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v2.1.0
 [2.0.2]: https://github.com/rickyfont94/climate-cluster-card/releases/tag/v2.0.2
