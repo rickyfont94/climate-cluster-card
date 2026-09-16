@@ -9,6 +9,8 @@ An instrument-cluster climate dial for Home Assistant that follows your theme.
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](LICENSE)
 [![Downloads](https://img.shields.io/github/downloads/rickyfont94/climate-cluster-card/total?style=for-the-badge)](https://github.com/rickyfont94/climate-cluster-card/releases)
 
+<img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/showcase/01-dial-overview.gif" alt="The dial: a 73F target, the room at 74F, the Breeze fan ring at 60 percent, and the quick controls" width="980">
+
 <picture>
   <source srcset="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/demo.webp" type="image/webp">
   <img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/demo.png" alt="Climate Cluster Card demo" width="470">
@@ -262,9 +264,7 @@ your Home Assistant colours instead.
 
 </details>
 
-<details><summary><b>Annotated views: dial, whole house, and horizontal layout</b></summary>
-
-<img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/showcase/01-dial-overview.gif" alt="Animated Breeze dial with numbered annotations for target, room reading, fan ring, and quick controls" width="980">
+<details><summary><b>Annotated views: whole house and horizontal layout</b></summary>
 
 <img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/showcase/03-whole-house.png" alt="Annotated house summary, room reading and target, fan percentage, and shared actions" width="980">
 
