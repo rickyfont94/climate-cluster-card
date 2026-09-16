@@ -122,14 +122,13 @@ max_height: 34vh
 
 ### The fan ring
 
-<img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/rings-anim.webp" alt="The three fan ring styles side by side" width="820">
+<img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/showcase/05-fan-treatments.gif" alt="Breeze, Silk, and Original at 60 percent fan speed, with Breeze as the default" width="980">
 
 The outer ring is the fan, and you drag it the same way you drag the temperature. One
-dial, one second, three treatments: `breeze` drifts ribbons that settle and is the
-default, `silk` sends travelling puffs around the arc, and `original` is the plain
-gradient arc every version before 2.3.0 drew. Both animated rings speed up the higher
-the fan is set. Original is in the row so you can see it hold still next to the other
-two.
+dial, three treatments: `breeze` drifts ribbons that settle and is the default, `silk`
+sends travelling puffs around the arc, and `original` is the plain gradient arc every
+version before 2.3.0 drew. Both animated rings speed up the higher the fan is set.
+Original is in the row so you can see it hold still next to the other two.
 
 ### Modes and presets at a glance
 
@@ -140,14 +139,20 @@ lit rail cell, the fan ring stroke and the comfort glyph. It never touches the t
 gradients, the needle, the room pin, the delta segment or the steppers, which is why
 six modes still read as one instrument. Override any of them with `mode_colors`.
 
-<img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/presets-anim.webp" alt="The four preset symbols" width="820">
+<img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/showcase/06-preset-symbol-motion.gif" alt="Preset symbols up close: static Comfort and Eco, climbing Boost chevrons, and fading Sleep Zs" width="980">
 
 Eco, comfort, boost and sleep are a live row in the pop-up, and whichever one is set
 wears its own symbol beside the status word, where you read it without opening
 anything. Two of the four move: boost's chevrons climb in turn and sleep's z's fade in
 sequence, both on the same 1.9s the status dot breathes on.
 
-<img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/presets.webp" alt="Every preset glyph shown on the dial" width="820">
+<img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/showcase/02-preset-signatures.gif" alt="Comfort, Eco, Boost, and Sleep rendered from the current card geometry with animated Breeze rings and numbered annotations" width="980">
+
+<details><summary><b>Preset still view</b></summary>
+
+<img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/showcase/02-preset-signatures.png" alt="Still view of Comfort, Eco, Boost, and Sleep with the same numbered annotations" width="980">
+
+</details>
 
 Each keeps its own colour so it reads the same in any mode. Comfort is the one
 exception and borrows the mode ink, because it means the normal state of that mode. A
@@ -180,7 +185,8 @@ accent: "#4ADD5F"      # used on the running count and the buttons
 Tap a room's number and that room's sheet opens: its modes, its presets and its own
 hardware toggles. It is the same object the single dial opens, so the two cards behave
 identically once you are inside one. Plus and minus sit on the tile itself, and
-dragging the house gauge moves every room at once.
+dragging the house gauge sets a shared target for running rooms that support a single
+setpoint. Each room receives a value within its own temperature range and step.
 
 **Every option is in the visual editor here too.**
 
@@ -253,6 +259,16 @@ extra_toggles:
 Every shot is `appearance: glass-dark` over a wallpaper, which is what the frosted panel
 looks like in use. On the default `theme` appearance the same card is opaque and follows
 your Home Assistant colours instead.
+
+</details>
+
+<details><summary><b>Annotated views: dial, whole house, and horizontal layout</b></summary>
+
+<img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/showcase/01-dial-overview.gif" alt="Animated Breeze dial with numbered annotations for target, room reading, fan ring, and quick controls" width="980">
+
+<img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/showcase/03-whole-house.png" alt="Annotated house summary, room reading and target, fan percentage, and shared actions" width="980">
+
+<img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/showcase/04-room-controls-and-layouts.png" alt="Annotated horizontal group card with the house gauge beside the room grid and shared controls" width="980">
 
 </details>
 
