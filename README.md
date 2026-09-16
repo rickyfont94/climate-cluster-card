@@ -6,7 +6,7 @@ An instrument-cluster climate dial for Home Assistant that follows your theme.
 
 [![Release](https://img.shields.io/github/v/release/rickyfont94/climate-cluster-card?style=for-the-badge&color=4fc3f7&label=Release&sort=semver)](https://github.com/rickyfont94/climate-cluster-card/releases)
 [![HACS Default](https://img.shields.io/badge/HACS-Default-41BDF5?style=for-the-badge)](https://github.com/hacs/integration)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](https://github.com/rickyfont94/climate-cluster-card/blob/main/LICENSE)
 [![Downloads](https://img.shields.io/github/downloads/rickyfont94/climate-cluster-card/total?style=for-the-badge)](https://github.com/rickyfont94/climate-cluster-card/releases)
 
 <img src="https://raw.githubusercontent.com/rickyfont94/climate-cluster-card/main/assets/showcase/01-dial-overview.gif" alt="The dial: a 73F target, the room at 74F, the Breeze fan ring at 60 percent, and the quick controls" width="980">
@@ -286,10 +286,10 @@ Midea is a trademark of its respective owner. This project is independent and un
 
 ## Links
 
-- [Changelog](CHANGELOG.md)
-- [Contributing](CONTRIBUTING.md)
+- [Changelog](https://github.com/rickyfont94/climate-cluster-card/blob/main/CHANGELOG.md)
+- [Contributing](https://github.com/rickyfont94/climate-cluster-card/blob/main/CONTRIBUTING.md)
 - [Report an issue or request a feature](https://github.com/rickyfont94/climate-cluster-card/issues)
-- [MIT License](LICENSE)
+- [MIT License](https://github.com/rickyfont94/climate-cluster-card/blob/main/LICENSE)
 
 <div align="center">
 
