@@ -26,7 +26,7 @@
   const NS = "http://www.w3.org/2000/svg";
 
   // ---- console version banner ---------------------------------------------
-  const VERSION = "2.3.1";
+  const VERSION = "2.3.2-ru.2";
   console.info(
     "%c CLIMATE-CLUSTER-CARD %c v" + VERSION + " ",
     "color:#0b0f16;background:#4fc3f7;font-weight:700;border-radius:4px 0 0 4px;padding:2px 6px",
@@ -94,6 +94,160 @@
   // is read from hass.language (then hass.locale.language); a region subtag is
   // stripped (es-419 -> es). Keep values free of em dashes (use a hyphen).
   const LOCALE = {
+    ru: {
+    "now": "СЕЙЧАС",
+    "swing": "ЖАЛЮЗИ",
+    "led": "ДИСПЛЕЙ",
+    "sound": "ЗВУК",
+    "close": "Закрыть",
+    "unavailable": "НЕДОСТУПНО",
+    "preset": "Пресет",
+    "swing_h": "ГОРИЗ. ЖАЛЮЗИ",
+    "increase_temp": "Повысить температуру",
+    "decrease_temp": "Понизить температуру",
+    "auto": "АВТО",
+    "automatic": "Автоматически",
+    "percent": "процентов",
+    "fan": "Вентилятор",
+    "mode": "Режим",
+    "to": "до",
+    "on": "вкл.",
+    "off": "выкл.",
+    "celsius": "Цельсий",
+    "fahrenheit": "Фаренгейт",
+    "missing": "ОТСУТСТВУЕТ",
+    "climate_control": "управление климатом",
+    "set_fan_auto": "Автоматическая скорость вентилятора",
+    "change_mode": "Изменить режим",
+    "target_temperature": "Целевая температура",
+    "fan_speed": "Скорость вентилятора",
+    "select_mode": "Выбор режима",
+    "hint_mode": "РЕЖИМ",
+    "hint_fan": "ВЕНТ.",
+    "hint_auto": "АВТО",
+    "cooling": "ОХЛАЖДЕНИЕ",
+    "all_off": "ВЫКЛЮЧИТЬ ВСЁ",
+    "all_on": "ВКЛЮЧИТЬ ВСЁ",
+    "confirm_off": "ПОДТВЕРДИТЬ",
+    "sync": "СИНХРОНИЗИРОВАТЬ",
+    "editor.section.appearance": "Внешний вид",
+    "editor.section.modes": "Режимы",
+    "editor.section.presets": "Пресеты",
+    "editor.section.fan": "Вентилятор",
+    "editor.section.features": "Функции",
+    "editor.section.extra_toggles": "Дополнительные переключатели",
+    "editor.section.layout": "Компоновка",
+    "editor.section.actions": "Действия",
+    "editor.section.mode_colors": "Цвета режимов",
+    "editor.section.mode_names": "Названия режимов",
+    "editor.section.rail": "Кнопки под шкалой",
+    "editor.opt.auto": "Авто",
+    "editor.opt.show": "Показать",
+    "editor.opt.hide": "Скрыть",
+    "editor.opt.unit_fahrenheit": "Фаренгейт",
+    "editor.opt.unit_celsius": "Цельсий",
+    "editor.opt.anim_dynamic": "Динамическая",
+    "editor.opt.anim_constant": "Постоянная",
+    "editor.opt.anim_off": "Выключена",
+    "editor.opt.fan_style_original": "Обычное кольцо",
+    "editor.opt.fan_style_breeze": "Ветерок",
+    "editor.opt.fan_style_silk": "Плавная",
+    "editor.opt.rail_fan": "Вентилятор",
+    "editor.opt.rail_swing": "Жалюзи",
+    "editor.opt.rail_led": "Дисплей",
+    "editor.opt.rail_sound": "Звук",
+    "editor.opt.rail_extra": "Свой переключатель",
+    "editor.opt.appearance_theme": "Тема Home Assistant",
+    "editor.opt.appearance_glass_dark": "Матовое стекло (тёмное)",
+    "editor.opt.appearance_glass_light": "Матовое стекло (светлое)",
+    "editor.warn_range": "Минимальная температура должна быть ниже максимальной. Пока диапазон неверен, шкала использует фиксированные значения.",
+    "editorLabels": {
+      "entity": "Климатическая сущность",
+      "name": "Название",
+      "fan_style": "Кольцо вентилятора",
+      "rail": "Кнопки и порядок",
+      "fan_clover": "Вращающийся вентилятор",
+      "appearance": "Фон",
+      "reset_styling": "Сбросить оформление",
+      "glass_color": "Оттенок стекла",
+      "glass_opacity": "Прозрачность стекла",
+      "accent": "Акцентный цвет",
+      "font": "Шрифт",
+      "font_url": "URL таблицы стилей шрифта",
+      "temperature_unit": "Единицы температуры",
+      "temp_step": "Шаг",
+      "min_temp": "Минимальная температура",
+      "max_temp": "Максимальная температура",
+      "show_scale": "Показать шкалу",
+      "show_current": "Показать текущую температуру",
+      "modes": "Режимы",
+      "fan_entity": "Сущность скорости вентилятора (number.*)",
+      "__advanced": "Все настройки",
+      "show_fan": "Кольцо и кнопка вентилятора",
+      "show_presets": "Показать пресеты",
+      "show_humidity": "Показать влажность",
+      "zone_rows": "Ряды комнат",
+      "action_rows": "Ряды кнопок",
+      "show_swing_h": "Горизонтальные жалюзи",
+      "swing_h_entity": "Сущность горизонтальных жалюзи",
+      "show_steppers": "Кнопки + / −",
+      "fan_animation": "Анимация вентилятора",
+      "fan_animation_speed": "Скорость анимации",
+      "swing_entity": "Сущность жалюзи",
+      "show_swing": "Показать жалюзи",
+      "led_entity": "Сущность дисплея",
+      "show_led": "Показать дисплей",
+      "sound_entity": "Сущность звука",
+      "show_sound": "Показать звук",
+      "extra_toggles": "Дополнительные переключатели",
+      "show_hints": "Подсказки управления",
+      "max_height": "Максимальная высота",
+      "tap_action": "Нажатие",
+      "hold_action": "Удержание",
+      "double_tap_action": "Двойное нажатие"
+    },
+    "editorHelpers": {
+      "name": "Название карточки; по умолчанию берётся имя сущности.",
+      "rail": "Выберите кнопки и порядок их отображения.",
+      "appearance": "Тема следует оформлению Home Assistant. Матовое стекло сохраняет собственный фон.",
+      "reset_styling": "Сбрасывает цвета, шрифт и оформление без изменения сущностей.",
+      "glass_color": "Цвет фона в режиме матового стекла.",
+      "glass_opacity": "Прозрачность фона от 0 до 1.",
+      "accent": "Основной акцентный цвет элементов управления.",
+      "font": "Оставьте пустым для шрифта темы Home Assistant.",
+      "font_url": "Необязательная ссылка на CSS шрифта.",
+      "temperature_unit": "Авто использует единицы Home Assistant.",
+      "temp_step": "Шаг установки температуры.",
+      "min_temp": "Пустое поле — минимум сущности.",
+      "max_temp": "Пустое поле — максимум сущности.",
+      "show_scale": "Числовая шкала вокруг циферблата.",
+      "show_current": "Текущая температура и указатель.",
+      "modes": "Режимы для всплывающего меню.",
+      "fan_entity": "Сущность number.* со скоростью вентилятора.",
+      "__advanced": "Расширенные настройки режимов, вентилятора и оформления.",
+      "show_fan": "Скрывает кольцо и кнопку вентилятора.",
+      "show_presets": "Показать строку пресетов.",
+      "show_humidity": "Показать текущую влажность.",
+      "zone_rows": "Число рядов комнат; пустое поле — автоматически.",
+      "action_rows": "Число рядов кнопок; пустое поле — автоматически.",
+      "show_swing_h": "Показывать управление горизонтальными жалюзи.",
+      "show_steppers": "Показывать кнопки изменения уставки.",
+      "fan_animation": "Анимация вентилятора.",
+      "fan_animation_speed": "Скорость анимации.",
+      "swing_entity": "Сущность переключателя жалюзи.",
+      "show_swing": "Показывать переключатель жалюзи.",
+      "led_entity": "Сущность дисплея.",
+      "show_led": "Показывать переключатель дисплея.",
+      "sound_entity": "Сущность звука.",
+      "show_sound": "Показывать переключатель звука.",
+      "extra_toggles": "Список дополнительных сущностей.",
+      "show_hints": "Подсказки на шкале.",
+      "max_height": "Ограничение высоты, например 360px.",
+      "tap_action": "Действие при нажатии.",
+      "hold_action": "Действие при удержании.",
+      "double_tap_action": "Действие при двойном нажатии."
+    }
+  },
     en: {
       now: "NOW",
       swing: "SWING",
@@ -1477,6 +1631,43 @@
     return ringLabelDraw(cold, '#8b95a2') + ringLabelDraw(warm, '#27d3ff');
   }
 
+  // Breeze-style outer airflow, adapted from the single-dial BREEZE ribbons.
+  // Each wavy ribbon keeps its own dash pattern and phase speed.
+  function breezeArc(r, amp, wave, endAngle) {
+    var end = clamp(endAngle, A0, A0 + SPAN);
+    if (end <= A0) return "";
+    var path = "";
+    for (var a = A0; a < end; a += 2) {
+      var p = P(r + amp * Math.sin(a * Math.PI * 2 / wave), a);
+      path += (a === A0 ? "M" : "L") + f(p[0]) + " " + f(p[1]);
+    }
+    // Include the exact target angle, not just the last 2-degree sample.
+    var tip = P(r + amp * Math.sin(end * Math.PI * 2 / wave), end);
+    return path + "L" + f(tip[0]) + " " + f(tip[1]);
+  }
+  var BREEZE_GROUP = [
+    { r: 118, amp: 1.3, wave: 24, dash: "13 9", width: 1.1, alpha: .48, speed: 13.7 },
+    { r: 122, amp: 1.8, wave: 36, dash: "18 14", width: 1.5, alpha: .69, speed: 11.4 },
+    { r: 125, amp: 1.0, wave: 18, dash: "10 7", width: 1.0, alpha: .42, speed: 8.9 },
+    { r: 129, amp: 1.5, wave: 20, dash: "8 6", width: 1.0, alpha: .32, speed: 16.5 }
+  ];
+  function breezeGroup(endAngle) {
+    return '<g class="cg-breeze-flow" pointer-events="none">' +
+      BREEZE_GROUP.map(function (b) {
+        // One loop must advance by a whole number of dash/gap periods.
+        // Otherwise the last animation frame cannot match the first and the
+        // pattern visibly jumps whenever the infinite CSS animation restarts.
+        var pieces = b.dash.split(" ").map(Number);
+        var period = pieces[0] + pieces[1];
+        var cycle = period * Math.max(1, Math.round(240 / period));
+        return '<path d="' + breezeArc(b.r, b.amp, b.wave, endAngle) +
+          '" fill="none" stroke="#d4e8ed" stroke-width="' + b.width +
+          '" stroke-linecap="round" stroke-dasharray="' + b.dash +
+          '" opacity="' + b.alpha + '" style="animation-duration:' + b.speed +
+          's;--cg-breeze-cycle:-' + cycle + '"></path>';
+      }).join('') + '</g>';
+  }
+
   function hero(s, d) {
     d = d || derive(s);
     var ta = angleOf(d.target, d.min, d.max), pa = angleOf(d.roomAvg, d.min, d.max);
@@ -1495,6 +1686,7 @@
         HW + '" stroke-linecap="round"></path>' +
       '<path d="' + arcPath(HR, ta, A0 + SPAN) + '" fill="none" stroke="url(#mWarm)" ' +
         'stroke-width="' + HW + '" stroke-linecap="round"></path>' +
+      (s.airflowActive ? breezeGroup(ta) : '') +
       /* drag band: the hero sets the house target */
       '<path d="' + arcPath(HR, A0, A0 + SPAN) + '" fill="none" stroke="rgba(0,0,0,0)" ' +
         'stroke-width="34" stroke-linecap="round" data-act="house" ' +
@@ -1514,8 +1706,8 @@
         lo, hi, d.spread !== 0) +
       heroNeedle(ta) +
       heroPin(d.roomAvg, pa) +
-      '<text class="cg-target-lb" x="168" y="164" text-anchor="middle" font-size="13" ' +
-        'font-weight="600" letter-spacing="4" fill="#9aa5b1">TARGET</text>' +
+      '<text class="cg-target-lb" x="132" y="172" text-anchor="middle" font-size="11" ' +
+        'font-weight="600" letter-spacing="2" fill="#9aa5b1">TARGET</text>' +
       /* the digits stay on the gauge axis and the degree sits outside them, so adding
          the symbol does not push the number off centre */
       '<text x="168" y="213" text-anchor="middle" dominant-baseline="central" ' +
@@ -1523,7 +1715,7 @@
       '<text x="200" y="200" text-anchor="start" dominant-baseline="central" ' +
         'font-size="20" fill="#9aa5b1">\u00b0</text>' +
       '<text x="168" y="264" text-anchor="middle" font-size="11" font-weight="600" ' +
-        'letter-spacing="2" fill="#9aa5b1">SPREAD ' + d.spread + '\u00b0 \u00b7 ' +
+        'letter-spacing="2" fill="#9aa5b1">SPREAD ' + Number(d.spread.toFixed(1)) + '\u00b0 \u00b7 ' +
         String(d.warmest.name || '').toUpperCase() + ' WARMEST</text>' +
       '</svg>';
   }
@@ -1716,14 +1908,17 @@
         '<span style="text-align:center; font:600 10px/1 ui-monospace,monospace; ' +
           'letter-spacing:.08em; color:#8b95a2;">' + (nore ? DASH : z.set) +
           (nore ? '' : '<span style="color:' + (delta >= 5 ? '#7fe4ff' : on ? m.ink : '#8b95a2') +
-            '"> ' + (delta >= 0 ? '+' : '') + delta + '</span>') + '</span>' +
+            '"> ' + (delta >= 0 ? '+' : '') + Number(delta.toFixed(1)) + '</span>') + '</span>' +
         '<button type="button" aria-label="raise" data-act="inc" style="' + btn + '">+</button></div>' +
       (nore ? EMPTY_STRIP : strip(z, d)) +
       '<div style="display:flex; align-items:center; justify-content:center; gap:8px; padding-top:1px;">' +
         '<span style="font:600 10.5px/1 ui-monospace,monospace; letter-spacing:.06em; color:' +
           actInk + ';">' + act + '</span>' +
         presetIcon(z.preset, m.ink) +
-        fanBars(z.fan) + '</div></div>';
+        fanBars(z.fan) +
+        (z.acFanActive ? '<svg class="cg-ac-fan" viewBox="-16 -16 32 32" width="15" height="15" aria-label="AC fan running" role="img">' +
+          '<path d="' + fanGlyph() + '" fill="currentColor"></path></svg>' : '') +
+        '</div></div>';
   }
 
   /* ---------------------------------------------------------------- footer ---- */
@@ -7802,6 +7997,12 @@ ha-card[data-appearance^="glass"] .cg-inner{
 /* The sheet's stylesheet speaks --ct-accent and --ct-font; this card publishes the
    same two things under its own names. Alias rather than fork the stylesheet. */
 .cg-card{ --ct-accent: var(--cg-accent, ${DEFAULT_ACCENT}); --ct-font: ${FONT_STACK}; }
+/* Breeze: four softly tinted, independently drifting wavy ribbons beyond the main dial.
+   Temperature gradients themselves remain static and readable. */
+.cg-breeze-flow path{animation-name:cgBreezeDrift;animation-timing-function:linear;animation-iteration-count:infinite;}
+@keyframes cgBreezeDrift{from{stroke-dashoffset:0;}to{stroke-dashoffset:var(--cg-breeze-cycle);}}
+.cg-ac-fan{color:var(--ct-face-ink, #dfe8f4);animation:cgAcFanSpin 2.4s linear infinite;flex-shrink:0;}
+@keyframes cgAcFanSpin{to{transform:rotate(360deg);}}
 /* Zone card surfaces. Declared here so the glass variants below can retint them the
    same way they retint the text properties, which is what makes glass_color and
    glass_opacity mean something on this layout. */
@@ -7833,6 +8034,7 @@ ha-card[data-appearance="glass-light"] .cg-inner,
 ${FACE.KEYFRAMES}
 @media (prefers-reduced-motion: reduce){
   .cg-zonecard [style*='animation']{ animation:none !important; }
+  .cg-breeze-flow path, .cg-ac-fan{ animation:none !important; }
 }
 /* The two spread-ring labels follow their own ring end, so near either end of the
    range they land on the band rather than beside it. Card-coloured knockout, the
@@ -7899,6 +8101,10 @@ ${FACE.KEYFRAMES}
       if (!ents.length) throw new Error("Define at least one climate entity in `entities`");
       this._config = Object.assign({}, config);
       this._zones = ents;
+      // Read-only sensors are rendered as separate tiles, never as climate zones.
+      this._displaySensors = (Array.isArray(config.display_sensors) ? config.display_sensors : [])
+        .map((e) => typeof e === "string" ? { entity: e } : e)
+        .filter((e) => e && typeof e.entity === "string" && e.entity.startsWith("sensor."));
       this._focus = null;
       this._sig = null;
 
@@ -7950,7 +8156,32 @@ ${FACE.KEYFRAMES}
     // SVG on every unrelated state change in the house.
     _signature() {
       if (!this._hass) return "";
-      const parts = [this._focus || ""];
+      const parts = [this._focus || "", "locale:" + langOf(this._hass)];
+      for (const id of [this._config && this._config.heat_demand_entity,
+                        this._config && this._config.ac_entity,
+                        this._config && this._config.outdoor_temperature_entity]) {
+        if (!id) continue;
+        const state = this._hass.states[id];
+        parts.push("external:" + id + ":" + (state ? state.state + ":" +
+          ((state.attributes || {}).hvac_action || "") : "missing"));
+      }
+      const controls = this._config && this._config.heating_controls;
+      if (controls && typeof controls === "object") {
+        for (const id of [controls.mode_entity, controls.morning_entity,
+          controls.boost_entity, controls.vacation_entity, controls.boiler_entity,
+          controls.boost_delta_entity, controls.boost_minutes_entity]) {
+          if (!id) continue;
+          const entity = this._hass.states[id];
+          parts.push("heating:" + id + ":" + (entity
+            ? entity.state + ":" + JSON.stringify(entity.attributes || {}) : "missing"));
+        }
+      }
+      for (const sensor of (this._displaySensors || [])) {
+        const st = this._hass.states[sensor.entity];
+        parts.push("display:" + sensor.entity + ":" + (st ? st.state + ":" +
+          ((st.attributes || {}).unit_of_measurement || "") + ":" +
+          (sensor.name || (st.attributes || {}).friendly_name || "") : "missing"));
+      }
       for (const z of this._zones) {
         const s = this._hass.states[z.entity];
         if (!s) { parts.push(z.entity + ":-"); continue; }
@@ -8405,7 +8636,15 @@ ${FACE.KEYFRAMES}
         led: { en: "LED", es: "LED" },
         sound: { en: "SOUND", es: "SONIDO" },
       };
+      const ru = {
+        average: "Средняя температура", running: "работают", now: "СЕЙЧАС",
+        off_word: "Выключено", all_off: "Выключить всё", all_on: "Включить всё",
+        confirm_off: "Подтвердить", sync: "Синхронизировать",
+        unavailable: "Недоступно", cooling: "ОХЛАЖДЕНИЕ", close: "Закрыть",
+        swing: "ЖАЛЮЗИ", led: "ДИСПЛЕЙ", sound: "ЗВУК"
+      };
       const lang = langOf(this._hass);
+      if (lang === "ru" && ru[k]) return ru[k];
       const row = M[k] || {};
       return row[lang] || row.en || k;
     }
@@ -8559,9 +8798,30 @@ ${FACE.KEYFRAMES}
             ? a.preset_modes.map((p) => String(p).toUpperCase()) : null,
         };
       });
+      const heatEntity = this._config && this._config.heat_demand_entity;
+      const heatState = heatEntity && this._st(heatEntity);
+      const heatingActive = heatEntity
+        ? !!heatState && heatState.state === "on"
+        : zones.some((z) => !z.dead && String(z.action || "").toLowerCase() === "heating");
+      const acEntity = this._config && this._config.ac_entity;
+      const acState = acEntity && this._st(acEntity);
+      const acAction = String((acState && acState.attributes && acState.attributes.hvac_action) || "").toLowerCase();
+      // A hybrid entity can report heat provided by the boiler, so use a separate AC entity.
+      // IR-only climate integrations often expose the commanded HVAC mode but no
+      // hvac_action. In that case show requested airflow, not verified fan operation.
+      const acMode = String((acState && acState.state) || "").toLowerCase();
+      const acFanActive = !!acState && acMode !== "unavailable" &&
+        acMode !== "unknown" &&
+        (acEntity.startsWith("climate.")
+          ? (acAction
+              ? ["heating", "cooling", "fan", "drying"].includes(acAction)
+              : ["heat", "cool", "fan_only", "dry"].includes(acMode))
+          : acMode === "on");
+      const acZone = (this._config && this._config.ac_zone_entity) || "climate.living_room_hybrid";
+      zones.forEach((z) => { z.acFanActive = acFanActive && z.id === acZone; });
       return {
         name: escapeText(this._config.name || "House"),
-        zones,
+        zones, heatingActive, airflowActive: heatingActive || acFanActive,
         target: (this._zui && this._zui.houseTarget != null) ? this._zui.houseTarget : null,
         min: r.lo, max: r.hi,
       };
@@ -8577,6 +8837,60 @@ ${FACE.KEYFRAMES}
         ? String(p).toUpperCase() : "";
     }
 
+    _localizeZoneHtml(html) {
+      if (langOf(this._hass) !== "ru") return html;
+      const words = { "IDLE": "ОЖИДАНИЕ", "HEATING": "НАГРЕВ", "COOLING": "ОХЛАЖДЕНИЕ",
+        "DRYING": "ОСУШЕНИЕ", "FAN": "ВЕНТИЛЯЦИЯ", "OFF": "ВЫКЛ.", "AUTO": "АВТО",
+        "UNAVAILABLE": "НЕДОСТУПНО" };
+      // Translate only rendered static text nodes; never replace names, attributes or entity IDs.
+      return html
+        .replace(/>AVG ROOM<\/text>/g, ">СР. ТЕМП.<\/text>")
+        .replace(/>TARGET<\/text>/g, ">ЗАДАНО<\/text>")
+        .replace(/>SPREAD /g, ">РАЗБРОС ")
+        // Legacy group labels may be rendered before the group dictionary is applied.
+        .replace(/(>\s*\d+\s+)COOLING(?=<\/span>)/g, "$1ОХЛАЖДЕНИЕ")
+        .replace(/>ALL OFF<\/button>/g, ">ВЫКЛЮЧИТЬ ВСЁ</button>")
+        .replace(/>SYNC ALL<\/button>/g, ">СИНХРОНИЗИРОВАТЬ</button>")
+        .replace(/>ALL ON<\/button>/g, ">ВКЛЮЧИТЬ ВСЁ</button>")
+        .replace(/>TAP TO CONFIRM<\/button>/g, ">ПОДТВЕРДИТЬ</button>")
+        .replace(/ WARMEST<\/text>/g, " САМАЯ ТЁПЛАЯ<\/text>")
+        .replace(/>(IDLE|HEATING|COOLING|DRYING|FAN|OFF|AUTO|UNAVAILABLE)<\/span>/g,
+          (_, word) => ">" + words[word] + "<\/span>")
+        .replace(/aria-label="lower"/g, 'aria-label="Понизить температуру"')
+        .replace(/aria-label="raise"/g, 'aria-label="Повысить температуру"');
+    }
+
+    // Temperature-only tile: never delegates to ZONE.tile, so it has no climate
+    // controls, no data-zone event target and no participation in ZONE.derive().
+    _displaySensorTile(sensor) {
+      const st = this._st(sensor.entity);
+      const attrs = (st && st.attributes) || {};
+      const label = escapeText(sensor.name || attrs.friendly_name || sensor.entity);
+      const raw = st && !["unknown", "unavailable"].includes(st.state) ? Number(st.state) : NaN;
+      const measured = Number.isFinite(raw) ? this._toDisplay(raw) : null;
+      const value = measured == null ? "—" : (Math.round(measured * 10) / 10).toFixed(1);
+      const unit = measured == null ? "" : "°";
+      const desc = langOf(this._hass) === "ru" ? "ТОЛЬКО ДАТЧИК" : "SENSOR ONLY";
+      return '<div class="cg-sensor-tile" title="' + escapeAttr(sensor.entity) +
+        '" style="border:1px solid rgba(154,175,210,.26);border-radius:13px;' +
+        'background:linear-gradient(158deg,rgba(154,175,210,.10),rgba(255,255,255,.025));' +
+        'padding:9px 9px 8px;display:flex;flex-direction:column;align-items:center;' +
+        'justify-content:space-between;gap:5px;min-width:0;min-height:125px;">' +
+        '<div style="display:flex;align-items:center;justify-content:center;gap:7px;min-width:0;">' +
+        '<span style="width:7px;height:7px;border-radius:50%;background:#9aa5b1;opacity:.65;"></span>' +
+        '<span class="cg-tilename" style="font:600 14px/1 Rajdhani,sans-serif;' +
+        'letter-spacing:.14em;text-transform:uppercase;color:var(--primary-text-color,#f2f5f8);' +
+        'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + label + '</span></div>' +
+        '<div style="font:400 34px/.82 Rajdhani,sans-serif;color:var(--primary-text-color,#f6f8fa);">' +
+        value + '<span style="font-size:14px;color:var(--secondary-text-color,#8b95a2);">' +
+        unit + '</span></div>' +
+        // Match the empty setpoint/stepper row in a controlled room.
+        '<div aria-hidden="true" style="height:30px;width:100%;flex-shrink:0;"></div>' +
+        '<div style="width:100%;height:4px;border-radius:5px;background:rgba(225,231,237,.10);"></div>' +
+        '<div style="font:600 10.5px/1 ui-monospace,monospace;letter-spacing:.06em;' +
+        'color:var(--secondary-text-color,#9aa5b1);">' + desc + '</div></div>';
+    }
+
     _renderZoneCard() {
       const model = this._zoneModel();
       const d = ZONE.derive(model);
@@ -8588,7 +8902,8 @@ ${FACE.KEYFRAMES}
          is the shipped card's own idiom: it gives one row when the row fits and wraps
          when it does not. zone_rows still overrides it, because it is a shipped key
          and someone asked for that shape on purpose. */
-      const forced = this._gridStyle("zone_rows", model.zones.length);
+      const tileCount = model.zones.length + (this._displaySensors || []).length;
+      const forced = this._gridStyle("zone_rows", tileCount);
       const cols = forced
         ? forced.replace(/^ style="/, "").replace(/"$/, "")
         /* min(126px, 100%) rather than a flat 126px: an explicitly forced horizontal
@@ -8600,29 +8915,48 @@ ${FACE.KEYFRAMES}
 
       const card = this.shadowRoot && this.shadowRoot.querySelector(".cg-card");
       if (card) card.setAttribute("data-ink", this._inkGround(card));
+      const outsideEntity = this._config && this._config.outdoor_temperature_entity;
+      const outsideState = outsideEntity && this._st(outsideEntity);
+      const outsideRaw = outsideState && !["unknown", "unavailable"].includes(outsideState.state)
+        ? Number(outsideState.state) : NaN;
+      const outsideValue = Number.isFinite(outsideRaw) ? this._toDisplay(outsideRaw) : null;
+      const outsideLabel = langOf(this._hass) === "ru" ? "НА УЛИЦЕ" : "OUTSIDE";
+      const outdoorHtml = outsideEntity
+        ? '<span style="display:block;margin-top:7px;font:600 12px/1.2 ui-monospace,monospace;' +
+            'letter-spacing:.09em;color:var(--secondary-text-color,#9aa5b1);">' +
+            outsideLabel + ': ' +
+            (outsideValue == null ? '—' : (Math.round(outsideValue * 10) / 10).toFixed(1) + '°') +
+          '</span>'
+        : '';
       const orient = ["horizontal", "vertical"].indexOf(this._config.orientation) >= 0
         ? this._config.orientation : "auto";
       let html = '<div class="cg-zonecard" data-orient="' + orient
         + '" style="position:relative; font-family:' + FONT_STACK + ';">';
-      html += '<div style="display:flex; align-items:baseline; justify-content:space-between;'
-        + ' gap:14px; padding-bottom:6px; border-bottom:1px solid rgba(225,231,237,.12);">'
+      html += '<div style="display:flex; align-items:flex-start; justify-content:space-between;'
+        + ' gap:14px; padding-bottom:9px; border-bottom:1px solid rgba(225,231,237,.12);">'
+        + '<div style="display:flex;flex-direction:column;align-items:flex-start;min-width:0;flex:1;">'
         + '<span style="font:600 22px/1 inherit; letter-spacing:.08em; text-transform:uppercase;'
         + ' color:var(--primary-text-color, #f2f5f8);">' + model.name + '</span>'
-        // the shipped card's N / M survives: d.on alone cannot tell 4 of 5 from 4 of 9,
-        // and the total is the reading that shows a zone has fallen out of the config.
-        + '<span style="display:flex; align-items:center; gap:8px;'
-        + ' font:600 12px/1 ui-monospace,monospace; letter-spacing:.07em;">'
-        + '<span style="color:var(--cg-accent, #27d3ff);">' + d.cooling + ' ' + this._t("cooling") + '</span>'
-        + '<span style="color:#546070;">·</span>'
-        + '<span style="color:var(--secondary-text-color, #8b95a2);">' + d.on + ' / '
-        + model.zones.length + '</span></span></div>';
+        + outdoorHtml + this._heatingStatusHtml() + '</div>'
+        // For a heating-only control panel, the generic cooling counter is
+        // misleading and wraps awkwardly on narrow screens. Keep it for the
+        // ordinary multi-HVAC group card, but omit it for heating profiles.
+        + (this._heatingControls() ? '' :
+          '<span style="display:flex; align-items:center; gap:8px;' +
+          ' font:600 12px/1 ui-monospace,monospace; letter-spacing:.07em;">' +
+          '<span style="color:var(--cg-accent, #27d3ff);">' + d.cooling + ' ' + this._t("cooling") + '</span>' +
+          '<span style="color:#546070;">·</span>' +
+          '<span style="color:var(--secondary-text-color, #8b95a2);">' + d.on + ' / ' +
+          model.zones.length + '</span></span>') + '</div>';
 
       html += '<div class="cg-zonecard-body" style="display:grid;'
         + ' grid-template-columns:236px minmax(0,1fr); gap:18px; align-items:stretch;'
         + ' margin-top:10px;">' + ZONE.hero(model, d)
         + '<div class="cg-zonecard-tiles" style="display:grid; ' + cols + '; gap:10px;'
         + ' align-self:center; min-height:' + ZONE.arcRatio() + ';">'
-        + model.zones.map((z, i) => ZONE.tile(z, i, d)).join("") + "</div></div>";
+        + model.zones.map((z, i) => ZONE.tile(z, i, d)).join("")
+        + (this._displaySensors || []).map((sensor) => this._displaySensorTile(sensor)).join("")
+        + "</div></div>";
 
       if (this._config.group_actions !== false) {
         html += this._zoneFooter(this._zoneActions(model, d, ui));
@@ -8637,7 +8971,7 @@ ${FACE.KEYFRAMES}
          markup and already themed, so only the module's half goes through themeZone. */
       if (html !== this._rawHtml) {
         this._rawHtml = html;
-        const themed = themeZone(html);
+        const themed = themeZone(this._localizeZoneHtml(html));
         if (themed !== this._bodyHtml) { this._bodyHtml = themed; this._inner.innerHTML = themed; }
       }
       /* The open sheet belongs to a ROOM, not to a slot. It was remembered as an index
@@ -8745,7 +9079,7 @@ ${FACE.KEYFRAMES}
       lb.style.display = "";
       const caps = root.querySelectorAll(".cg-zonecard-body > svg text");
       let avg = null;
-      caps.forEach((t) => { if (t.textContent === "AVG ROOM") avg = t; });
+      caps.forEach((t) => { if (["AVG ROOM", "СР. ТЕМП."].includes(t.textContent)) avg = t; });
       if (!avg) return;
       let a, b;
       try { a = lb.getBBox(); b = avg.getBBox(); } catch (e) { return; }
@@ -8779,7 +9113,66 @@ ${FACE.KEYFRAMES}
        a unit with a preset outside that set is offered it and one that rejects a
        member never sees it. A name nothing supports is skipped rather than drawn as a
        button that cannot act. */
+    // Optional heating control UI. Home Assistant scripts/automations own all
+    // scheduling and timers; the Lovelace card remains a stateless remote control.
+    _heatingControls() {
+      const cfg = this._config && this._config.heating_controls;
+      return cfg && typeof cfg === "object" ? cfg : null;
+    }
+
+    _heatingProfileActions() {
+      const cfg = this._heatingControls();
+      if (!cfg) return [];
+      const ru = langOf(this._hass) === "ru";
+      const isOn = (id) => !!id && !!this._st(id) && this._st(id).state === "on";
+      const holiday = isOn(cfg.vacation_entity);
+      const boostDelta = cfg.boost_delta_entity && this._st(cfg.boost_delta_entity);
+      const boostTime = cfg.boost_minutes_entity && this._st(cfg.boost_minutes_entity);
+      const delta = boostDelta && Number(boostDelta.state);
+      const mins = boostTime && Number(boostTime.state);
+      const increment = Number.isFinite(delta) ? ("+" + delta + "°") : "+2°";
+      const duration = Number.isFinite(mins) ? (" · " + mins + "м") : "";
+      return [
+        { id: "profile:morning", lit: isOn(cfg.morning_entity),
+          label: ru ? "Утренний обогрев" : "Morning heat" },
+        { id: "profile:boost", lit: isOn(cfg.boost_entity), warn: holiday,
+          label: (ru ? "Таймер " : "Timed ") + increment + duration },
+        { id: "profile:vacation", lit: holiday,
+          label: ru ? "Отпуск" : "Vacation" }
+      ];
+    }
+
+    _heatingStatusHtml() {
+      const cfg = this._heatingControls();
+      if (!cfg) return "";
+      const ru = langOf(this._hass) === "ru";
+      const st = cfg.mode_entity && this._st(cfg.mode_entity);
+      const mode = st && ["normal","morning","boost","vacation"].includes(st.state)
+        ? st.state : "unavailable";
+      const labels = ru
+        ? {normal:"ОБЫЧНЫЙ",morning:"УТРО",boost:"ТАЙМЕР",vacation:"ОТПУСК",unavailable:"НЕТ ДАННЫХ"}
+        : {normal:"NORMAL",morning:"MORNING",boost:"BOOST",vacation:"VACATION",unavailable:"UNAVAILABLE"};
+      const a = st && st.attributes || {};
+      const temp = Number(a.target_temperature);
+      const target = Number.isFinite(temp) ? " · " + (Math.round(temp * 10) / 10) + "°" : "";
+      const next = typeof a.next_change === "string" && a.next_change
+        ? " · " + escapeText(a.next_change) : "";
+      const boiler = cfg.boiler_entity && this._st(cfg.boiler_entity);
+      const state = boiler ? boiler.state : "unavailable";
+      const boilerName = ru ? "КОТЁЛ" : "BOILER";
+      const boilerStatus = state === "on" ? (ru ? "ВКЛ" : "ON")
+        : state === "off" ? (ru ? "ВЫКЛ" : "OFF") : (ru ? "НЕТ СВЯЗИ" : "UNAVAILABLE");
+      const boilerInk = state === "on" ? "#f7b15d" : state === "off"
+        ? "var(--secondary-text-color,#9aa5b1)" : "#f28d7e";
+      return '<div class="cg-heating-status" style="display:flex;flex-wrap:wrap;gap:6px 16px;' +
+        'font:600 11px/1.4 ui-monospace,monospace;letter-spacing:.05em;' +
+        'color:var(--secondary-text-color,#9aa5b1);margin-top:6px;">' +
+        '<span>' + (ru ? "РЕЖИМ: " : "MODE: ") + labels[mode] + target + next + '</span>' +
+        '<span style="color:' + boilerInk + ';">' + boilerName + ': ' + boilerStatus + '</span></div>';
+    }
+
     _zoneActions(model, d, ui) {
+      if (this._heatingControls()) return this._heatingProfileActions();
       const shared = this._sharedPresets();
       const known = {};
       /* The labels come from the table, not from the module.
@@ -9067,6 +9460,17 @@ ${FACE.KEYFRAMES}
          reached that swallow first and every group action did nothing. */
       if (g) {
         const id = g.dataset.gact;
+        const controls = this._heatingControls();
+        if (controls && id.indexOf("profile:") === 0) {
+          const key = id.slice(8);
+          if (key === "morning" && controls.morning_entity)
+            this._call("input_boolean", "toggle", {entity_id: controls.morning_entity});
+          if (key === "vacation" && controls.vacation_entity)
+            this._call("input_boolean", "toggle", {entity_id: controls.vacation_entity});
+          if (key === "boost" && controls.boost_script)
+            this._call("script", "turn_on", {entity_id: controls.boost_script});
+          return true;
+        }
         /* Disarming is a VISIBLE change, so it has to repaint here rather than lean on
            the branch below it. Sync and confirm repaint on their own; All on and the
            presets write and return, so the flag went false while the warn-coloured
@@ -9473,6 +9877,8 @@ ${FACE.KEYFRAMES}
         "helper.entities": { en: "Every room this card controls. Order is the order they appear.",
           es: "Cada cuarto que controla esta tarjeta. El orden es el que se muestra." },
       };
+      const ru = {"editor.opt.orient_auto":"Автоматически","editor.opt.orient_h":"Горизонтально: шкала рядом с комнатами","editor.opt.orient_v":"Вертикально: комнаты под шкалой","editor.opt.appearance_theme":"Тема Home Assistant","editor.opt.appearance_glass_dark":"Матовое стекло (тёмное)","editor.opt.appearance_glass_light":"Матовое стекло (светлое)","editor.opt.hero_average":"Среднее по комнатам","editor.opt.hero_hottest":"Самая тёплая комната","editor.opt.tap_focus":"Показать на шкале","editor.opt.tap_more_info":"Открыть сведения","editor.sec.appearance":"Внешний вид","editor.sec.layout":"Компоновка","editor.sec.bar":"Кнопки внизу","editor.opt.act_off":"Выключить / включить всё","editor.opt.act_sync":"Синхронизировать всё","label.actions":"Кнопки и их порядок","helper.actions":"Оставьте пустым для стандартного набора кнопок. Пресеты зависят от возможностей термостатов.","editor.sec.range":"Диапазон температур","label.entities":"Комнаты","label.name":"Заголовок карточки","label.orientation":"Ориентация","helper.orientation":"Автоматически располагает комнаты в ряд на широком экране и друг под другом на узком.","label.accent":"Акцентный цвет","label.temp_step":"Шаг температуры","helper.temp_step":"Изменение температуры при одном нажатии + или −.","label.zone_rows":"Ряды комнат","label.action_rows":"Ряды кнопок","label.group_actions":"Показать панель кнопок","helper.zone_rows":"Оставьте пустым для автоматического переноса комнат.","helper.entities":"Выберите комнаты в нужном порядке."};
+      if (langOf(this._hass) === "ru" && ru[k]) return ru[k];
       const row = M[k] || {};
       return row[langOf(this._hass)] || row.en || k;
     }

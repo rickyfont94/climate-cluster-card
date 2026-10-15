@@ -1,0 +1,266 @@
+# Home Assistant package: heating profiles (no Scheduler dependency)
+# Installation: save as config/packages/heating_profiles.yaml, enable homeassistant: packages.
+# Controls three virtual thermostats; the existing boiler-request/Shelly automation stays in place.
+#
+# IMPORTANT: disable the six old Scheduler entries before enabling this package.
+# Tune initial values below in YAML. input_number/input_datetime "initial" values
+# are config defaults and are reapplied at HA restart; vacation/morning toggles are restored.
+input_boolean:
+  heating_morning_enabled:
+    name: Утренний обогрев включён
+    icon: mdi:weather-sunset-up
+  heating_vacation:
+    name: Режим отпуск
+    icon: mdi:palm-tree
+  heating_initialized:
+    name: Параметры отопления инициализированы
+    icon: mdi:check-circle
+
+input_number:
+  heating_base_temperature:
+    name: Базовая температура отопления
+    min: 16
+    max: 28
+    step: 0.5
+    unit_of_measurement: "°C"
+    icon: mdi:thermometer
+  heating_morning_delta:
+    name: Прибавка утром
+    min: 0
+    max: 6
+    step: 0.5
+    unit_of_measurement: "°C"
+  heating_boost_delta:
+    name: Прибавка по таймеру
+    min: 0
+    max: 6
+    step: 0.5
+    unit_of_measurement: "°C"
+  heating_boost_minutes:
+    name: Продолжительность таймера
+    min: 15
+    max: 480
+    step: 15
+    unit_of_measurement: "min"
+  heating_vacation_temperature:
+    name: Температура отпуска
+    min: 10
+    max: 22
+    step: 0.5
+    unit_of_measurement: "°C"
+
+input_datetime:
+  heating_morning_start:
+    name: Начало утреннего обогрева
+    has_date: false
+    has_time: true
+  heating_morning_end:
+    name: Конец утреннего обогрева
+    has_date: false
+    has_time: true
+  heating_boost_until:
+    name: Таймер обогрева до
+    has_date: true
+    has_time: true
+
+template:
+  - sensor:
+      - name: Heating Control Mode
+        unique_id: heating_control_mode
+        state: >-
+          {% set vacation = is_state('input_boolean.heating_vacation', 'on') %}
+          {% set until = as_timestamp(states('input_datetime.heating_boost_until'), 0) %}
+          {% set boost = until > as_timestamp(now()) %}
+          {% set enabled = is_state('input_boolean.heating_morning_enabled', 'on') %}
+          {% set t = now().strftime('%H:%M:%S') %}
+          {% set start = states('input_datetime.heating_morning_start') %}
+          {% set finish = states('input_datetime.heating_morning_end') %}
+          {% set morning = enabled and start not in ['unknown','unavailable'] and finish not in ['unknown','unavailable']
+              and ((start <= t < finish) if start < finish else (t >= start or t < finish)) if start != finish else false %}
+          {{ 'vacation' if vacation else 'boost' if boost else 'morning' if morning else 'normal' }}
+        attributes:
+          target_temperature: >-
+            {% set vacation = is_state('input_boolean.heating_vacation', 'on') %}
+            {% set until = as_timestamp(states('input_datetime.heating_boost_until'), 0) %}
+            {% set boost = until > as_timestamp(now()) %}
+            {% set enabled = is_state('input_boolean.heating_morning_enabled', 'on') %}
+            {% set t = now().strftime('%H:%M:%S') %}
+            {% set start = states('input_datetime.heating_morning_start') %}
+            {% set finish = states('input_datetime.heating_morning_end') %}
+            {% set morning = enabled and start not in ['unknown','unavailable'] and finish not in ['unknown','unavailable']
+                and ((start <= t < finish) if start < finish else (t >= start or t < finish)) if start != finish else false %}
+            {% set mode = 'vacation' if vacation else 'boost' if boost else 'morning' if morning else 'normal' %}
+            {% set base = states('input_number.heating_base_temperature') | float(22) %}
+            {% if mode == 'vacation' %}
+              {{ states('input_number.heating_vacation_temperature') | float(16) }}
+            {% elif mode == 'boost' %}
+              {{ base + (states('input_number.heating_boost_delta') | float(2)) }}
+            {% elif mode == 'morning' %}
+              {{ base + (states('input_number.heating_morning_delta') | float(2)) }}
+            {% else %} {{ base }} {% endif %}
+          next_change: >-
+            {% set vacation = is_state('input_boolean.heating_vacation', 'on') %}
+            {% set until = as_timestamp(states('input_datetime.heating_boost_until'), 0) %}
+            {% set boost = until > as_timestamp(now()) %}
+            {% set enabled = is_state('input_boolean.heating_morning_enabled', 'on') %}
+            {% set t = now().strftime('%H:%M:%S') %}
+            {% set start = states('input_datetime.heating_morning_start') %}
+            {% set finish = states('input_datetime.heating_morning_end') %}
+            {% set morning = enabled and start not in ['unknown','unavailable'] and finish not in ['unknown','unavailable']
+                and ((start <= t < finish) if start < finish else (t >= start or t < finish)) if start != finish else false %}
+            {% set mode = 'vacation' if vacation else 'boost' if boost else 'morning' if morning else 'normal' %}
+            {% if mode == 'vacation' %}до отмены
+            {% elif mode == 'boost' %}
+              {% set remain = (as_timestamp(states('input_datetime.heating_boost_until'),0) - as_timestamp(now())) | int(0) %}
+              ещё {{ (remain // 60) }} мин
+            {% elif mode == 'morning' %}
+              до {{ states('input_datetime.heating_morning_end')[:5] }}
+            {% elif is_state('input_boolean.heating_morning_enabled', 'on') %}
+              утро {{ states('input_datetime.heating_morning_start')[:5] }}
+            {% else %}без расписания{% endif %}
+  - binary_sensor:
+      - name: Heating Boost Active
+        unique_id: heating_boost_active
+        state: >-
+          {{ not is_state('input_boolean.heating_vacation','on')
+             and as_timestamp(states('input_datetime.heating_boost_until'),0) > as_timestamp(now()) }}
+
+script:
+  heating_boost_two_hours:
+    alias: Отопление — временный форсаж
+    description: Первое нажатие включает форсаж, повторное отключает его досрочно.
+    mode: queued
+    max: 2
+    sequence:
+      - if:
+          - condition: template
+            value_template: >-
+              {{ is_state('sensor.heating_control_mode', 'boost') }}
+        then:
+          - action: input_datetime.set_datetime
+            target:
+              entity_id: input_datetime.heating_boost_until
+            data:
+              datetime: "{{ (now() - timedelta(seconds=1)).strftime('%Y-%m-%d %H:%M:%S') }}"
+        else:
+          - action: input_boolean.turn_off
+            target:
+              entity_id: input_boolean.heating_vacation
+          - action: input_datetime.set_datetime
+            target:
+              entity_id: input_datetime.heating_boost_until
+            data:
+              datetime: >-
+                {{ (now() + timedelta(minutes=states('input_number.heating_boost_minutes') | int(120))).strftime('%Y-%m-%d %H:%M:%S') }}
+
+automation:
+  # One-time defaults. After initial setup, HA restores user-edited helper values
+  # across restarts (the initialized boolean also persists).
+  - id: heating_profiles_initialize
+    alias: Отопление — первичная настройка
+    mode: single
+    triggers:
+      - trigger: homeassistant
+        event: start
+    actions:
+      - delay: "00:00:05"
+      - condition: state
+        entity_id: input_boolean.heating_initialized
+        state: "off"
+      - repeat:
+          for_each:
+            - { entity: input_number.heating_base_temperature, value: 22 }
+            - { entity: input_number.heating_morning_delta, value: 2 }
+            - { entity: input_number.heating_boost_delta, value: 2 }
+            - { entity: input_number.heating_boost_minutes, value: 120 }
+            - { entity: input_number.heating_vacation_temperature, value: 16 }
+          sequence:
+            - action: input_number.set_value
+              target:
+                entity_id: "{{ repeat.item.entity }}"
+              data:
+                value: "{{ repeat.item.value }}"
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.heating_morning_start
+        data:
+          time: "06:00:00"
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.heating_morning_end
+        data:
+          time: "08:00:00"
+      - action: input_boolean.turn_on
+        target:
+          entity_id:
+            - input_boolean.heating_morning_enabled
+            - input_boolean.heating_initialized
+
+  - id: heating_profiles_apply
+    alias: Отопление — применить профиль
+    mode: restart
+    triggers:
+      - trigger: homeassistant
+        event: start
+      - trigger: time_pattern
+        minutes: "/1"
+      - trigger: state
+        entity_id:
+          - sensor.heating_control_mode
+          - input_boolean.heating_morning_enabled
+          - input_boolean.heating_vacation
+          - input_datetime.heating_morning_start
+          - input_datetime.heating_morning_end
+          - input_datetime.heating_boost_until
+          - input_number.heating_base_temperature
+          - input_number.heating_morning_delta
+          - input_number.heating_boost_delta
+          - input_number.heating_vacation_temperature
+    variables:
+      profile: "{{ states('sensor.heating_control_mode') }}"
+      wanted: >-
+        {% set base = states('input_number.heating_base_temperature') | float(22) %}
+        {% if profile == 'vacation' %}
+          {{ states('input_number.heating_vacation_temperature') | float(16) }}
+        {% elif profile == 'boost' %}
+          {{ base + (states('input_number.heating_boost_delta') | float(2)) }}
+        {% elif profile == 'morning' %}
+          {{ base + (states('input_number.heating_morning_delta') | float(2)) }}
+        {% else %}
+          {{ base }}
+        {% endif %}
+    actions:
+      - repeat:
+          for_each:
+            - climate.living_room_hybrid
+            - climate.bedroom_heating
+            - climate.kids_room_heating
+          sequence:
+            - variables:
+                cid: "{{ repeat.item }}"
+                current_mode: "{{ states(repeat.item) }}"
+                current_target: "{{ state_attr(repeat.item, 'temperature') | float(-99) }}"
+            - condition: template
+              value_template: "{{ current_mode not in ['unknown', 'unavailable'] }}"
+            - if:
+                - condition: template
+                  value_template: >-
+                    {{ current_mode != 'heat' and 'heat' in
+                       (state_attr(cid, 'hvac_modes') or []) }}
+              then:
+                - action: climate.set_hvac_mode
+                  continue_on_error: true
+                  target:
+                    entity_id: "{{ cid }}"
+                  data:
+                    hvac_mode: heat
+            - if:
+                - condition: template
+                  value_template: "{{ ((current_target | float(-99)) - (wanted | float(22))) | abs > 0.05 }}"
+              then:
+                - action: climate.set_temperature
+                  continue_on_error: true
+                  target:
+                    entity_id: "{{ cid }}"
+                  data:
+                    temperature: "{{ wanted | float(22) }}"
